@@ -1,0 +1,2020 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MP Prospecting · Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+/* ─── RESET & BASE ─────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px;-webkit-font-smoothing:antialiased}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#eef2f7;color:#1a2332;min-height:100vh;display:flex;flex-direction:column}
+
+/* ─── VARIABLES CORPORATIVAS MERCADOPAGO ──────────── */
+:root{
+  --mp-blue:#009ee3;
+  --mp-blue-dk:#007cba;
+  --mp-blue-lt:#e6f6fd;
+  --mp-yellow:#ffe600;
+  --mp-yellow-dk:#ccb800;
+  --mp-green:#00a650;
+  --mp-red:#f23d4f;
+  --mp-orange:#ff7733;
+  --mp-purple:#7b3fe4;
+  --mp-gray:#f0f4f8;
+  --mp-gray-md:#d1dbe8;
+  --mp-text:#1a2332;
+  --mp-text-2:#4a5568;
+  --mp-text-3:#8896a8;
+  --mp-card:#ffffff;
+  --mp-border:#dde5ef;
+  --mp-shadow:0 1px 4px rgba(0,30,60,.08),0 4px 16px rgba(0,30,60,.04);
+  --mp-radius:12px;
+  --mp-radius-sm:8px;
+  --nav-w:220px;
+}
+
+/* ─── TOPBAR ───────────────────────────────────────── */
+.topbar{
+  position:fixed;top:0;left:0;right:0;height:56px;
+  background:var(--mp-blue);z-index:100;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px 0 0;
+  box-shadow:0 2px 8px rgba(0,100,180,.3);
+}
+.topbar-brand{
+  width:var(--nav-w);display:flex;align-items:center;gap:10px;
+  padding:0 20px;height:100%;background:var(--mp-blue-dk);
+  flex-shrink:0;
+}
+.brand-circle{
+  width:34px;height:34px;border-radius:50%;
+  background:var(--mp-yellow);display:flex;align-items:center;
+  justify-content:center;font-weight:800;font-size:13px;color:var(--mp-blue-dk);
+  flex-shrink:0;
+}
+.brand-name{color:#fff;font-size:15px;font-weight:600;letter-spacing:-.3px}
+.brand-sub{color:rgba(255,255,255,.65);font-size:10px;margin-top:1px}
+
+.topbar-center{flex:1;padding-left:24px}
+.topbar-title{color:#fff;font-size:14px;font-weight:600;opacity:.9}
+
+.topbar-right{display:flex;align-items:center;gap:12px}
+.verified-pill{
+  background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);
+  color:#fff;font-size:11px;padding:4px 12px;border-radius:20px;
+  display:flex;align-items:center;gap:6px;
+}
+.verified-dot{width:7px;height:7px;background:var(--mp-yellow);border-radius:50%;flex-shrink:0}
+.wa-status{
+  display:flex;align-items:center;gap:5px;
+  background:rgba(0,166,80,.25);border:1px solid rgba(0,166,80,.5);
+  color:#a8f0c8;font-size:11px;padding:4px 10px;border-radius:20px;cursor:pointer;
+}
+.wa-status.offline{background:rgba(242,61,79,.2);border-color:rgba(242,61,79,.4);color:#ffb3ba}
+.wa-dot{width:6px;height:6px;border-radius:50%;background:#00c876;flex-shrink:0}
+.wa-status.offline .wa-dot{background:#f23d4f}
+.avatar{
+  width:34px;height:34px;border-radius:50%;
+  background:var(--mp-yellow);color:var(--mp-blue-dk);
+  font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;
+}
+
+/* ─── SIDEBAR ──────────────────────────────────────── */
+.sidebar{
+  position:fixed;top:56px;left:0;bottom:0;width:var(--nav-w);
+  background:#fff;border-right:1px solid var(--mp-border);
+  overflow-y:auto;z-index:90;padding:16px 0;
+}
+.nav-section{font-size:10px;font-weight:700;color:var(--mp-text-3);
+  text-transform:uppercase;letter-spacing:.08em;padding:12px 20px 6px}
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 20px;cursor:pointer;
+  color:var(--mp-text-2);font-size:13px;
+  border-left:3px solid transparent;
+  transition:all .15s;
+}
+.nav-item:hover{background:var(--mp-blue-lt);color:var(--mp-blue)}
+.nav-item.active{
+  background:var(--mp-blue-lt);color:var(--mp-blue);
+  border-left-color:var(--mp-blue);font-weight:600;
+}
+.nav-icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+.nav-badge{
+  margin-left:auto;background:var(--mp-blue);color:#fff;
+  font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;
+}
+
+/* ─── MAIN CONTENT ─────────────────────────────────── */
+.main{margin-left:var(--nav-w);margin-top:56px;padding:24px;min-height:calc(100vh - 56px)}
+.page{display:none}
+.page.active{display:block}
+.page-header{margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.page-title{font-size:20px;font-weight:700;color:var(--mp-text)}
+.page-sub{font-size:12px;color:var(--mp-text-3);margin-top:2px}
+
+/* ─── CARDS ────────────────────────────────────────── */
+.card{
+  background:var(--mp-card);border-radius:var(--mp-radius);
+  border:1px solid var(--mp-border);box-shadow:var(--mp-shadow);
+  padding:20px;
+}
+.card-title{font-size:13px;font-weight:600;color:var(--mp-text);margin-bottom:16px;
+  display:flex;align-items:center;gap:8px}
+.card-icon{font-size:16px}
+
+/* ─── KPI GRID ─────────────────────────────────────── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:22px}
+.kpi{
+  background:var(--mp-card);border-radius:var(--mp-radius);
+  border:1px solid var(--mp-border);box-shadow:var(--mp-shadow);
+  padding:16px 18px;position:relative;overflow:hidden;
+}
+.kpi::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:var(--kpi-color,var(--mp-blue));
+}
+.kpi-label{font-size:11px;color:var(--mp-text-3);font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.kpi-val{font-size:26px;font-weight:800;color:var(--mp-text);margin:6px 0 4px;line-height:1}
+.kpi-sub{font-size:11px;display:flex;align-items:center;gap:4px}
+.kpi-up{color:var(--mp-green)}
+.kpi-down{color:var(--mp-red)}
+.kpi-neutral{color:var(--mp-text-3)}
+
+/* ─── TWO/THREE COLUMN LAYOUTS ─────────────────────── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.grid-3{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:20px}
+.grid-3-equal{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px}
+
+/* ─── FUNNEL ───────────────────────────────────────── */
+.funnel{display:flex;flex-direction:column;gap:10px}
+.funnel-row{display:flex;align-items:center;gap:10px}
+.funnel-lbl{font-size:12px;color:var(--mp-text-2);min-width:120px}
+.funnel-track{flex:1;height:22px;background:var(--mp-gray);border-radius:4px;overflow:hidden}
+.funnel-fill{height:100%;border-radius:4px;display:flex;align-items:center;
+  padding-left:8px;font-size:10px;font-weight:700;color:#fff;white-space:nowrap;
+  transition:width .6s cubic-bezier(.4,0,.2,1)}
+.funnel-pct{font-size:11px;font-weight:600;min-width:40px;text-align:right;color:var(--mp-text-2)}
+.funnel-cnt{font-size:13px;font-weight:800;min-width:44px;text-align:right;color:var(--mp-text)}
+
+/* ─── STATUS BADGES ────────────────────────────────── */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;
+  font-weight:600;padding:3px 9px;border-radius:12px;white-space:nowrap}
+.badge-enviado{background:#e8f4fd;color:#0078c8}
+.badge-abierto{background:#e8f3ff;color:#3d5a99}
+.badge-interesado{background:#fff3cd;color:#856404}
+.badge-reunion{background:#ede9fe;color:#5b21b6}
+.badge-cerrado{background:#d4edda;color:#155724}
+.badge-no{background:#fde8ea;color:#a01622}
+.badge-opt_out{background:#f0f0f0;color:#666}.badge-no_enviado{background:#f8f9fa;color:#495057;border:1px solid #ced4da;font-weight:600}
+
+/* ─── TABLA DE LEADS ───────────────────────────────── */
+.table-wrap{overflow-x:auto;border-radius:var(--mp-radius);border:1px solid var(--mp-border);background:#fff}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:var(--mp-gray)}
+th{text-align:left;padding:10px 12px;color:var(--mp-text-3);font-weight:600;
+  font-size:11px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;
+  border-bottom:1px solid var(--mp-border)}
+td{padding:9px 12px;border-bottom:.5px solid #eef2f7;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f8fbff}
+.lead-name{font-weight:600;color:var(--mp-text)}
+.lead-phone{color:var(--mp-text-3);font-size:11px}
+
+/* ─── FILTROS ──────────────────────────────────────── */
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
+.filter-pill{
+  font-size:12px;padding:5px 14px;border-radius:20px;cursor:pointer;
+  border:1.5px solid var(--mp-border);background:#fff;color:var(--mp-text-2);
+  transition:all .15s;user-select:none;
+}
+.filter-pill:hover{border-color:var(--mp-blue);color:var(--mp-blue)}
+.filter-pill.active{background:var(--mp-blue);border-color:var(--mp-blue);color:#fff;font-weight:600}
+.search-box{
+  flex:1;min-width:200px;padding:7px 12px;border:1.5px solid var(--mp-border);
+  border-radius:8px;font-size:12px;outline:none;
+  transition:border-color .15s;
+}
+.search-box:focus{border-color:var(--mp-blue)}
+select.filter-sel{
+  padding:7px 10px;border:1.5px solid var(--mp-border);border-radius:8px;
+  font-size:12px;outline:none;background:#fff;cursor:pointer;
+  transition:border-color .15s;color:var(--mp-text-2);
+}
+select.filter-sel:focus{border-color:var(--mp-blue)}
+
+/* ─── BOTONES ──────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;
+  cursor:pointer;border:none;transition:all .15s;
+}
+.btn-primary{background:var(--mp-blue);color:#fff}
+.btn-primary:hover{background:var(--mp-blue-dk)}
+.btn-sm{padding:5px 12px;font-size:11px;border-radius:6px}
+.btn-ghost{background:transparent;border:1.5px solid var(--mp-border);color:var(--mp-text-2)}
+.btn-ghost:hover{border-color:var(--mp-blue);color:var(--mp-blue)}
+.btn-danger{background:var(--mp-red);color:#fff}
+.btn-green{background:var(--mp-green);color:#fff}
+
+/* ─── COMMUNE BAR ──────────────────────────────────── */
+.comuna-list{display:flex;flex-direction:column;gap:8px}
+.comuna-row{display:flex;align-items:center;gap:8px}
+.comuna-name{font-size:12px;color:var(--mp-text);min-width:100px;font-weight:500}
+.comuna-track{flex:1;height:8px;background:var(--mp-gray);border-radius:4px;overflow:hidden}
+.comuna-bar{height:100%;border-radius:4px;background:var(--mp-blue);transition:width .5s}
+.comuna-val{font-size:11px;color:var(--mp-text-3);min-width:32px;text-align:right;font-weight:600}
+
+/* ─── SEND LOG ─────────────────────────────────────── */
+.log-list{display:flex;flex-direction:column;gap:8px}
+.log-item{
+  display:flex;align-items:center;gap:12px;
+  background:var(--mp-gray);border-radius:var(--mp-radius-sm);
+  padding:10px 14px;border:1px solid var(--mp-border);
+}
+.log-ico{font-size:20px;flex-shrink:0}
+.log-info{flex:1}
+.log-title{font-size:12px;font-weight:600;color:var(--mp-text)}
+.log-meta{font-size:11px;color:var(--mp-text-3);margin-top:2px}
+.log-count{
+  background:var(--mp-blue);color:#fff;font-size:12px;
+  font-weight:700;padding:3px 12px;border-radius:12px;white-space:nowrap;
+}
+
+/* ─── SELLERS TABLE ────────────────────────────────── */
+.seller-avatar{
+  width:30px;height:30px;border-radius:50%;background:var(--mp-blue-lt);
+  color:var(--mp-blue);font-weight:700;font-size:11px;
+  display:inline-flex;align-items:center;justify-content:center;
+}
+
+/* ─── TOGGLE ───────────────────────────────────────── */
+.toggle-wrap{display:flex;align-items:center;gap:8px}
+.toggle{width:40px;height:22px;background:#ccc;border-radius:11px;
+  position:relative;cursor:pointer;transition:background .2s;flex-shrink:0}
+.toggle.on{background:var(--mp-blue)}
+.toggle::after{
+  content:'';width:16px;height:16px;background:#fff;border-radius:50%;
+  position:absolute;top:3px;left:3px;transition:transform .2s;
+}
+.toggle.on::after{transform:translateX(18px)}
+
+/* ─── RUBRO CHIPS ──────────────────────────────────── */
+.rubro-grid{display:flex;flex-wrap:wrap;gap:8px}
+.rubro-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;
+  border:1.5px solid var(--mp-border);background:#fff;color:var(--mp-text-2);
+  transition:all .15s;
+}
+.rubro-chip.active{background:var(--mp-blue);border-color:var(--mp-blue);color:#fff}
+.rubro-chip:hover:not(.active){border-color:var(--mp-blue);color:var(--mp-blue)}
+
+/* ─── IMAGE UPLOAD GRID ────────────────────────────── */
+.img-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.img-card{
+  border:2px dashed var(--mp-border);border-radius:var(--mp-radius-sm);
+  padding:12px;text-align:center;cursor:pointer;transition:all .2s;background:#fff;
+}
+.img-card:hover{border-color:var(--mp-blue);background:var(--mp-blue-lt)}
+.img-card.has-image{border-style:solid;border-color:var(--mp-green)}
+.img-preview{width:100%;height:80px;object-fit:cover;border-radius:6px;margin-bottom:6px}
+.img-placeholder{
+  width:100%;height:80px;background:var(--mp-gray);border-radius:6px;
+  margin-bottom:6px;display:flex;align-items:center;justify-content:center;
+  font-size:24px;
+}
+.img-label{font-size:11px;font-weight:600;color:var(--mp-text-2)}
+.img-sub{font-size:10px;color:var(--mp-text-3);margin-top:2px}
+
+/* ─── CONFIG ROW ───────────────────────────────────── */
+.cfg-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 0;border-bottom:1px solid var(--mp-gray);gap:12px;flex-wrap:wrap;
+}
+.cfg-row:last-child{border-bottom:none}
+.cfg-lbl{font-size:13px;font-weight:500;color:var(--mp-text)}
+.cfg-desc{font-size:11px;color:var(--mp-text-3);margin-top:2px}
+.cfg-val{font-size:12px;color:var(--mp-text-3)}
+.cfg-input{
+  padding:6px 10px;border:1.5px solid var(--mp-border);border-radius:6px;
+  font-size:12px;outline:none;min-width:200px;transition:border-color .15s;
+}
+.cfg-input:focus{border-color:var(--mp-blue)}
+
+/* ─── MODAL ────────────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;
+  display:none;align-items:center;justify-content:center;padding:20px;
+}
+.modal-overlay.open{display:flex}
+.modal{
+  background:#fff;border-radius:var(--mp-radius);padding:24px;
+  width:100%;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.2);
+}
+.modal-title{font-size:16px;font-weight:700;color:var(--mp-text);margin-bottom:16px}
+.form-row{margin-bottom:12px}
+.form-lbl{font-size:12px;font-weight:600;color:var(--mp-text-2);margin-bottom:4px;display:block}
+.form-input{
+  width:100%;padding:8px 12px;border:1.5px solid var(--mp-border);border-radius:8px;
+  font-size:13px;outline:none;transition:border-color .15s;
+}
+.form-input:focus{border-color:var(--mp-blue)}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+
+/* ─── TOAST ────────────────────────────────────────── */
+.toast{
+  position:fixed;bottom:24px;right:24px;z-index:300;
+  background:#1a2332;color:#fff;padding:12px 20px;border-radius:10px;
+  font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);
+  transform:translateY(80px);opacity:0;transition:all .3s cubic-bezier(.4,0,.2,1);
+  max-width:320px;
+}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{background:var(--mp-green)}
+.toast.error{background:var(--mp-red)}
+
+/* ─── LOADING SPINNER ──────────────────────────────── */
+.spinner{
+  width:20px;height:20px;border:2.5px solid var(--mp-gray-md);
+  border-top-color:var(--mp-blue);border-radius:50%;
+  animation:spin .7s linear infinite;display:inline-block;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ─── RESPONSIVE ───────────────────────────────────── */
+@media(max-width:768px){
+  :root{--nav-w:0px}
+  .sidebar{display:none}
+  .main{margin-left:0}
+  .grid-2,.grid-3,.grid-3-equal{grid-template-columns:1fr}
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+}
+
+/* ─── CHART CONTAINERS ─────────────────────────────── */
+.chart-wrap{position:relative;width:100%}
+.chart-h200{height:200px}
+.chart-h240{height:240px}
+.chart-h160{height:160px}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ TOPBAR ══════════════ -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="brand-circle">MP</div>
+    <div>
+      <div class="brand-name">MercadoPago</div>
+      <div class="brand-sub">POS Prospecting System</div>
+    </div>
+  </div>
+  <div class="topbar-center">
+    <div class="topbar-title" id="pageLabel">Resumen general</div>
+  </div>
+  <div class="topbar-right">
+    <div class="wa-status" id="waStatus" onclick="checkWaStatus()">
+      <div class="wa-dot"></div>
+      <span id="waStatusTxt">WA Conectado</span>
+      <span id="waSent" style="opacity:.7"></span>
+    </div>
+    <div class="verified-pill">
+      <div class="verified-dot"></div>
+      Ticket Azul · JS Pinto
+    </div>
+    <div class="avatar">JSP</div>
+  </div>
+</div>
+
+<!-- ══════════════ SIDEBAR ══════════════ -->
+<div class="sidebar">
+  <div class="nav-section">Principal</div>
+  <div class="nav-item active" onclick="showPage('overview',this,'Resumen general')">
+    <span class="nav-icon">📊</span> Resumen
+  </div>
+  <div class="nav-item" onclick="showPage('leads',this,'Leads & Pipeline')">
+    <span class="nav-icon">👥</span> Leads
+    <span class="nav-badge" id="badgeLeads">—</span>
+  </div>
+  <div class="nav-item" onclick="showPage('envios',this,'Historial de envíos')">
+    <span class="nav-icon">📨</span> Envíos
+  </div>
+  <div class="nav-section">Gestión</div>
+  <div class="nav-item" onclick="showPage('sellers',this,'Sellers activos')">
+    <span class="nav-icon">🤝</span> Sellers
+    <span class="nav-badge" id="badgeSellers">—</span>
+  </div>
+  <div class="nav-item" onclick="showPage('scraping',this,'Scraping Google Maps')">
+    <span class="nav-icon">🗺️</span> Scraping
+  </div>
+  <div class="nav-item" onclick="showPage('intel',this,'Inteligencia')"><span class="nav-icon">*</span> Inteligencia</div>
+  <div class="nav-item" onclick="showPage('config',this,'Configuración')">
+    <span class="nav-icon">⚙️</span> Configuración
+  </div>
+  <div style="padding:20px;margin-top:auto">
+    <div style="background:var(--mp-blue-lt);border-radius:10px;padding:12px;border:1px solid #bee3f8">
+      <div style="font-size:11px;font-weight:700;color:var(--mp-blue);margin-bottom:4px">Próximo envío</div>
+      <div style="font-size:12px;color:var(--mp-text-2)" id="nextSendTime">Calculando...</div>
+      <div style="font-size:11px;color:var(--mp-text-3)" id="nextSendLabel"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ MAIN ══════════════ -->
+<div class="main">
+
+<!-- ─── OVERVIEW ─────────────────────────────── -->
+<div class="page active" id="page-overview">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Resumen general</div>
+      <div class="page-sub" id="overviewDate"></div>
+    </div>
+    <button class="btn btn-primary" onclick="loadOverview()">↻ Actualizar</button>
+  </div>
+
+  <div class="kpi-grid" id="kpiGrid">
+    <div class="kpi" style="--kpi-color:var(--mp-blue)">
+      <div class="kpi-label">Total leads</div>
+      <div class="kpi-val" id="kpi-leads">—</div>
+      <div class="kpi-sub kpi-neutral">en base de datos</div>
+    </div>
+    <div class="kpi" style="--kpi-color:#3d5a99">
+      <div class="kpi-label">Enviados</div>
+      <div class="kpi-val" id="kpi-sent">—</div>
+      <div class="kpi-sub kpi-neutral">mensajes WA</div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--mp-blue)">
+      <div class="kpi-label">Apertura</div>
+      <div class="kpi-val" id="kpi-apertura">—</div>
+      <div class="kpi-sub" id="kpi-apertura-sub"></div>
+    </div>
+    <div class="kpi" style="--kpi-color:#856404">
+      <div class="kpi-label">Interesados</div>
+      <div class="kpi-val" id="kpi-interesados">—</div>
+      <div class="kpi-sub kpi-neutral" id="kpi-interes-pct"></div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--mp-purple)">
+      <div class="kpi-label">Quieren reunión</div>
+      <div class="kpi-val" id="kpi-reuniones">—</div>
+      <div class="kpi-sub kpi-neutral">agendadas</div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--mp-green)">
+      <div class="kpi-label">Cierres</div>
+      <div class="kpi-val" id="kpi-cerrados">—</div>
+      <div class="kpi-sub" id="kpi-cierre-pct"></div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--mp-red)">
+      <div class="kpi-label">No interesados</div>
+      <div class="kpi-val" id="kpi-no">—</div>
+      <div class="kpi-sub kpi-neutral">opt-out incluidos</div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--mp-green)">
+      <div class="kpi-label">Sellers activos</div>
+      <div class="kpi-val" id="kpi-sellers">—</div>
+      <div class="kpi-sub kpi-neutral">en fidelización</div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-title"><span class="card-icon">🎯</span>Embudo de ventas</div>
+      <div class="funnel" id="funnelChart">
+        <div style="text-align:center;color:var(--mp-text-3);padding:20px">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="card-icon">📍</span>Top comunas</div>
+      <div class="commune-list" id="comunasList">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="card-icon">📦</span>Leads por categoria</div>
+      <div id="categoriasStats" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto">
+        <div style="text-align:center;color:var(--mp-text-3);padding:20px"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><span class="card-icon">📈</span>Mensajes enviados por semana</div>
+      <div class="chart-wrap chart-h240">
+        <canvas id="chartWeekly"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="card-icon">🍩</span>Distribución de estados</div>
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+        <div class="chart-wrap chart-h160" style="width:160px;flex-shrink:0">
+          <canvas id="chartDonut"></canvas>
+        </div>
+        <div id="donutLegend" style="display:flex;flex-direction:column;gap:7px;font-size:12px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── LEADS ─────────────────────────────────── -->
+<div class="page" id="page-leads">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Leads & Pipeline</div>
+      <div class="page-sub">Todos los prospectos captados vía Google Maps</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm" onclick="exportLeads()">⬇ Exportar</button>
+      <button class="btn btn-primary btn-sm" onclick="loadLeads()">↻ Actualizar</button>
+    </div>
+  </div>
+
+  <div class="filters">
+    <input type="text" class="search-box" placeholder="🔍 Buscar por nombre, teléfono, rubro..." id="searchInput" oninput="filterLeads()">
+    <select class="filter-sel" id="filterStatus" onchange="filterLeads()">
+      <option value="">Todos los estados</option>
+      <option value="enviado">Enviado</option>
+      <option value="abierto">Abierto</option>
+      <option value="interesado">Interesado</option>
+      <option value="quiere_reunion">Quiere reunión</option>
+      <option value="cerrado">Cerrado</option>
+      <option value="no_interesado">No interesado</option>
+      <option value="opt_out">Opt-out</option>
+      <option value="telefono_no_existe">Sin teléfono</option>
+    </select>
+    <select class="filter-sel" id="filterComuna" onchange="filterLeads()">
+      <option value="">Todas las comunas</option>
+    </select>
+    <select class="filter-sel" id="filterRubro" onchange="filterLeads()">
+      <option value="">Todos los rubros</option>
+    </select>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px" id="statusPills"></div>
+
+  <div id="manualSendBar" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 16px;margin-bottom:10px;align-items:center;gap:12px;flex-wrap:wrap">
+  <span style="font-size:13px;font-weight:600;color:#856404" id="selectedCount">0 seleccionados</span>
+  <button class="btn btn-sm" onclick="sendSelected()" style="background:#25D366;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+    Enviar por WhatsApp
+  </button>
+  <button class="btn btn-ghost btn-sm" onclick="clearSelection()">Limpiar seleccion</button>
+  <span style="font-size:11px;color:#856404">Anti-spam activo - mensaje segun rubro con imagen</span>
+</div>
+<div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:36px"><input type="checkbox" id="checkAll" onclick="toggleAll(this)" style="cursor:pointer;width:15px;height:15px"></th>
+          <th>Negocio</th>
+          <th>Teléfono</th>
+          <th>Comuna</th>
+          <th>Rubro</th>
+          <th>Categoria</th>
+          <th>Estado</th>
+          <th>Seguimiento</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="leadsBody">
+        <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--mp-text-3)">
+          <div class="spinner"></div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div id="leadsPager" style="margin-top:10px;font-size:12px;color:var(--mp-text-3);text-align:right"></div>
+</div>
+
+<!-- ─── ENVÍOS ────────────────────────────────── -->
+<div class="page" id="page-envios">
+  <div class="page-header">
+    <div class="page-title">Historial de envíos</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-green btn-sm" onclick="triggerJob('prospecting_daily')">▶ Prospección ahora</button>
+      <button class="btn btn-primary btn-sm" onclick="triggerJob('fidelizacion_weekly')">▶ Fidelización ahora</button>
+    </div>
+  </div>
+
+  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi" style="--kpi-color:var(--mp-blue)">
+      <div class="kpi-label">Enviados hoy</div>
+      <div class="kpi-val" id="env-hoy">—</div>
+      <div class="kpi-sub kpi-neutral" id="env-limite"></div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--mp-green)">
+      <div class="kpi-label">WA status</div>
+      <div class="kpi-val" id="env-wa" style="font-size:16px">—</div>
+      <div class="kpi-sub" id="env-wa-sub"></div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--mp-orange)">
+      <div class="kpi-label">Opt-out</div>
+      <div class="kpi-val" id="env-optout">—</div>
+      <div class="kpi-sub kpi-neutral">bloqueados</div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--mp-purple)">
+      <div class="kpi-label">Costo estimado mes</div>
+      <div class="kpi-val" id="env-costo" style="font-size:16px">—</div>
+      <div class="kpi-sub kpi-neutral">USD (aprox)</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><span class="card-icon">⚙️</span>Scheduler</div>
+      <div id="schedulerJobs">
+        <div style="text-align:center;padding:20px"><div class="spinner"></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="card-icon">📋</span>Configuración de envío</div>
+      <div class="cfg-row">
+        <div><div class="cfg-lbl">Prospección automática</div><div class="cfg-desc">Lun–Vie · 10:00 AM</div></div>
+        <div class="toggle on" onclick="this.classList.toggle('on')" id="toggleProspecting"></div>
+      </div>
+      <div class="cfg-row">
+        <div><div class="cfg-lbl">Fidelización sellers</div><div class="cfg-desc">Lunes · 11:00 AM</div></div>
+        <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+      </div>
+      <div class="cfg-row">
+        <div><div class="cfg-lbl">Límite diario mensajes</div><div class="cfg-desc">Anti-bloqueo WhatsApp</div></div>
+        <span class="cfg-val">50 mensajes</span>
+      </div>
+      <div class="cfg-row">
+        <div><div class="cfg-lbl">Delay entre mensajes</div><div class="cfg-desc">Distribución humanizada</div></div>
+        <span class="cfg-val">45–240 seg</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="card-icon">📜</span>Historial de campañas</div>
+    <div class="log-list" id="campaignLog">
+      <div style="text-align:center;padding:20px"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SELLERS ───────────────────────────────── -->
+<div class="page" id="page-sellers">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Sellers activos</div>
+      <div class="page-sub">Fidelizacion automatica por etapas - 7, 14, 15, 30, 35 dias</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="openBroadcast()">📢 Mensaje masivo</button>
+      <button class="btn btn-primary" onclick="openAddSeller()">+ Agregar seller</button>
+    </div>
+  </div>
+
+  <!-- KPIs fidelizacion -->
+  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px" id="sellersKpis">
+    <div class="kpi" style="--kpi-color:var(--mp-blue)"><div class="kpi-label">Sellers activos</div><div class="kpi-val" id="sk-activos">—</div></div>
+    <div class="kpi" style="--kpi-color:var(--mp-green)"><div class="kpi-label">Ciclos completos</div><div class="kpi-val" id="sk-completos">—</div></div>
+    <div class="kpi" style="--kpi-color:var(--mp-warn)"><div class="kpi-label">Mensajes pendientes</div><div class="kpi-val" id="sk-pendientes">—</div></div>
+    <div class="kpi" style="--kpi-color:var(--mp-purple)"><div class="kpi-label">Msgs fidelizacion</div><div class="kpi-val" id="sk-total-msgs">—</div></div>
+  </div>
+
+  <!-- Tabla sellers con etapas -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Sellers y estado de fidelizacion</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="checkAllSellers" onclick="toggleAllSellers(this)" style="width:15px;height:15px;cursor:pointer"></th>
+            <th>Negocio</th>
+            <th>Telefono</th>
+            <th>POS</th>
+            <th>Dias</th>
+            <th style="text-align:center">Etapas fidelizacion</th>
+            <th>Ultimo msg</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="sellersBody">
+          <tr><td colspan="8" style="text-align:center;padding:32px"><div class="spinner"></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Broadcast bar -->
+  <div id="broadcastBar" style="display:none;background:#e8f4fd;border:1px solid var(--mp-blue);border-radius:8px;padding:10px 16px;margin-bottom:16px;align-items:center;gap:12px">
+    <span style="font-size:13px;font-weight:600;color:var(--mp-blue)" id="broadcastCount">0 sellers seleccionados</span>
+    <button class="btn btn-sm" onclick="openBroadcastModal()" style="background:var(--mp-blue);color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+      📢 Redactar mensaje
+    </button>
+    <button class="btn btn-ghost btn-sm" onclick="clearSellerSelection()">Limpiar</button>
+  </div>
+
+  <!-- Mensajes de fidelizacion por etapa -->
+  <div class="card">
+    <div class="card-title">Calendario de mensajes por etapa</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
+      <div style="background:#e8f4fd;border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:var(--mp-blue)">7</div>
+        <div style="font-size:11px;font-weight:600;margin-top:4px">Activacion y Liquidez</div>
+        <div style="font-size:10px;color:var(--mp-text-3);margin-top:2px">Dia 7</div>
+      </div>
+      <div style="background:#fff3cd;border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:#856404">14</div>
+        <div style="font-size:11px;font-weight:600;margin-top:4px">Potenciar Ventas</div>
+        <div style="font-size:10px;color:var(--mp-text-3);margin-top:2px">Dia 14</div>
+      </div>
+      <div style="background:#f8f9fa;border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:#495057">15</div>
+        <div style="font-size:11px;font-weight:600;margin-top:4px">Seguimiento</div>
+        <div style="font-size:10px;color:var(--mp-text-3);margin-top:2px">Dia 15</div>
+      </div>
+      <div style="background:#d4edda;border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:#155724">30</div>
+        <div style="font-size:11px;font-weight:600;margin-top:4px">Gestion y Seguridad</div>
+        <div style="font-size:10px;color:var(--mp-text-3);margin-top:2px">Dia 30</div>
+      </div>
+      <div style="background:#ede9fe;border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:#5b21b6">35</div>
+        <div style="font-size:11px;font-weight:600;margin-top:4px">Fidelizacion y Upselling</div>
+        <div style="font-size:10px;color:var(--mp-text-3);margin-top:2px">Dia 35</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCRAPING ──────────────────────────────── -->
+<div class="page" id="page-intel">
+  <div class="page-header">
+    <div><div class="page-title">Inteligencia de prospeccion</div>
+    <div class="page-sub">Criterios de envio + donde buscar nuevos leads</div></div>
+    <button class="btn btn-primary" onclick="loadIntel()">Actualizar</button>
+  </div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+    <div class="kpi" style="--kpi-color:var(--mp-blue)"><div class="kpi-label">Rubros con leads</div><div class="kpi-val" id="intel-rubros-con">0</div></div>
+    <div class="kpi" style="--kpi-color:var(--mp-red)"><div class="kpi-label">Rubros sin leads</div><div class="kpi-val" id="intel-rubros-sin">0</div></div>
+    <div class="kpi" style="--kpi-color:var(--mp-green)"><div class="kpi-label">Comunas cubiertas</div><div class="kpi-val" id="intel-comunas">0</div></div>
+    <div class="kpi" style="--kpi-color:var(--mp-warn)"><div class="kpi-label">Acciones urgentes</div><div class="kpi-val" id="intel-sugerencias">0</div></div>
+  </div>
+  <div class="grid-2" style="margin-bottom:0">
+    <div class="card">
+      <div class="card-title">Criterio de envio por rubro</div>
+      <div style="font-size:12px;color:var(--mp-text-3);margin-bottom:12px">Prioridad segun tasa de respuesta</div>
+      <div class="table-wrap" style="max-height:280px;overflow-y:auto">
+        <table><thead><tr><th>Rubro</th><th>Leads</th><th>Enviados</th><th>Interesados</th><th>Tasa</th><th>Prioridad</th></tr></thead>
+        <tbody id="intelRubrosTable"><tr><td colspan="6" style="text-align:center;padding:20px"><div class="spinner"></div></td></tr></tbody></table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Tasa de respuesta por comuna</div>
+      <div style="font-size:12px;color:var(--mp-text-3);margin-bottom:12px">Comunas con mas interes = enviar primero ahi</div>
+      <div id="intelComunas" style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto">
+        <div style="text-align:center;padding:20px"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="grid-2" style="margin-top:0">
+    <div class="card">
+      <div class="card-title">Donde buscar nuevos leads</div>
+      <div style="font-size:12px;color:var(--mp-text-3);margin-bottom:12px">Rubros con pocos leads o sin cobertura</div>
+      <div id="intelSuggestions" style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto">
+        <div style="text-align:center;padding:20px"><div class="spinner"></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Proximas busquedas recomendadas</div>
+      <div style="font-size:12px;color:var(--mp-text-3);margin-bottom:12px">Mejores rubros x comunas con link a Maps</div>
+      <div id="nextSearches" style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto">
+        <div style="text-align:center;padding:20px"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:0">
+    <div class="card-title">Rubros sin ningun lead todavia</div>
+    <div id="intelRubrosSin" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 0">
+      <div style="text-align:center;padding:20px;width:100%"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="page" id="page-scraping">
+  <div class="page-header">
+    <div class="page-title">Scraping Google Maps</div>
+    <div class="page-sub">Obtener números de negocios vía Apify</div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title"><span class="card-icon">🚀</span>Nuevo scraping</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;flex-wrap:wrap">
+      <div>
+        <label class="form-lbl">Rubro</label>
+        <select class="form-input" id="scraRubro"></select>
+      </div>
+      <div>
+        <label class="form-lbl">Comuna</label>
+        <select class="form-input" id="scraComuna"></select>
+      </div>
+      <button class="btn btn-primary" onclick="runScraping()" id="scrapeBtn">
+        🗺️ Iniciar scraping
+      </button>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:var(--mp-text-3)">
+      ℹ️ El scraping corre en segundo plano. Los leads quedan disponibles automáticamente.
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><span class="card-icon">📊</span>Leads por rubro</div>
+      <div class="chart-wrap chart-h240"><canvas id="chartRubros"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="card-icon">🏙️</span>Cobertura por comuna</div>
+      <div class="commune-list" id="scraComunes" style="max-height:250px;overflow-y:auto"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── CONFIGURACIÓN ─────────────────────────── -->
+<div class="page" id="page-config">
+  <div class="page-header">
+    <div class="page-title">Configuración</div>
+    <button class="btn btn-primary" onclick="saveConfig()">💾 Guardar cambios</button>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><span class="card-icon">🔑</span>Integraciones</div>
+      <div class="cfg-row">
+        <div><div class="cfg-lbl">Apify Token</div><div class="cfg-desc">Para Google Maps scraping</div></div>
+        <input class="cfg-input" type="password" id="cfg-apify_token" placeholder="apify_api_...">
+      </div>
+      <div class="cfg-row">
+        <div><div class="cfg-lbl">Google Calendar link</div><div class="cfg-desc">Appointments URL pública</div></div>
+        <input class="cfg-input" id="cfg-calendar_link" placeholder="https://calendar.google.com/...">
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="card-icon">👤</span>Ejecutivo</div>
+      <div class="cfg-row">
+        <div><div class="cfg-lbl">Nombre</div><div class="cfg-desc">Aparece en los mensajes</div></div>
+        <input class="cfg-input" id="cfg-exec_name" placeholder="Juan Sebastián Pinto">
+      </div>
+      <div class="cfg-row">
+        <div><div class="cfg-lbl">Teléfono</div><div class="cfg-desc">Tu número WhatsApp</div></div>
+        <input class="cfg-input" id="cfg-exec_phone" placeholder="+56912345678">
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:0">
+    <div class="card-title"><span class="card-icon">🛡️</span>Anti-bloqueo WhatsApp</div>
+    <div class="cfg-row">
+      <div><div class="cfg-lbl">Límite diario</div><div class="cfg-desc">Max mensajes por día (recomendado: 50)</div></div>
+      <input class="cfg-input" id="cfg-daily_limit" type="number" style="min-width:100px;width:100px">
+    </div>
+    <div class="cfg-row">
+      <div><div class="cfg-lbl">Delay mínimo (seg)</div><div class="cfg-desc">Entre mensajes — mín recomendado: 45</div></div>
+      <input class="cfg-input" id="cfg-min_delay_sec" type="number" style="min-width:100px;width:100px">
+    </div>
+    <div class="cfg-row">
+      <div><div class="cfg-lbl">Delay máximo (seg)</div><div class="cfg-desc">Entre mensajes — máx recomendado: 240</div></div>
+      <input class="cfg-input" id="cfg-max_delay_sec" type="number" style="min-width:100px;width:100px">
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<!-- ══════════════ MODAL BROADCAST ══════════════ -->
+<div class="modal-overlay" id="modalBroadcast">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title">📢 Mensaje masivo a sellers</div>
+    <div style="font-size:12px;color:var(--mp-text-3);margin-bottom:12px">
+      Se enviara a todos los sellers activos (o solo los seleccionados con checkbox)
+    </div>
+    <div class="form-row">
+      <label class="form-lbl">Mensaje <span style="color:red">*</span></label>
+      <textarea class="form-input" id="broadcastMsg" rows="5"
+        placeholder="Ej: Hola! Te escribo para informarte sobre nuestra nueva promocion de POS..."
+        style="resize:vertical;font-family:inherit"></textarea>
+    </div>
+    <div style="font-size:11px;color:var(--mp-text-3);margin-top:4px">
+      Tip: El mensaje se enviara tal cual. No se adjunta imagen en broadcasts manuales.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalBroadcast')">Cancelar</button>
+      <button class="btn btn-primary" id="btnBroadcast" onclick="submitBroadcast()">Enviar ahora</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ MODAL ADD SELLER ══════════════ -->
+<div class="modal-overlay" id="modalSeller">
+  <div class="modal">
+    <div class="modal-title">➕ Agregar seller</div>
+    <div class="form-row">
+      <label class="form-lbl">Nombre del negocio *</label>
+      <input class="form-input" id="s-name" placeholder="Ej: Minimarket El Sol">
+    </div>
+    <div class="form-row">
+      <label class="form-lbl">Nombre de contacto</label>
+      <input class="form-input" id="s-contact" placeholder="Ej: Carlos Rojas">
+    </div>
+    <div class="form-row">
+      <label class="form-lbl">Teléfono WhatsApp *</label>
+      <input class="form-input" id="s-phone" placeholder="+56912345678">
+    </div>
+    <div class="form-row">
+      <label class="form-lbl">Tipo de POS</label>
+      <select class="form-input" id="s-pos">
+        <option>Point Mini</option>
+        <option>Point Air</option>
+        <option>Point Smart</option>
+        <option>Point Pro 2</option>
+        <option>Point Plus</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-lbl">Comuna</label>
+      <input class="form-input" id="s-comuna" placeholder="Ej: Las Condes">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalSeller')">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitSeller()">Guardar seller</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ MODAL CHANGE STATUS ══════════════ -->
+<div class="modal-overlay" id="modalStatus">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-title" id="modalStatusTitle">Cambiar estado del lead</div>
+    <input type="hidden" id="statusLeadId">
+    <div class="form-row">
+      <label class="form-lbl">Nuevo estado</label>
+      <select class="form-input" id="newStatus" onchange="onStatusChange(this.value)">
+        <option value="no_enviado">No enviado</option>
+        <option value="enviado">Enviado</option>
+        <option value="abierto">Abierto</option>
+        <option value="interesado">Interesado</option>
+        <option value="quiere_reunion">Quiere reunion</option>
+        <option value="cerrado">Cerrado</option>
+        <option value="no_interesado">No interesado</option>
+        <option value="opt_out">Opt-out</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-lbl">Notas (opcional)</label>
+      <input class="form-input" id="statusNotes" placeholder="Observaciones adicionales">
+    </div>
+    <div id="camposOptout" style="display:none;border-top:1px solid #dde5ef;margin-top:12px;padding-top:12px">
+      <div style="background:#f8d7da;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#721c24;font-weight:600">
+        Registrar motivo
+      </div>
+      <div class="form-row">
+        <label class="form-lbl">Motivo <span style="color:red">*</span></label>
+        <select class="form-input" id="optoutMotivo">
+          <option value="">Selecciona motivo...</option>
+          <option value="Sin interes">Sin interes</option>
+          <option value="Sin respuesta">Sin respuesta</option>
+          <option value="Tiene MP">Ya tiene Mercado Pago</option>
+          <option value="Precio">Precio no conveniente</option>
+          <option value="Otro">Otro</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-lbl">Nota adicional (opcional)</label>
+        <input class="form-input" id="optoutNota" placeholder="Ej: Tiene contrato vigente">
+      </div>
+    </div>
+    <div id="camposCerrado" style="display:none;border-top:1px solid #dde5ef;margin-top:12px;padding-top:12px">
+      <div style="background:#d4edda;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#155724;font-weight:600">
+        Completar datos del seller adquirido
+      </div>
+      <div class="form-row">
+        <label class="form-lbl">Nombre de contacto <span style="color:red">*</span></label>
+        <input class="form-input" id="cerradoContacto" placeholder="Ej: Carlos Rojas (obligatorio)">
+      </div>
+      <div class="form-row">
+        <label class="form-lbl">POS asignado</label>
+        <select class="form-input" id="cerradoPOS">
+          <option value="Point Pro 2" selected>Point Pro 2</option>
+          <option value="Point Smart 2">Point Smart 2</option>
+          <option value="Point Air">Point Air</option>
+          <option value="Point Mini">Point Mini</option>
+          <option value="Point Plus">Point Plus</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-lbl">Email (opcional)</label>
+        <input class="form-input" id="cerradoEmail" placeholder="contacto@negocio.cl">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modalStatus')">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitStatus()">Guardar</button>
+    </div>
+  </div>
+</div></div>
+
+<!-- ══════════════ SCRIPTS ══════════════ -->
+<script>
+const API = '';  // misma origen Flask
+let allLeads = [];
+let rubrosData = [];
+let comunasData = [];
+let loadedImages = {};
+let uploadingRubro = null;
+let weeklyChart, donutChart, rubrosChart;
+
+// ─── NAVEGACIÓN ─────────────────────────────────────
+function showPage(id, el, label){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  el.classList.add('active');
+  document.getElementById('pageLabel').textContent = label;
+
+  const loaders = {
+    overview: loadOverview,
+    leads: loadLeads,
+    envios: loadEnvios,
+    sellers: loadSellers,
+    scraping: loadScraping,
+    config: loadConfig,
+    intel: loadIntel,
+  };
+  if(loaders[id]) loaders[id]();
+}
+
+// ─── TOAST ──────────────────────────────────────────
+function toast(msg, type=''){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  setTimeout(()=>t.className='toast', 3200);
+}
+
+// ─── FETCH HELPER ───────────────────────────────────
+async function api(path, opts={}){
+  try{
+    const r = await fetch(API + path, {
+      headers:{'Content-Type':'application/json'},
+      ...opts
+    });
+    return await r.json();
+  } catch(e){
+    console.error(path, e);
+    return null;
+  }
+}
+
+// ─── FORMATTERS ─────────────────────────────────────
+const statusLabel = {
+  no_enviado:'No enviado', enviado:'Enviado', abierto:'Abierto', interesado:'Interesado',
+  quiere_reunion:'Quiere reunión', cerrado:'Cerrado',
+  no_interesado:'No interesado', opt_out:'Opt-out',
+  telefono_no_existe:'Sin teléfono'
+};
+const statusBadge = {
+  no_enviado:'badge-no_enviado', enviado:'badge-enviado', abierto:'badge-abierto', interesado:'badge-interesado',
+  quiere_reunion:'badge-reunion', cerrado:'badge-cerrado',
+  no_interesado:'badge-no', opt_out:'badge-opt_out',
+  telefono_no_existe:'badge-telefono_no_existe'
+};
+function badge(status){
+  const lbl = statusLabel[status] || status;
+  const cls = statusBadge[status] || '';
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
+function fmt(n){ return n != null ? n.toLocaleString('es-CL') : '—'; }
+function fmtDate(s){ return s ? s.slice(0,16).replace('T',' ') : '—'; }
+
+// ─── OVERVIEW ───────────────────────────────────────
+async function loadOverview(){
+  document.getElementById('overviewDate').textContent =
+    new Date().toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+
+  const d = await api('/api/dashboard/kpis');
+  if(!d) return;
+
+  document.getElementById('kpi-leads').textContent   = fmt(d.total_leads);
+  document.getElementById('kpi-sent').textContent    = fmt(d.total_sent);
+  document.getElementById('kpi-apertura').textContent = d.tasa_apertura + '%';
+  document.getElementById('kpi-apertura-sub').innerHTML = `<span class="kpi-up">+${d.total_opened} abiertos</span>`;
+  document.getElementById('kpi-interesados').textContent = fmt(d.interesados);
+  document.getElementById('kpi-interes-pct').textContent = d.tasa_interes + '% del total';
+  document.getElementById('kpi-reuniones').textContent = fmt(d.reuniones);
+  document.getElementById('kpi-cerrados').textContent = fmt(d.cerrados);
+  document.getElementById('kpi-cierre-pct').innerHTML = `<span class="kpi-up">Tasa ${d.tasa_cierre}%</span>`;
+  document.getElementById('kpi-no').textContent = fmt((d.by_status.no_interesado||0) + d.opt_out);
+  document.getElementById('kpi-sellers').textContent = fmt(d.sellers_activos);
+  document.getElementById('badgeSellers').textContent = d.sellers_activos || 0;
+
+  // Funnel
+  const total = d.total_sent || 1;
+  const funnelData = [
+    {lbl:'Enviados', cnt:d.total_sent, color:var_('--mp-blue')},
+    {lbl:'Abiertos', cnt:d.total_opened, color:'#3d5a99'},
+    {lbl:'Interesados', cnt:d.interesados, color:'#856404'},
+    {lbl:'Quieren reunión', cnt:d.reuniones, color:var_('--mp-purple')},
+    {lbl:'Cierres', cnt:d.cerrados, color:var_('--mp-green')},
+  ];
+  document.getElementById('funnelChart').innerHTML = funnelData.map(f => {
+    const pct = Math.round(f.cnt / total * 100);
+    const w   = Math.round(f.cnt / (d.total_sent||1) * 100);
+    return `<div class="funnel-row">
+      <div class="funnel-lbl">${f.lbl}</div>
+      <div class="funnel-track">
+        <div class="funnel-fill" style="width:${Math.max(w,2)}%;background:${f.color}">${pct>5?pct+'%':''}</div>
+      </div>
+      <div class="funnel-pct">${pct}%</div>
+      <div class="funnel-cnt">${fmt(f.cnt)}</div>
+    </div>`;
+  }).join('');
+
+  // Comunas
+  // Categorias stats
+  if(d.categoria_stats?.length && document.getElementById('categoriasStats')){
+    var maxCatLeads = Math.max.apply(null, d.categoria_stats.map(function(c){return c.total;}));
+    if(maxCatLeads<=0) maxCatLeads=1;
+    document.getElementById('categoriasStats').innerHTML = d.categoria_stats.map(function(c){
+      var tasa = c.enviados > 0 ? Math.round(c.interesados/c.enviados*100) : 0;
+      var pct = Math.round(c.total/maxCatLeads*100);
+      var tc = tasa>=15?'#155724':tasa>=5?'#856404':'#6c757d';
+      var tb = tasa>=15?'#d4edda':tasa>=5?'#fff3cd':'#f8f9fa';
+      return '<div style="margin-bottom:12px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+        '<span style="font-size:12px;font-weight:600;color:var(--mp-text-1);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+c.categoria+'">'+c.categoria+'</span>' +
+        '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">' +
+        '<span style="font-size:11px;background:var(--mp-blue-lt);color:var(--mp-blue);padding:1px 8px;border-radius:10px;font-weight:600">'+c.total+'</span>' +
+        (c.pendientes>0?'<span style="font-size:11px;background:#f8f9fa;color:#495057;padding:1px 8px;border-radius:10px;border:1px solid #ced4da">'+c.pendientes+' pend.</span>':'') +
+        (c.interesados>0?'<span style="font-size:11px;background:#fff3cd;color:#856404;padding:1px 8px;border-radius:10px;font-weight:600">'+c.interesados+' int.</span>':'') +
+        (c.cerrados>0?'<span style="font-size:11px;background:#d4edda;color:#155724;padding:1px 8px;border-radius:10px;font-weight:600">'+c.cerrados+' cerr.</span>':'') +
+        (tasa>0?'<span style="font-size:11px;font-weight:700;padding:1px 8px;border-radius:10px;background:'+tb+';color:'+tc+'">'+tasa+'%</span>':'') +
+        '</div></div>' +
+        '<div style="background:#eef2f7;border-radius:4px;height:6px;overflow:hidden">' +
+        '<div style="height:100%;border-radius:4px;background:linear-gradient(90deg,var(--mp-blue),#00c9ff);width:'+pct+'%;transition:width .6s"></div>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  if(d.top_comunas?.length){
+    const maxC = d.top_comunas[0].total;
+    document.getElementById('comunasList').innerHTML = d.top_comunas.slice(0,8).map(c => {
+      const tasa = c.total > 0 ? Math.round((c.interesados||0)/c.total*100) : 0;
+      return '<div class="commune-row">' +
+        '<div class="commune-name">' + (c.comuna||c.comuna||c.comuna||'—') + '</div>' +
+        '<div class="commune-track"><div class="commune-bar" style="width:'+Math.round(c.total/maxC*100)+'%"></div></div>' +
+        '<div class="commune-val">' + c.total + '</div>' +
+        (tasa>0 ? '<span style="font-size:11px;font-weight:700;color:var(--mp-warn);margin-left:6px">'+tasa+'%</span>' : '') +
+        '</div>';
+    }).join('');
+  }
+
+  // Tabla rubros
+  if(d.top_rubros?.length && document.getElementById('rubrosTable')){
+    const maxR = Math.max(...d.top_rubros.map(r=>r.total), 1);
+    document.getElementById('rubrosTable').innerHTML = d.top_rubros.map(function(r){
+      var tasa = r.total > 0 ? Math.round((r.interesados||0)/r.total*100) : 0;
+      var tasaColor = tasa>=15 ? '#155724' : tasa>=5 ? '#856404' : '#6c757d';
+      var tasaBg = tasa>=15 ? '#d4edda' : tasa>=5 ? '#fff3cd' : '#f8f9fa';
+      return '<tr>' +
+        '<td><span style="font-size:11px;background:var(--mp-blue-lt);color:var(--mp-blue);padding:2px 8px;border-radius:10px">'+r.rubro+'</span></td>' +
+        '<td style="text-align:center;font-weight:600">'+r.total+'</td>' +
+        '<td style="text-align:center;color:var(--mp-warn);font-weight:600">'+(r.interesados||0)+'</td>' +
+        '<td style="text-align:center;color:var(--mp-green);font-weight:600">'+(r.cerrados||0)+'</td>' +
+        '<td style="text-align:center"><span style="padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;background:'+tasaBg+';color:'+tasaColor+'">'+tasa+'%</span></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  // Charts
+  buildWeeklyChart(d.weekly_sends || []);
+  buildDonutChart(d.by_status || {}, d.opt_out || 0);
+}
+
+function var_(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function buildWeeklyChart(weekly){
+  const labels = weekly.map(w => 'Sem '+w.week+(w.year?' '+w.year:'')).reverse();
+  const data   = weekly.map(w => w.sent).reverse();
+  if(weeklyChart) weeklyChart.destroy();
+  const ctx = document.getElementById('chartWeekly').getContext('2d');
+  weeklyChart = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels,
+      datasets:[{
+        label:'Enviados',
+        data,
+        backgroundColor:'#009ee3',
+        borderRadius:5,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{display:false}, ticks:{font:{size:11}}},
+        y:{grid:{color:'#eef2f7'}, ticks:{font:{size:11}}}
+      }
+    }
+  });
+}
+
+function buildDonutChart(byStatus, optOut){
+  const map = [
+    {key:'no_enviado', label:'No enviado', color:'#adb5bd'},
+    {key:'enviado', label:'Enviados', color:'#009ee3'},
+    {key:'abierto', label:'Abiertos', color:'#3d5a99'},
+    {key:'interesado', label:'Interesados', color:'#b8860b'},
+    {key:'quiere_reunion', label:'Reunion', color:'#7b3fe4'},
+    {key:'cerrado', label:'Cerrados', color:'#00a650'},
+    {key:'no_interesado', label:'No int.', color:'#f23d4f'},
+  ];
+  const counts = map.map(m => byStatus[m.key] || 0);
+  if(optOut) counts[5] += optOut;
+  if(donutChart) donutChart.destroy();
+  const ctx = document.getElementById('chartDonut').getContext('2d');
+  donutChart = new Chart(ctx, {
+    type:'doughnut',
+    data:{labels:map.map(m=>m.label), datasets:[{data:counts, backgroundColor:map.map(m=>m.color), borderWidth:0}]},
+    options:{responsive:true, maintainAspectRatio:false, cutout:'68%', plugins:{legend:{display:false}}}
+  });
+  const total = counts.reduce((a,b)=>a+b, 0) || 1;
+  document.getElementById('donutLegend').innerHTML = map.map((m,i) =>
+    `<div style="display:flex;align-items:center;gap:6px">
+      <span style="width:10px;height:10px;border-radius:2px;background:${m.color};flex-shrink:0;display:inline-block"></span>
+      <span style="color:var(--mp-text-2)">${m.label}</span>
+      <span style="color:var(--mp-text-3);margin-left:auto">${Math.round(counts[i]/total*100)}%</span>
+    </div>`
+  ).join('');
+}
+
+// ─── LEADS ──────────────────────────────────────────
+async function loadLeads(){
+  const r = await api('/api/leads/');
+  if(!r) return;
+  allLeads = r;
+  document.getElementById('badgeLeads').textContent = r.length;
+
+  // Poblar filtros
+  const comunas = [...new Set(r.map(l=>l.comuna||l.comuna).filter(Boolean))].sort();
+  const rubros  = [...new Set(r.map(l=>l.rubro).filter(Boolean))].sort();
+  document.getElementById('filterComuna').innerHTML =
+    '<option value="">Todas las comunas</option>' + comunas.map(c=>`<option>${c}</option>`).join('');
+  document.getElementById('filterRubro').innerHTML =
+    '<option value="">Todos los rubros</option>' + rubros.map(c=>`<option>${c}</option>`).join('');
+
+  // Status pills count
+  const counts = {};
+  r.forEach(l=>{ const s=l.status||'enviado'; counts[s]=(counts[s]||0)+1; });
+  document.getElementById('statusPills').innerHTML =
+    Object.entries(statusLabel).map(([k,lbl]) =>
+      `<span class="badge ${statusBadge[k]}" style="cursor:pointer" onclick="quickFilter('${k}')">${lbl} (${counts[k]||0})</span>`
+    ).join('');
+
+  renderLeads(r);
+}
+
+function quickFilter(status){
+  document.getElementById('filterStatus').value = status;
+  filterLeads();
+}
+
+function filterLeads(){
+  const q   = document.getElementById('searchInput').value.toLowerCase();
+  const st  = document.getElementById('filterStatus').value;
+  const co  = document.getElementById('filterComuna').value;
+  const ru  = document.getElementById('filterRubro').value;
+  const filtered = allLeads.filter(l => {
+    const txt = (l.name+l.phone+l.comuna+l.rubro).toLowerCase();
+    return (!q || txt.includes(q))
+      && (!st || (l.status||'enviado') === st)
+      && (!co || (l.comuna||l.comuna) === co)
+      && (!ru || l.rubro === ru);
+  });
+  renderLeads(filtered);
+}
+
+function renderLeads(leads){
+  document.getElementById('leadsPager').textContent = `Mostrando ${Math.min(leads.length,200)} de ${leads.length} leads`;
+  if(!leads.length){
+    document.getElementById('leadsBody').innerHTML =
+      '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--mp-text-3)">Sin resultados</td></tr>';
+    return;
+  }
+  document.getElementById('leadsBody').innerHTML = leads.slice(0,200).map(l => `
+    <tr data-id="${l.id}" data-status="${l.status||'enviado'}">
+      <td><input type="checkbox" class="lead-check" value="${l.id}" onchange="updateSelection()" style="cursor:pointer;width:15px;height:15px"></td>
+      <td><div class="lead-name">${l.name}</div></td>
+      <td><div class="lead-phone">${l.phone}${l.sent_at ? '<span style="color:var(--mp-warn);font-size:10px;margin-left:4px" title="Mensaje ya enviado el '+fmtDate(l.sent_at)+'">⚠</span>' : ''}</div></td>
+      <td>${l.comuna||l.comuna||'—'}</td>
+      <td><span style="font-size:11px;background:var(--mp-blue-lt);color:var(--mp-blue);padding:2px 8px;border-radius:10px">${l.rubro||'—'}</span></td>
+      <td><span style="font-size:11px;background:#f0f4f8;color:#4a5568;padding:2px 8px;border-radius:10px">${l.categoria||'—'}</span></td>
+      <td>${badge(l.status||'enviado')}</td>
+      <td style="text-align:center">
+        ${(function(){
+          var s24 = l.seguimiento_24h;
+          var s72 = l.seguimiento_72h;
+          if(s24 && s72) return '<span title="2 seguimientos enviados (24h y 72h)" style="font-size:16px;letter-spacing:2px">🟡🟡</span>';
+          if(s72) return '<span title="Seguimiento 72h enviado el '+l.seguimiento_72h_fecha+'" style="font-size:16px">🟡</span><span style="font-size:10px;color:#856404;display:block">72h</span>';
+          if(s24) return '<span title="Seguimiento 24h enviado el '+l.seguimiento_24h_fecha+'" style="font-size:16px">🟡</span><span style="font-size:10px;color:#856404;display:block">24h</span>';
+          return '<span style="font-size:13px;color:var(--mp-text-3)">—</span>';
+        })()}
+      </td>
+      <td>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-ghost btn-sm" onclick="openStatusModal(${l.id},'${l.status||'enviado'}')">✏️</button>
+          <a href="https://wa.me/${l.phone?.replace(/\D/g,'')}" target="_blank" class="btn btn-green btn-sm">💬</a>
+          ${(l.status==='enviado' && !l.seguimiento_72h) ? `<button class="btn btn-ghost btn-sm" onclick="sendSeguimiento(${l.id},'${l.name.replace(/'/g,'')}')" title="${l.seguimiento_24h?'Enviar seguimiento 72h':'Enviar seguimiento 24h'}" style="color:#856404">🔔</button>` : ''}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+
+function onStatusChange(status){
+  var c = document.getElementById('camposCerrado');
+  var t = document.getElementById('modalStatusTitle');
+  if(status === 'cerrado'){
+    c.style.display = 'block';
+    t.textContent = 'Registrar cierre de venta';
+  } else {
+    c.style.display = 'none';
+    t.textContent = 'Cambiar estado del lead';
+  }
+}
+
+async function submitStatus(){
+  var id     = document.getElementById('statusLeadId').value;
+  var status = document.getElementById('newStatus').value;
+  var notes  = document.getElementById('statusNotes').value;
+
+  if(status === 'cerrado'){
+    var contacto = document.getElementById('cerradoContacto').value.trim();
+    if(!contacto){
+      document.getElementById('cerradoContacto').style.border = '2px solid red';
+      toast('El nombre de contacto es obligatorio','error');
+      return;
+    }
+    var pos   = document.getElementById('cerradoPOS').value;
+    var email = document.getElementById('cerradoEmail').value.trim();
+    var r = await api('/api/leads/'+id+'/status', {
+      method:'PUT',
+      body: JSON.stringify({status:status, notes:notes, contact_name:contacto, pos_type:pos, email:email})
+    });
+    if(r && r.ok){
+      toast('Cierre registrado. Seller agregado automaticamente','success');
+      closeModal('modalStatus');
+      loadLeads();
+    } else {
+      toast('Error: '+(r && r.error ? r.error : 'desconocido'),'error');
+    }
+    return;
+  }
+
+  var r = await api('/api/leads/'+id+'/status', {
+    method:'PUT', body:JSON.stringify({status:status, notes:notes})
+  });
+  if(r && r.ok){ toast('Estado actualizado','success'); closeModal('modalStatus'); loadLeads(); }
+  else toast('Error actualizando estado','error');
+}
+
+function openStatusModal(id, currentStatus){
+  document.getElementById('statusLeadId').value = id;
+  document.getElementById('newStatus').value = currentStatus;
+  document.getElementById('statusNotes').value = '';
+  // Resetear campos extra
+  if(document.getElementById('cerradoContacto')) document.getElementById('cerradoContacto').value = '';
+  if(document.getElementById('cerradoContacto')) document.getElementById('cerradoContacto').style.border = '';
+  if(document.getElementById('optoutMotivo')) document.getElementById('optoutMotivo').value = '';
+  if(document.getElementById('optoutMotivo')) document.getElementById('optoutMotivo').style.border = '';
+  if(document.getElementById('optoutNota')) document.getElementById('optoutNota').value = '';
+  // Mostrar campos segun estado actual
+  if(typeof onStatusChange === 'function') onStatusChange(currentStatus);
+  document.getElementById('modalStatus').classList.add('open');
+}
+
+// submitStatus reemplazado arriba
+
+function exportLeads(){
+  const headers = 'Nombre,Teléfono,Comuna,Rubro,Estado,Enviado';
+  const rows = allLeads.map(l =>
+    `"${l.name}","${l.phone}","${l.comuna}","${l.rubro}","${l.status||'enviado'}","${l.sent_at||''}"`
+  );
+  const blob = new Blob([headers+'\n'+rows.join('\n')], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `leads_mp_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast('CSV exportado','success');
+}
+
+// ─── ENVÍOS ─────────────────────────────────────────
+async function loadEnvios(){
+  const [kpis, campaigns, waStatus] = await Promise.all([
+    api('/api/dashboard/kpis'),
+    api('/api/campaigns/'),
+    api('/api/scheduler/status'),
+  ]);
+
+  if(kpis){
+    document.getElementById('env-optout').textContent = fmt(kpis.opt_out);
+    const sentMonth = kpis.total_sent;
+    document.getElementById('env-costo').textContent = 'USD ' + (sentMonth * 0.065).toFixed(1);
+  }
+
+  // WA status (del scheduler/sender)
+  if(waStatus){
+    document.getElementById('env-hoy').textContent = '—';
+    document.getElementById('env-limite').textContent = 'Límite: 50/día';
+    document.getElementById('env-wa').textContent = waStatus.running ? 'Activo' : 'Detenido';
+    document.getElementById('env-wa-sub').innerHTML = waStatus.running
+      ? '<span class="kpi-up">Scheduler corriendo</span>'
+      : '<span class="kpi-down">Scheduler detenido</span>';
+
+    // Jobs
+    document.getElementById('schedulerJobs').innerHTML = (function(){
+      var jobNames = {
+        'batch_0930':'Prospeccion 09:30 AM',
+        'batch_1500':'Prospeccion 15:00 PM',
+        'batch_1730':'Prospeccion 17:30 PM',
+        'fidelizacion_weekly':'Fidelizacion Sellers',
+        'prospecting_daily':'Prospeccion L-V'
+      };
+      var msgs = {'batch_0930':'15 mensajes','batch_1500':'10 mensajes','batch_1730':'15 mensajes'};
+      var jobs = (waStatus.jobs||[]).sort(function(a,b){return new Date(a.next_run)-new Date(b.next_run);});
+      return jobs.slice(0,6).map(function(j){
+        var titulo = jobNames[j.id] || j.id;
+        var nextDate = j.next_run ? new Date(j.next_run) : null;
+        var nextStr = nextDate ? nextDate.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'short'}) + ' ' + nextDate.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}) : 'Sin programar';
+        var isFidel = j.id === 'fidelizacion_weekly';
+        var msgsStr = msgs[j.id] ? ' - ' + msgs[j.id] : '';
+        var subtitulo = isFidel ? nextStr + ' - Etapas dias 7, 14, 15, 30, 35' : nextStr + msgsStr + ' - leads no enviados';
+        var ico = isFidel ? '💌' : '📤';
+        var badge = isFidel ? 'badge-reunion' : 'badge-interesado';
+        var tipo = isFidel ? 'Fidelizacion' : 'Prospeccion';
+        return '<div class="log-item" style="margin-bottom:8px"><div class="log-ico">' + ico + '</div><div class="log-info"><div class="log-title">' + titulo + '</div><div class="log-meta">' + subtitulo + '</div></div><span class="badge ' + badge + '">' + tipo + '</span></div>';
+      }).join('') || '<div style="color:var(--mp-text-3);font-size:13px">Sin jobs activos</div>';
+    })();
+  }
+
+  if(campaigns?.length){
+    document.getElementById('campaignLog').innerHTML = campaigns.map(c => `
+      <div class="log-item">
+        <div class="log-ico">📤</div>
+        <div class="log-info">
+          <div class="log-title">${c.name}</div>
+          <div class="log-meta">${fmtDate(c.sent_at)} · ${c.rubro||'Varios rubros'} · ${c.comuna||c.comuna||'Varias comunas'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="log-count">${c.total_sent} msgs</div>
+          <button class="btn btn-ghost btn-sm" onclick="downloadCampaignExcel(${c.id},'${c.name}')" title="Descargar Excel" style="padding:4px 8px;font-size:11px">
+            ⬇ Excel
+          </button>
+        </div>
+      </div>`).join('');
+  }
+}
+
+async function triggerJob(jobId){
+  const name = jobId === 'prospecting_daily' ? 'prospección' : 'fidelización';
+  if(!confirm(`¿Ejecutar ${name} ahora?`)) return;
+  toast(`Iniciando ${name}...`);
+  const r = await api(`/api/scheduler/trigger/${jobId}`, {method:'POST'});
+  if(r?.ok) toast(`${name} ejecutada correctamente`, 'success');
+  else toast('Error ejecutando job','error');
+}
+
+// ─── WA STATUS ──────────────────────────────────────
+async function checkWaStatus(){
+  const r = await api('/api/scheduler/status');
+  const el = document.getElementById('waStatus');
+  const txt = document.getElementById('waStatusTxt');
+  if(r?.running){
+    el.classList.remove('offline');
+    txt.textContent = 'WA Conectado';
+  } else {
+    el.classList.add('offline');
+    txt.textContent = 'WA Offline';
+  }
+}
+
+// ─── SELLERS ────────────────────────────────────────
+let selectedSellerIds = new Set();
+
+const ETAPA_LABELS = {
+  7:  {nombre:'Act.', color:'#009ee3', bg:'#e8f4fd'},
+  14: {nombre:'Pot.', color:'#856404', bg:'#fff3cd'},
+  15: {nombre:'Seg.', color:'#495057', bg:'#f8f9fa'},
+  30: {nombre:'Ges.', color:'#155724', bg:'#d4edda'},
+  35: {nombre:'Fid.', color:'#5b21b6', bg:'#ede9fe'},
+};
+
+async function loadSellers(){
+  const [sellers, etapas] = await Promise.all([
+    api('/api/sellers/'),
+    api('/api/sellers/etapas'),
+  ]);
+  if(!sellers) return;
+  document.getElementById('badgeSellers').textContent = sellers.length;
+
+  // KPIs
+  const completos = (etapas||[]).filter(e=>e.ciclo_completo).length;
+  const pendientes = (etapas||[]).reduce((acc,e)=>acc+(e.etapas||[]).filter(x=>x.pendiente).length,0);
+  const totalMsgs = sellers.reduce((acc,s)=>acc+(s.total_fidelizacion_enviados||0),0);
+  document.getElementById('sk-activos').textContent = sellers.length;
+  document.getElementById('sk-completos').textContent = completos;
+  document.getElementById('sk-pendientes').textContent = pendientes;
+  document.getElementById('sk-total-msgs').textContent = totalMsgs;
+
+  // Mapa etapas por phone
+  const etapasMap = {};
+  (etapas||[]).forEach(e => { etapasMap[e.phone] = e; });
+
+  document.getElementById('sellersBody').innerHTML = sellers.length
+    ? sellers.map(s => {
+        const etInfo = etapasMap[s.phone];
+        const dias = etInfo?.dias || 0;
+        const cicloCompleto = etInfo?.ciclo_completo || false;
+
+        const etapasHtml = [7,14,15,30,35].map(d => {
+          const et = (etInfo?.etapas||[]).find(e=>e.dias===d);
+          const enviado  = et?.enviado;
+          const pendiente= et?.pendiente;
+          const cfg = ETAPA_LABELS[d];
+          let bg = '#f0f0f0', color = '#999', title = `Dia ${d} - pendiente`;
+          if(enviado){
+            bg = cfg.bg; color = cfg.color; title = `Dia ${d} - enviado`;
+          } else if(pendiente){
+            bg = '#fff0f0'; color = '#c0392b'; title = `Dia ${d} - PENDIENTE ENVIO`;
+          }
+          return `<span style="display:inline-block;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600;background:${bg};color:${color};cursor:default" title="${title}">${cfg.nombre}${enviado?'✓':pendiente?'!':''}</span>`;
+        }).join(' ');
+
+        const cicloIcon = cicloCompleto ? '<span title="Ciclo completo" style="color:var(--mp-green);font-size:16px">★</span>' : '';
+
+        return `<tr>
+          <td><input type="checkbox" class="seller-check" value="${s.id}" onchange="updateSellerSelection()" style="width:15px;height:15px;cursor:pointer"></td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="seller-avatar">${(s.name||'?').slice(0,2).toUpperCase()}</div>
+              <div>
+                <div class="lead-name">${s.name} ${cicloIcon}</div>
+                <div style="font-size:11px;color:var(--mp-text-3)">${s.rubro||s.categoria||'—'}</div>
+              </div>
+            </div>
+          </td>
+          <td class="lead-phone">${s.phone}</td>
+          <td>${s.pos_type||'—'}</td>
+          <td style="text-align:center">
+            <span style="font-size:12px;font-weight:600;color:${dias>=35?'var(--mp-green)':'var(--mp-blue)'}">${dias}d</span>
+          </td>
+          <td style="text-align:center">${etapasHtml}</td>
+          <td class="lead-phone" style="font-size:11px">${(s.ultimo_fidelizacion||'—').slice(0,10)}</td>
+          <td>
+            <div style="display:flex;gap:4px">
+              <button class="btn btn-ghost btn-sm" onclick="openWA('${s.phone}')" title="Abrir chat">💬</button>
+              <button class="btn btn-ghost btn-sm" onclick="deleteSeller(${s.id},'${s.name}')">🗑️</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--mp-text-3)">No hay sellers activos.</td></tr>';
+}
+
+function toggleAllSellers(cb){
+  document.querySelectorAll('.seller-check').forEach(c=>{
+    c.checked = cb.checked;
+    if(cb.checked) selectedSellerIds.add(parseInt(c.value));
+    else selectedSellerIds.delete(parseInt(c.value));
+  });
+  updateSellerSelectionUI();
+}
+
+function updateSellerSelection(){
+  selectedSellerIds.clear();
+  document.querySelectorAll('.seller-check:checked').forEach(c=>selectedSellerIds.add(parseInt(c.value)));
+  document.getElementById('checkAllSellers').checked =
+    document.querySelectorAll('.seller-check').length > 0 &&
+    selectedSellerIds.size === document.querySelectorAll('.seller-check').length;
+  updateSellerSelectionUI();
+}
+
+function updateSellerSelectionUI(){
+  const bar = document.getElementById('broadcastBar');
+  const n = selectedSellerIds.size;
+  if(n>0){
+    bar.style.display='flex';
+    document.getElementById('broadcastCount').textContent = n+' seller'+(n>1?'s':'')+' seleccionado'+(n>1?'s':'');
+  } else {
+    bar.style.display='none';
+  }
+}
+
+function clearSellerSelection(){
+  selectedSellerIds.clear();
+  document.querySelectorAll('.seller-check').forEach(c=>c.checked=false);
+  document.getElementById('checkAllSellers').checked=false;
+  updateSellerSelectionUI();
+}
+
+function openBroadcast(){ document.getElementById('modalBroadcast').classList.add('open'); }
+function openBroadcastModal(){ document.getElementById('modalBroadcast').classList.add('open'); }
+
+async function submitBroadcast(){
+  const msg = document.getElementById('broadcastMsg').value.trim();
+  if(!msg){ toast('Escribe el mensaje primero','error'); return; }
+  const ids = selectedSellerIds.size > 0 ? Array.from(selectedSellerIds) : [];
+  const total = ids.length || document.querySelectorAll('.seller-check').length;
+  if(!confirm(`Enviar este mensaje a ${ids.length||'todos los'} seller${total>1?'s':''}?`)) return;
+
+  const btn = document.getElementById('btnBroadcast');
+  btn.disabled=true; btn.textContent='Enviando...';
+  const r = await api('/api/sellers/broadcast', {
+    method:'POST',
+    body: JSON.stringify({mensaje: msg, seller_ids: ids})
+  });
+  if(r?.ok){
+    toast(r.message,'success');
+    document.getElementById('broadcastMsg').value='';
+    closeModal('modalBroadcast');
+    clearSellerSelection();
+    setTimeout(loadSellers, 3000);
+  } else {
+    toast(r?.error||'Error enviando','error');
+  }
+  btn.disabled=false; btn.textContent='Enviar ahora';
+}
+
+function openAddSeller(){ document.getElementById('modalSeller').classList.add('open'); }
+
+async function submitSeller(){
+  const data = {
+    name: document.getElementById('s-name').value.trim(),
+    contact_name: document.getElementById('s-contact').value.trim(),
+    phone: document.getElementById('s-phone').value.trim(),
+    pos_type: document.getElementById('s-pos').value,
+    comuna: document.getElementById('s-comuna').value.trim(),
+  };
+  if(!data.name || !data.phone){ toast('Nombre y teléfono son obligatorios','error'); return; }
+  const r = await api('/api/sellers/', {method:'POST', body:JSON.stringify(data)});
+  if(r?.ok){ toast('Seller agregado','success'); closeModal('modalSeller'); loadSellers(); }
+  else toast(r?.error||'Error guardando seller','error');
+}
+
+async function deleteSeller(id, name){
+  if(!confirm(`¿Eliminar seller "${name}"?`)) return;
+  const r = await api(`/api/sellers/${id}`, {method:'DELETE'});
+  if(r?.ok){ toast('Seller eliminado'); loadSellers(); }
+}
+
+// ─── SCRAPING ────────────────────────────────────────
+async function loadScraping(){
+  const [rubros, comunas, kpis] = await Promise.all([
+    api('/api/scraping/rubros'),
+    api('/api/scraping/comunas'),
+    api('/api/dashboard/kpis'),
+  ]);
+
+  if(rubros){
+    rubrosData = rubros;
+    const rubroOpts = rubros.map(r=>`<option value="${r.key}">${r.emoji} ${r.label}</option>`).join('');
+    document.getElementById('scraRubro').innerHTML = rubroOpts;
+    document.getElementById('scraRubroUrl').innerHTML = '<option value="">Rubro (opcional)</option>' + rubroOpts;
+  }
+  if(comunas){
+    comunasData = comunas;
+    const comunaOpts = comunas.map(c=>`<option>${c}</option>`).join('');
+    document.getElementById('scraComuna').innerHTML = comunaOpts;
+    document.getElementById('scraComunaUrl').innerHTML = '<option value="">Comuna (opcional)</option>' + comunaOpts;
+  }
+  if(kpis){
+    // Rubros chart
+    buildRubrosChart(kpis.top_rubros||[]);
+    // Comunas coverage
+    const maxC = (kpis.top_comunas||[])[0]?.total || 1;
+    document.getElementById('scraComunes').innerHTML = (kpis.top_comunas||[]).map(c =>
+      `<div class="commune-row">
+        <div class="commune-name">${c.comuna||c.comuna}</div>
+        <div class="commune-track"><div class="commune-bar" style="width:${Math.round(c.total/maxC*100)}%"></div></div>
+        <div class="commune-val">${c.total}</div>
+      </div>`
+    ).join('');
+  }
+}
+
+function buildRubrosChart(topRubros){
+  const labels = topRubros.map(r=>r.rubro);
+  const data   = topRubros.map(r=>r.total);
+  if(rubrosChart) rubrosChart.destroy();
+  const ctx = document.getElementById('chartRubros').getContext('2d');
+  rubrosChart = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels,
+      datasets:[{data, backgroundColor:'#009ee3', borderRadius:4}]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'#eef2f7'}, ticks:{font:{size:10}}},
+        y:{grid:{display:false}, ticks:{font:{size:10}}}
+      }
+    }
+  });
+}
+
+async function runScrapingUrl(){
+  const maps_url = document.getElementById('scraUrl').value.trim();
+  const rubro    = document.getElementById('scraRubroUrl').value;
+  const comuna   = document.getElementById('scraComunaUrl').value;
+  if(!maps_url){ toast('Pega una URL de Google Maps primero','error'); return; }
+  const btn = document.getElementById('scrapeBtnUrl');
+  btn.disabled = true; btn.textContent = '⏳ Iniciando...';
+  const r = await api('/api/scraping/run', {method:'POST', body:JSON.stringify({maps_url, rubro, comuna})});
+  if(r?.ok){
+    toast('Scraping iniciado. Los leads apareceran en 2-4 minutos en la pestana Leads.', 'success');
+    document.getElementById('scraUrl').value = '';
+  } else {
+    toast(r?.error||'Error - verifica el token Apify','error');
+  }
+  btn.disabled = false; btn.textContent = '🗺️ Iniciar';
+}
+
+async function runScraping(){
+  const rubro  = document.getElementById('scraRubro').value;
+  const comuna = document.getElementById('scraComuna').value;
+  const btn    = document.getElementById('scrapeBtn');
+  btn.disabled = true; btn.textContent = '⏳ Iniciando...';
+  const r = await api('/api/scraping/run', {method:'POST', body:JSON.stringify({rubro, comuna, max_items:40})});
+  if(r?.ok) toast(`Scraping iniciado: ${rubro} en ${comuna}`, 'success');
+  else toast(r?.error||'Error - verifica el token Apify','error');
+  btn.disabled = false; btn.textContent = '🔍 Buscar';
+}
+
+
+
+// ─── CONFIGURACIÓN ───────────────────────────────────
+async function loadConfig(){
+  const r = await api('/api/scraping/config');
+  if(!r) return;
+  Object.entries(r).forEach(([k,v]) => {
+    const el = document.getElementById('cfg-'+k);
+    if(el && v) el.value = v;
+  });
+}
+
+async function saveConfig(){
+  const keys = ['apify_token','exec_name','exec_phone','calendar_link','daily_limit','min_delay_sec','max_delay_sec'];
+  const data = {};
+  keys.forEach(k => {
+    const el = document.getElementById('cfg-'+k);
+    if(el && el.value) data[k] = el.value;
+  });
+  const r = await api('/api/scraping/config', {method:'POST', body:JSON.stringify(data)});
+  if(r?.ok) toast('Configuración guardada','success');
+  else toast('Error guardando','error');
+}
+
+// ─── MODALES ─────────────────────────────────────────
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(m =>
+  m.addEventListener('click', e => { if(e.target === m) m.classList.remove('open'); })
+);
+
+// ─── NEXT SEND TIME ──────────────────────────────────
+function updateNextSendTime(){
+  const now = new Date();
+  const day = now.getDay();
+  const h = now.getHours(), mi = now.getMinutes();
+  const isWeekday = day >= 1 && day <= 5;
+  let label, time;
+
+  if(isWeekday && (h < 10 || (h===10 && mi===0))){
+    time = 'Hoy a las 10:00 AM';
+    label = 'Prospección';
+  } else {
+    const days = isWeekday ? (5 - day === 0 && h>=10 ? 3 : 5-day + (h>=10?1:0)) : (day===6?2:1);
+    time = `En ${days} día${days>1?'s':''}`;
+    label = 'Próxima prospección';
+  }
+
+  document.getElementById('nextSendTime').textContent = time;
+  document.getElementById('nextSendLabel').textContent = label;
+}
+
+// ─── INIT ────────────────────────────────────────────
+loadOverview();
+checkWaStatus();
+updateNextSendTime();
+
+// ── WHATSAPP DIRECTO ─────────────────────────────────
+function openWA(phone){
+  const clean = phone.replace(/\D/g,'');
+  // Intentar abrir WhatsApp Desktop primero, fallback a web
+  const waUrl = 'whatsapp://send?phone=' + clean;
+  window.location.href = waUrl;
+}
+
+// ── VERIFICACION DUPLICADOS ───────────────────────────
+function checkDuplicates(contacts){
+  const seen = new Set();
+  const duplicates = [];
+  contacts.forEach(c => {
+    if(seen.has(c.phone)){
+      duplicates.push(c.phone);
+    }
+    seen.add(c.phone);
+  });
+  return duplicates;
+}
+
+async function sendSelected(){
+  const ids = Array.from(selectedIds);
+  if(ids.length === 0){ toast('Selecciona al menos un lead','error'); return; }
+  if(ids.length > 50){ toast('Maximo 50 leads por envio','error'); return; }
+
+  // Verificar duplicados antes de enviar
+  const selectedLeads = allLeads.filter(l => ids.includes(l.id));
+  const yaEnviados = selectedLeads.filter(l => l.sent_at || l.status === 'enviado');
+  
+  if(yaEnviados.length > 0){
+    const nombres = yaEnviados.slice(0,3).map(l=>l.name).join(', ');
+    const msg = yaEnviados.length === 1
+      ? yaEnviados[0].name + ' ya recibio un mensaje anteriormente.'
+      : yaEnviados.length + ' leads ya recibieron mensajes (' + nombres + (yaEnviados.length>3?'...':'')+').';
+    if(!confirm('ADVERTENCIA: ' + msg + '\n\nEnviar igualmente puede ser spam. ¿Continuar de todas formas?')){
+      return;
+    }
+  }
+
+  if(!confirm('Enviar ' + ids.length + ' mensajes WhatsApp con imagen segun rubro?')) return;
+
+  const btn = document.querySelector('#manualSendBar button');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+  toast('Iniciando envio de ' + ids.length + ' mensajes...');
+
+  const r = await api('/api/manual/send', {method:'POST', body:JSON.stringify({lead_ids: ids})});
+
+  if(r?.ok){
+    toast(r.message, 'success');
+    clearSelection();
+    setTimeout(loadLeads, 3000);
+  } else {
+    toast(r?.error || 'Error iniciando envio', 'error');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Enviar por WhatsApp';
+}
+
+// ── ENVIO MANUAL ─────────────────────────────────────
+let selectedIds = new Set();
+
+function toggleAll(cb){
+  document.querySelectorAll('.lead-check').forEach(c => {
+    c.checked = cb.checked;
+    if(cb.checked) selectedIds.add(parseInt(c.value));
+    else selectedIds.delete(parseInt(c.value));
+  });
+  updateSelectionUI();
+}
+
+function updateSelection(){
+  selectedIds.clear();
+  document.querySelectorAll('.lead-check:checked').forEach(c => selectedIds.add(parseInt(c.value)));
+  const all = document.querySelectorAll('.lead-check');
+  document.getElementById('checkAll').checked = all.length > 0 && selectedIds.size === all.length;
+  updateSelectionUI();
+}
+
+function updateSelectionUI(){
+  const bar = document.getElementById('manualSendBar');
+  const count = selectedIds.size;
+  if(count > 0){
+    bar.style.display = 'flex';
+    document.getElementById('selectedCount').textContent = count + ' lead' + (count>1?'s':'') + ' seleccionado' + (count>1?'s':'');
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function clearSelection(){
+  selectedIds.clear();
+  document.querySelectorAll('.lead-check').forEach(c => c.checked = false);
+  document.getElementById('checkAll').checked = false;
+  updateSelectionUI();
+}
+
+
+
+async function downloadCampaignExcel(campaignId, campaignName){
+  toast('Generando Excel...');
+  try {
+    const r = await fetch('/api/campaigns/' + campaignId + '/export');
+    if(!r.ok){ toast('Error generando Excel','error'); return; }
+    const blob = await r.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const name = campaignName.replace(/[^a-zA-Z0-9_\-]/g,'_').substring(0,40);
+    a.href = url;
+    a.download = 'Campana_' + name + '_' + new Date().toISOString().slice(0,10) + '.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Excel descargado', 'success');
+  } catch(e){
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+
+async function sendSeguimiento(leadId, nombre){
+  if(!confirm('Enviar seguimiento a ' + nombre + '?')) return;
+  toast('Enviando seguimiento...');
+  const r = await api('/api/leads/'+leadId+'/seguimiento', {method:'POST'});
+  if(r && r.ok){
+    toast('Seguimiento enviado a ' + nombre + ' (' + (r.tipo||'') + ')', 'success');
+    loadLeads();
+  } else {
+    toast((r && r.error) || 'Error enviando seguimiento', 'error');
+  }
+}
+
+setInterval(checkWaStatus, 30000);
+
+async function loadIntel(){
+  const [suggestions, nextSearches] = await Promise.all([
+    api('/api/intel/suggestions'),
+    api('/api/intel/next-searches'),
+  ]);
+  if(!suggestions) return;
+
+  // KPIs
+  document.getElementById('intel-rubros-con').textContent = suggestions.resumen.total_rubros_con_leads;
+  document.getElementById('intel-rubros-sin').textContent = suggestions.resumen.total_rubros_sin_leads;
+  document.getElementById('intel-comunas').textContent = suggestions.resumen.comunas_cubiertas;
+  document.getElementById('intel-sugerencias').textContent = suggestions.resumen.sugerencias_pendientes;
+
+  // Sugerencias urgentes
+  document.getElementById('intelSuggestions').innerHTML = suggestions.suggestions.length
+    ? suggestions.suggestions.map(s => `
+      <div class="log-item" style="border-left:3px solid ${s.prioridad==='alta'?'var(--mp-red)':'var(--mp-warn)'}">
+        <div class="log-ico">${s.emoji||'📍'}</div>
+        <div class="log-info">
+          <div class="log-title">${s.mensaje}</div>
+          <div class="log-meta">Query: "${s.query_sugerida}"</div>
+        </div>
+        <span class="badge ${s.prioridad==='alta'?'badge-no':'badge-interesado'}">${s.prioridad}</span>
+      </div>`).join('')
+    : '<div style="color:var(--mp-text-3);text-align:center;padding:20px">Sin sugerencias — base de datos bien cubierta</div>';
+
+  // Proximas busquedas
+  if(nextSearches?.next_searches?.length){
+    document.getElementById('nextSearches').innerHTML = nextSearches.next_searches.slice(0,8).map(s => `
+      <div class="log-item">
+        <div class="log-ico">${s.emoji||'🔍'}</div>
+        <div class="log-info">
+          <div class="log-title">${s.rubro_label} en ${s.comuna}</div>
+          <div class="log-meta">${s.razon}</div>
+        </div>
+        <a href="${s.maps_url_base}" target="_blank" class="btn btn-ghost btn-sm">Maps</a>
+      </div>`).join('');
+  } else {
+    document.getElementById('nextSearches').innerHTML = '<div style="color:var(--mp-text-3);text-align:center;padding:20px">Agrega más leads para ver recomendaciones</div>';
+  }
+
+  // Tabla rubros
+  document.getElementById('intelRubrosTable').innerHTML = suggestions.rubro_stats.map(r => {
+    const tasa = r.enviados > 0 ? Math.round(r.interesados/r.enviados*100) : 0;
+    return `<tr>
+      <td><span style="font-size:11px;background:var(--mp-blue-lt);color:var(--mp-blue);padding:2px 8px;border-radius:10px">${r.rubro}</span></td>
+      <td>${r.total_leads}</td>
+      <td>${r.enviados}</td>
+      <td style="color:var(--mp-warn);font-weight:600">${r.interesados}</td>
+      <td><span style="color:${tasa>10?'var(--mp-green)':'var(--mp-text-3)'};font-weight:600">${tasa}%</span></td>
+      <td style="color:var(--mp-red)">${r.sin_telefono}</td>
+    </tr>`;
+  }).join('');
+
+  // Comunas
+  const maxLeads = Math.max(...suggestions.comuna_stats.map(c=>c.total_leads), 1);
+  document.getElementById('intelComunas').innerHTML = suggestions.comuna_stats.map(c => `
+    <div class="commune-row">
+      <div class="commune-name">${c.comuna}</div>
+      <div class="commune-track"><div class="commune-bar" style="width:${Math.round(c.total_leads/maxLeads*100)}%"></div></div>
+      <div class="commune-val">${c.total_leads}</div>
+      ${c.interesados>0?`<span style="color:var(--mp-warn);font-size:11px;font-weight:600;margin-left:4px">${c.interesados}✓</span>`:''}
+    </div>`).join('');
+}
+setInterval(updateNextSendTime, 60000);
+</script>
+</body>
+</html>

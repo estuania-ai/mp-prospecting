@@ -1,0 +1,13 @@
+2026-04-09 23:01:43,475 [INFO] === Iniciando lote 1 (09:30) - 15 mensajes ===
+2026-04-09 23:01:43,491 [INFO] [PROSPECCION 09:30] Iniciando - 15 mensajes - 23:01
+2026-04-09 23:01:43,493 [INFO] [09:30] 15 leads encontrados
+2026-04-09 23:01:43,813 [INFO] Iniciando lote de 15 mensajes...
+2026-04-09 23:01:43,814 [INFO] [1/15] Enviando a Pizzeria Tìo Lu (56933580908)
+2026-04-09 23:01:47,480 [INFO] Imagen descargada: C:\Users\JUANSP~1\AppData\Local\Temp\tmp81dk74ym.png
+2026-04-09 23:02:04,092 [INFO] Mensaje 1/50 enviado hoy
+2026-04-09 23:02:04,092 [INFO] Mensaje enviado a 56933580908
+2026-04-09 23:02:04,093 [INFO] Esperando 55s antes del proximo mensaje...
+2026-04-09 23:02:59,245 [INFO] [2/15] Enviando a fagotto puente alto (56966646818)
+2026-04-09 23:03:17,474 [INFO] Mensaje 2/50 enviado hoy
+2026-04-09 23:03:17,474 [INFO] Mensaje enviado a 56966646818
+2026-04-09 23:03:17,475 [INFO] Esperando 191s antes del proximo mensaje...
