@@ -164,7 +164,7 @@ class ApifyScraper:
             resp = requests.get(
                 f"{APIFY_BASE}/actor-runs/{run_id}/dataset/items",
                 headers=self.headers,
-                params={"format": "json", "clean": True},
+                params={"format": "json"},
                 timeout=30
             )
             resp.raise_for_status()
@@ -190,17 +190,20 @@ class ApifyScraper:
             # Extraer comuna desde address si no viene especificada
             addr = item.get('address', '') or ''
             comuna_final = comuna
-            if not comuna_final:
-                comunas_rm = ['Cerrillos','Cerro Navia','Conchalí','El Bosque','Estación Central',
+            if not comuna_final or comuna_final == 'Sin clasificar':
+                comunas_rm = [
+                    'Cerrillos','Cerro Navia','Conchali','Conchalí','El Bosque','Estacion Central','Estación Central',
                     'Huechuraba','Independencia','La Cisterna','La Florida','La Granja',
                     'La Pintana','La Reina','Las Condes','Lo Barnechea','Lo Espejo',
-                    'Lo Prado','Macul','Maipú','Ñuñoa','Peñaflor','Peñalolén',
+                    'Lo Prado','Macul','Maipu','Maipú','Nunoa','Ñuñoa','Penalolen','Peñalolén',
                     'Providencia','Pudahuel','Puente Alto','Quilicura','Quinta Normal',
-                    'Recoleta','Renca','San Bernardo','San Joaquín','San Miguel',
-                    'San Ramón','Santiago','Vitacura','Buin','Colina','El Monte',
-                    'Lampa','Melipilla','Paine','Pirque','Tiltil']
+                    'Recoleta','Renca','San Bernardo','San Joaquin','San Joaquín','San Miguel',
+                    'San Ramon','San Ramón','Santiago','Vitacura','Buin','Colina','El Monte',
+                    'Lampa','Melipilla','Paine','Pirque','Tiltil'
+                ]
+                addr_lower = addr.lower()
                 for c in comunas_rm:
-                    if c.lower() in addr.lower():
+                    if c.lower() in addr_lower:
                         comuna_final = c
                         break
             clean.append({
@@ -220,18 +223,27 @@ class ApifyScraper:
         conn = get_db()
         for lead in leads:
             try:
-                before = conn.total_changes
-                conn.execute('''
-                    INSERT OR IGNORE INTO leads (name, phone, address, comuna, rubro, source)
-                    VALUES (?, ?, ?, ?, ?, 'apify_gmaps')
-                ''', (
-                    lead['name'], lead['phone'], lead.get('address', ''),
-                    lead['comuna'], lead['rubro']
-                ))
-                if conn.total_changes > before:
-                    inserted += 1
-                else:
+                # Verificar duplicado por telefono
+                existing = conn.execute('SELECT id FROM leads WHERE phone=?', (lead['phone'],)).fetchone()
+                if existing:
                     skipped += 1
+                    continue
+
+                # Determinar categoria segun rubro
+                from rubros_config import RUBROS
+                rubro = lead.get('rubro','')
+                categoria = RUBROS.get(rubro, {}).get('categoria', '')
+
+                cur = conn.execute(
+                    'INSERT INTO leads (name, phone, comuna, rubro, categoria) VALUES (?, ?, ?, ?, ?)',
+                    (lead['name'], lead['phone'], lead.get('comuna',''), rubro, categoria)
+                )
+                lead_id = cur.lastrowid
+                conn.execute(
+                    "INSERT INTO lead_status (lead_id, status, updated_at) VALUES (?, 'no_enviado', datetime('now','localtime'))",
+                    (lead_id,)
+                )
+                inserted += 1
             except Exception as e:
                 logger.warning(f"Error insertando {lead.get('phone')}: {e}")
                 skipped += 1

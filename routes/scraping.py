@@ -8,13 +8,44 @@ scraping_bp = Blueprint('scraping', __name__)
 
 
 def _run_url_async(maps_url: str, rubro: str, comuna: str):
+    from database import get_db
     token = get_config('apify_token')
     if not token:
         return
-    scraper = ApifyScraper(token)
-    result  = scraper.scrape_from_url(maps_url, rubro or None, comuna or None, max_items=100)
-    import logging
-    logging.getLogger(__name__).info(f"Scraping URL terminado: {result}")
+
+    # Registrar inicio en historial
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO scraping_jobs (tipo, rubro, comuna, maps_url, status) VALUES (?, ?, ?, ?, 'running')",
+        ('url', rubro or '', comuna or '', maps_url)
+    )
+    job_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    try:
+        scraper = ApifyScraper(token)
+        result = scraper.scrape_from_url(maps_url, rubro or None, comuna or None, max_items=100)
+
+        conn2 = get_db()
+        conn2.execute(
+            "UPDATE scraping_jobs SET status='succeeded', leads_found=?, leads_inserted=?, leads_skipped=?, finished_at=datetime('now','localtime') WHERE id=?",
+            (result.get('leads_found', 0), result.get('inserted', 0), result.get('skipped', 0), job_id)
+        )
+        conn2.commit()
+        conn2.close()
+
+        import logging
+        logging.getLogger(__name__).info(f"Scraping URL terminado: {result}")
+
+    except Exception as e:
+        conn3 = get_db()
+        conn3.execute(
+            "UPDATE scraping_jobs SET status='failed', error=?, finished_at=datetime('now','localtime') WHERE id=?",
+            (str(e), job_id)
+        )
+        conn3.commit()
+        conn3.close()
 
 
 def _run_search_async(rubro_key: str, comuna: str, max_items: int):
@@ -156,9 +187,22 @@ def validate_token():
         
         user = r.json().get('data', {}).get('username', '')
         
-        # 2. Verificar actor configurado
+        # 2. Verificar actor configurado - intentar por ID y por nombre
         actor_id = get_config('apify_actor_id') or 'compass/google-maps-extractor'
         r2 = req.get(f'https://api.apify.com/v2/acts/{actor_id}', headers=headers, timeout=5)
+        # Si falla por nombre, intentar buscar en runs recientes
+        if r2.status_code != 200:
+            r_runs = req.get('https://api.apify.com/v2/actor-runs?limit=5', headers=headers, timeout=5)
+            if r_runs.status_code == 200:
+                runs = r_runs.json().get('data', {}).get('items', [])
+                if runs:
+                    actor_id_from_runs = runs[0].get('actId', '')
+                    if actor_id_from_runs:
+                        r2b = req.get(f'https://api.apify.com/v2/acts/{actor_id_from_runs}', headers=headers, timeout=5)
+                        if r2b.status_code == 200:
+                            r2 = r2b
+                            actor_id = actor_id_from_runs
+                            set_config('apify_actor_id', actor_id)
         
         actor_ok = r2.status_code == 200
         actor_nombre = r2.json().get('data', {}).get('name', actor_id) if actor_ok else None
@@ -197,3 +241,182 @@ def set_actor():
         return jsonify({'error': 'actor_id requerido'}), 400
     set_config('apify_actor_id', actor_id)
     return jsonify({'ok': True})
+
+
+@scraping_bp.route('/detect-actor', methods=['POST'])
+def detect_actor():
+    """Detecta el actor de Google Maps desde el historial de runs de Apify"""
+    import requests as req
+    token = get_config('apify_token')
+    if not token:
+        return jsonify({'error': 'Token no configurado'})
+    
+    headers = {'Authorization': f'Bearer {token}'}
+    
+    try:
+        # Buscar en runs recientes para detectar el actor usado
+        r = req.get('https://api.apify.com/v2/actor-runs?limit=10', headers=headers, timeout=5)
+        if r.status_code == 200:
+            runs = r.json().get('data', {}).get('items', [])
+            if runs:
+                # Tomar el actor del run mas reciente
+                actor_id = runs[0].get('actId', '')
+                if actor_id:
+                    # Guardar automaticamente
+                    set_config('apify_actor_id', actor_id)
+                    return jsonify({'ok': True, 'actor_id': actor_id})
+        
+        return jsonify({'ok': False, 'error': 'No se encontraron runs previos'})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+
+@scraping_bp.route('/apify-runs', methods=['GET'])
+def get_apify_runs():
+    """Obtiene lista de runs recientes desde Apify"""
+    import requests as req
+    token = get_config('apify_token')
+    if not token:
+        return jsonify({'error': 'Token no configurado'})
+    
+    headers = {'Authorization': f'Bearer {token}'}
+    try:
+        r = req.get('https://api.apify.com/v2/actor-runs?limit=10&desc=1', headers=headers, timeout=10)
+        if r.status_code != 200:
+            return jsonify({'error': f'Error Apify: {r.status_code}'})
+        
+        runs = r.json().get('data', {}).get('items', [])
+        result = []
+        for run in runs:
+            run_id = run.get('id')
+            dataset_id = run.get('defaultDatasetId', '')
+            item_count = 0
+            # Obtener cantidad real de items del dataset
+            if dataset_id:
+                try:
+                    rd = req.get(f'https://api.apify.com/v2/datasets/{dataset_id}', headers=headers, timeout=5)
+                    if rd.status_code == 200:
+                        item_count = rd.json().get('data', {}).get('itemCount', 0)
+                except:
+                    pass
+            result.append({
+                'id': run_id,
+                'status': run.get('status'),
+                'startedAt': run.get('startedAt',''),
+                'itemCount': item_count
+            })
+        return jsonify({'runs': result})
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+
+@scraping_bp.route('/cargar-leads', methods=['POST'])
+def cargar_leads_manual():
+    """Carga leads desde un run especifico de Apify"""
+    import requests as req
+    import re
+    from database import get_db
+    
+    data = request.json or {}
+    run_id = data.get('run_id', '')
+    rubro = data.get('rubro', '')
+    categoria = data.get('categoria', '')
+    descripcion = data.get('descripcion', 'Carga manual')
+    
+    if not run_id or not rubro:
+        return jsonify({'error': 'run_id y rubro son requeridos'}), 400
+    
+    token = get_config('apify_token')
+    if not token:
+        return jsonify({'error': 'Token Apify no configurado'}), 400
+    
+    headers = {'Authorization': f'Bearer {token}'}
+    
+    COMUNAS = ['Cerrillos','Cerro Navia','Conchalí','El Bosque','Estación Central',
+        'Huechuraba','Independencia','La Cisterna','La Florida','La Granja',
+        'La Pintana','La Reina','Las Condes','Lo Barnechea','Lo Espejo',
+        'Lo Prado','Macul','Maipú','Ñuñoa','Peñalolén','Providencia',
+        'Pudahuel','Puente Alto','Quilicura','Quinta Normal','Recoleta',
+        'Renca','San Bernardo','San Joaquín','San Miguel','San Ramón',
+        'Santiago','Vitacura','Buin','Colina','El Monte','Lampa',
+        'Melipilla','Paine','Pirque','Tiltil']
+
+    def extraer_comuna(address):
+        if not address: return ''
+        addr_lower = address.lower()
+        for c in COMUNAS:
+            if c.lower() in addr_lower:
+                return c
+        return ''
+
+    try:
+        r = req.get(
+            f'https://api.apify.com/v2/actor-runs/{run_id}/dataset/items?limit=200',
+            headers=headers, timeout=30
+        )
+        if r.status_code != 200:
+            return jsonify({'error': f'Error descargando dataset: {r.status_code}'}), 400
+        
+        items = r.json()
+        conn = get_db()
+        insertados = 0
+        duplicados = 0
+        sin_telefono = 0
+
+        for item in items:
+            name = (item.get('title') or '').strip()
+            phone_raw = (item.get('phone') or '').strip()
+            phone_raw = re.sub(r'\D', '', phone_raw)
+            addr = item.get('address', '') or ''
+
+            if not name or not phone_raw:
+                sin_telefono += 1
+                continue
+
+            # Validar formato: solo 569XXXXXXXX
+            if re.match(r'^9\d{8}$', phone_raw):
+                phone = '56' + phone_raw
+            elif re.match(r'^569\d{8}$', phone_raw):
+                phone = phone_raw
+            else:
+                sin_telefono += 1
+                continue
+
+            # Verificar duplicado
+            existing = conn.execute('SELECT id FROM leads WHERE phone=?', (phone,)).fetchone()
+            if existing:
+                duplicados += 1
+                continue
+
+            comuna = extraer_comuna(addr)
+
+            cur = conn.execute(
+                'INSERT INTO leads (name, phone, comuna, rubro, categoria) VALUES (?, ?, ?, ?, ?)',
+                (name, phone, comuna, rubro, categoria)
+            )
+            lead_id = cur.lastrowid
+            conn.execute(
+                "INSERT INTO lead_status (lead_id, status, updated_at) VALUES (?, 'no_enviado', datetime('now','localtime'))",
+                (lead_id,)
+            )
+            insertados += 1
+
+        # Registrar en historial
+        conn.execute("""
+            INSERT INTO scraping_jobs (run_id, tipo, rubro, maps_url, status, leads_found, leads_inserted, leads_skipped, finished_at)
+            VALUES (?, 'manual', ?, ?, 'succeeded', ?, ?, ?, datetime('now','localtime'))
+        """, (run_id, rubro, descripcion, len(items), insertados, duplicados + sin_telefono))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'ok': True,
+            'insertados': insertados,
+            'duplicados': duplicados,
+            'sin_telefono': sin_telefono,
+            'total': len(items)
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

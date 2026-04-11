@@ -163,6 +163,9 @@ def index_test11():
 @app.route('/test12')
 def index_test12():
     return render_template('dashboard_test12.html')
+@app.route('/test13')
+def index_test13():
+    return render_template('dashboard_test13.html')
 
 
 if __name__ == '__main__':
