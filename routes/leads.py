@@ -16,8 +16,8 @@ def get_leads():
     search = request.args.get('q')
 
     query = '''
-        SELECT l.id, l.name, l.phone, l.comuna, l.rubro, l.categoria,
-               l.created_at, l.updated_at,
+        SELECT l.id, l.name, l.phone, l.comuna, l.rubro, l.categoria, l.address,
+               l.fast_ok, l.created_at, l.updated_at,
                ls.status, ls.notes, ls.optout_motivo,
                m.sent_at, m.opened_at,
                seg24.sent_at as seguimiento_24h_fecha,
@@ -84,14 +84,48 @@ def update_status(lead_id):
     data = request.json
     status = data.get('status')
     notes = data.get('notes')
+    optout_motivo = data.get('optout_motivo', '')
     if not status:
         return jsonify({'error': 'status required'}), 400
     conn = get_db()
-    lead = conn.execute('SELECT phone FROM leads WHERE id = ?', (lead_id,)).fetchone()
+    lead = conn.execute('SELECT id, name, phone, rubro, comuna FROM leads WHERE id = ?', (lead_id,)).fetchone()
     conn.close()
     if not lead:
         return jsonify({'error': 'lead not found'}), 404
-    update_lead_status(lead['phone'], status, notes)
+    lead = dict(lead)
+    update_lead_status(lead['phone'], status, notes, optout_motivo=optout_motivo)
+
+    # Enviar WhatsApp automatico cuando opt-out motivo = Tiene MP
+    if (status in ('opt_out', 'no_interesado')) and optout_motivo == 'Tiene MP':
+        import threading
+        def _send_tiene_mp():
+            from whatsapp.sender_desktop import get_sender
+            from database import get_db as _db
+            msg = (
+                "Qué excelente noticia que ya seas parte de Mercado Pago. "
+                "Te dejo mi contacto: si en el futuro conoces a algún colega o amigo que necesite "
+                "sumar una máquina a su negocio, ¡feliz de ayudarle con los mejores beneficios! "
+                "Además, cuenta con mi apoyo desde ya. Si alguna vez necesitas orientación o ayuda "
+                "con tus equipos o tu cuenta, no dudes en escribirme. "
+                "¡Mucho éxito y excelentes ventas!"
+            )
+            sender = get_sender()
+            if not sender._is_logged_in:
+                sender.start()
+            result = sender.send_message(lead['phone'], msg, None)
+            conn2 = _db()
+            conn2.execute('''
+                INSERT INTO messages (lead_id, phone, message_type, status, sent_at, rubro, comuna)
+                VALUES (?, ?, 'tiene_mp', ?, datetime('now','localtime'), ?, ?)
+            ''', (lead_id, lead['phone'],
+                  'sent' if result['success'] else 'failed',
+                  lead.get('rubro',''), lead.get('comuna','')))
+            conn2.commit()
+            conn2.close()
+        t = threading.Thread(target=_send_tiene_mp)
+        t.daemon = True
+        t.start()
+
     return jsonify({'ok': True})
 
 
@@ -170,12 +204,25 @@ def send_seguimiento_manual(lead_id):
             sender.start()
         result = sender.send_message(lead['phone'], mensaje, None)
         conn2 = _db()
+        status_msg = 'sent' if result['success'] else 'failed'
         conn2.execute('''
             INSERT INTO messages (lead_id, phone, message_type, status, sent_at, rubro, comuna)
             VALUES (?, ?, ?, ?, datetime('now','localtime'), ?, ?)
         ''', (lead_id, lead['phone'], f'seguimiento_{tipo}',
-               'sent' if result['success'] else 'failed',
+               status_msg,
                lead.get('rubro',''), lead.get('comuna','')))
+        # Actualizar columna seguimiento en leads para mostrar icono
+        if result['success']:
+            if tipo == '24h':
+                conn2.execute(
+                    "UPDATE leads SET seguimiento_24h=1, seguimiento_24h_fecha=datetime('now','localtime') WHERE id=?",
+                    (lead_id,)
+                )
+            elif tipo == '72h':
+                conn2.execute(
+                    "UPDATE leads SET seguimiento_72h=1, seguimiento_72h_fecha=datetime('now','localtime') WHERE id=?",
+                    (lead_id,)
+                )
         conn2.commit()
         conn2.close()
 
@@ -375,3 +422,127 @@ def get_rubros_personalizados():
     conn.close()
     rubros = [r['key'].replace('mensaje_rubro_', '') for r in rows]
     return jsonify({'rubros': rubros})
+
+
+@leads_bp.route('/seguimientos-pendientes', methods=['GET'])
+def get_seguimientos_pendientes():
+    """Retorna leads con seguimiento 24h y 72h pendientes"""
+    conn = get_db()
+    
+    # Leads enviados hace mas de 24h sin seguimiento 24h
+    pendientes_24h = conn.execute("""
+        SELECT l.id, l.name, l.phone, l.rubro,
+               CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) as horas
+        FROM leads l
+        JOIN lead_status ls ON l.id = ls.lead_id
+        JOIN messages m ON l.id = m.lead_id AND m.message_type = 'prospecting' AND m.status = 'sent'
+        LEFT JOIN messages m24 ON l.id = m24.lead_id AND m24.message_type = 'seguimiento_24h'
+        WHERE ls.status = 'enviado'
+        AND m24.id IS NULL
+        AND CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) >= 24
+        AND CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) < 72
+        GROUP BY l.id
+        ORDER BY horas DESC
+        LIMIT 10
+    """).fetchall()
+
+    # Leads enviados hace mas de 72h sin seguimiento 72h
+    pendientes_72h = conn.execute("""
+        SELECT l.id, l.name, l.phone, l.rubro,
+               CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) as horas
+        FROM leads l
+        JOIN lead_status ls ON l.id = ls.lead_id
+        JOIN messages m ON l.id = m.lead_id AND m.message_type = 'prospecting' AND m.status = 'sent'
+        LEFT JOIN messages m72 ON l.id = m72.lead_id AND m72.message_type = 'seguimiento_72h'
+        WHERE ls.status = 'enviado'
+        AND m72.id IS NULL
+        AND CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) >= 72
+        GROUP BY l.id
+        ORDER BY horas DESC
+        LIMIT 10
+    """).fetchall()
+
+    conn.close()
+    return jsonify({
+        'pendientes_24h': [dict(r) for r in pendientes_24h],
+        'pendientes_72h': [dict(r) for r in pendientes_72h]
+    })
+
+
+@leads_bp.route('/<int:lead_id>/seguimiento-tipo', methods=['POST'])
+def send_seguimiento_tipo(lead_id):
+    """Envia mensaje de seguimiento especifico 24h o 72h"""
+    data = request.json or {}
+    tipo = data.get('tipo', '24h')
+    
+    conn = get_db()
+    lead = conn.execute(
+        'SELECT id, name, phone, rubro, comuna FROM leads WHERE id=?', (lead_id,)
+    ).fetchone()
+    conn.close()
+    
+    if not lead:
+        return jsonify({'error': 'Lead no encontrado'}), 404
+    
+    lead = dict(lead)
+    
+    MSG_24H = "Hola {nombre}! Como estas? Te escribo rapidito para saber si pudiste darle una mirada a la imagen que te mande el otro dia. Me encantaria que comparemos juntos. Avisame si tienes un tiempo para llamarte, la idea es ver de forma transparente si realmente te conviene el cambio. Un abrazo"
+    MSG_72H = "Hola {nombre}! Te escribo cortito para no quitarte tiempo ni ser invasivo. Si mas adelante te animas a probar, me avisas y lo revisamos. Que tengas un lindo dia. Saludos"
+    
+    mensaje = (MSG_24H if tipo == '24h' else MSG_72H).format(nombre=lead['name'])
+    
+    import threading
+    def _send():
+        from whatsapp.sender_desktop import get_sender
+        from database import get_db as _db
+        sender = get_sender()
+        if not sender._is_logged_in:
+            sender.start()
+        result = sender.send_message(lead['phone'], mensaje, None)
+        conn2 = _db()
+        conn2.execute("""
+            INSERT INTO messages (lead_id, phone, message_type, status, sent_at, rubro, comuna)
+            VALUES (?, ?, ?, ?, datetime('now','localtime'), ?, ?)
+        """, (lead_id, lead['phone'], f'seguimiento_{tipo}',
+              'sent' if result['success'] else 'failed',
+              lead.get('rubro',''), lead.get('comuna','')))
+        if result['success']:
+            if tipo == '24h':
+                conn2.execute(
+                    "UPDATE leads SET seguimiento_24h=1, seguimiento_24h_fecha=datetime('now','localtime') WHERE id=?",
+                    (lead_id,)
+                )
+            else:
+                conn2.execute(
+                    "UPDATE leads SET seguimiento_72h=1, seguimiento_72h_fecha=datetime('now','localtime') WHERE id=?",
+                    (lead_id,)
+                )
+        conn2.commit()
+        conn2.close()
+    
+    t = threading.Thread(target=_send)
+    t.daemon = True
+    t.start()
+    
+    return jsonify({'ok': True, 'tipo': tipo})
+
+
+@leads_bp.route('/<int:lead_id>/address', methods=['GET'])
+def get_lead_address(lead_id):
+    conn = get_db()
+    lead = conn.execute('SELECT address FROM leads WHERE id=?', (lead_id,)).fetchone()
+    conn.close()
+    if not lead:
+        return jsonify({'address': ''})
+    return jsonify({'address': lead['address'] or ''})
+
+
+@leads_bp.route('/<int:lead_id>/address', methods=['PUT'])
+def update_lead_address(lead_id):
+    data = request.get_json() or {}
+    address = data.get('address', '').strip()
+    conn = get_db()
+    conn.execute('UPDATE leads SET address=? WHERE id=?', (address, lead_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'address': address})

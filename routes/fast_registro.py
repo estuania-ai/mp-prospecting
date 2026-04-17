@@ -27,6 +27,28 @@ def _formatear_telefono(raw: str) -> str:
     return "9" + digits      # siempre anteponer 9 → 9930560400
 
 
+FALLBACK_ADDRESS = "Parque Ibérico 1474, Puente Alto"
+
+def _limpiar_direccion(raw: str) -> str:
+    """Extrae solo 'Calle NNN' de una dirección completa de Google Maps.
+
+    Ejemplos:
+      'Araucaria 666, 8180740 Puente Alto, Región Metropolitana, Chile' → 'Araucaria 666'
+      'Parque Ibérico 1474, Puente Alto, Chile'                         → 'Parque Ibérico 1474'
+    """
+    import re as _re
+    if not raw:
+        return FALLBACK_ADDRESS
+    # Tomar solo la primera parte antes de la primera coma
+    parte = raw.split(",")[0].strip()
+    # Eliminar códigos postales (secuencias de 5-7 dígitos solos)
+    parte = _re.sub(r'\b\d{5,7}\b', '', parte).strip()
+    # Si quedó vacío o muy corto, usar fallback
+    if len(parte) < 5:
+        return FALLBACK_ADDRESS
+    return parte
+
+
 def _session_exists() -> bool:
     return os.path.isfile(SESSION_FILE) and os.path.getsize(SESSION_FILE) > 100
 
@@ -106,9 +128,8 @@ async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict
             # ── Sección Comercio ──────────────────────────────────────────────
             await page.get_by_label("Nombre del comercio").fill(nombre, timeout=8_000)
 
-            # Dirección con autocompletado
-            if not direccion:
-                direccion = "Parque Ibérico 1474"
+            # Dirección: solo calle + número (sin código postal, región, etc.)
+            direccion = _limpiar_direccion(direccion)
 
             # Buscar input de dirección por varios selectores
             dir_input = None
@@ -149,12 +170,31 @@ async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict
                 except Exception as e:
                     logger.debug(f"[Fast] {sel}: {e}")
 
+            # Si no hubo sugerencia, reintentar con fallback
+            if not suggestion_selected:
+                logger.warning(f"[Fast] Sin sugerencia para '{direccion}', usando fallback...")
+                await dir_input.click(click_count=3, timeout=3_000)
+                await dir_input.fill("", timeout=3_000)
+                await asyncio.sleep(0.3)
+                await dir_input.press_sequentially(FALLBACK_ADDRESS, delay=120)
+                await asyncio.sleep(1.5)
+                for sel in ['[role="option"]', '[role="listbox"] li', '.pac-item']:
+                    try:
+                        sug = page.locator(sel).first
+                        await sug.wait_for(state="visible", timeout=4_000)
+                        box = await sug.bounding_box()
+                        if box and box['width'] > 0:
+                            await page.mouse.click(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+                            suggestion_selected = True
+                            logger.info(f"[Fast] Dirección fallback clickeada via '{sel}'")
+                            break
+                    except Exception:
+                        continue
+
             # Tab para avanzar al siguiente campo (como hace el usuario)
             await asyncio.sleep(0.5)
             await dir_input.press("Tab")
             await asyncio.sleep(0.5)
-            if not suggestion_selected:
-                logger.warning("[Fast] No se encontró sugerencia de dirección")
 
             await page.screenshot(path="logs/fast_02c_after_address.png")
 
@@ -477,10 +517,14 @@ def registrar_en_fast(lead_id):
 
     try:
         conn = get_db()
+        # Marcar fast_ok en leads sin alterar el estado del pipeline
+        if result["ok"]:
+            conn.execute("UPDATE leads SET fast_ok=1 WHERE id=?", (lead_id,))
+        # Solo guardar nota informativa, sin cambiar status
         conn.execute(
-            "INSERT INTO lead_status (lead_id, status, notes, updated_at) VALUES (?, ?, ?, datetime('now'))"
+            "INSERT INTO lead_status (lead_id, status, notes, updated_at) VALUES (?, 'no_enviado', ?, datetime('now'))"
             " ON CONFLICT(lead_id) DO UPDATE SET notes = excluded.notes, updated_at = excluded.updated_at",
-            (lead_id, "fast_registrado" if result["ok"] else "fast_error", result["mensaje"])
+            (lead_id, result["mensaje"])
         )
         conn.commit()
     except Exception as e:
