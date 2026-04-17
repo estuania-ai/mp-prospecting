@@ -1,0 +1,494 @@
+"""
+Rutas Flask: Fast Registro
+Registra comercios en MercadoPago Fast usando Playwright.
+Requiere sesion previa guardada con fast_login_manual.py
+"""
+from flask import Blueprint, request, jsonify
+from database import get_db
+import os
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
+
+fast_bp = Blueprint('fast', __name__)
+
+MP_EMAIL    = os.getenv("MP_FAST_EMAIL", "")
+MP_PASSWORD = os.getenv("MP_FAST_PASSWORD", "")
+FAST_URL    = "https://www.mercadopago.cl/point-fast/home"
+SESSION_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'fast_session.json')
+
+
+def _formatear_telefono(raw: str) -> str:
+    """Antepone 9 al teléfono de la BD después de eliminar el prefijo 56."""
+    digits = "".join(c for c in raw if c.isdigit())
+    if digits.startswith("56"):
+        digits = digits[2:]  # quitar código de país → 930560400
+    return "9" + digits      # siempre anteponer 9 → 9930560400
+
+
+def _session_exists() -> bool:
+    return os.path.isfile(SESSION_FILE) and os.path.getsize(SESSION_FILE) > 100
+
+
+async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict:
+    from playwright.async_api import async_playwright, TimeoutError as PWTimeout
+
+    if not _session_exists():
+        return {
+            "ok": False,
+            "mensaje": "Sin sesion guardada. Ejecuta: python fast_login_manual.py"
+        }
+
+    telefono_fmt = _formatear_telefono(telefono)
+    nombre_parts = nombre.strip().split(" ", 1)
+    first = nombre_parts[0]
+    last  = nombre_parts[1] if len(nombre_parts) > 1 else first
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=False,
+            slow_mo=200,
+            args=["--disable-blink-features=AutomationControlled", "--start-minimized"],
+        )
+        context = await browser.new_context(
+            storage_state=SESSION_FILE,
+            viewport={"width": 1280, "height": 800},
+            locale="es-CL",
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+        )
+        page = await context.new_page()
+
+        try:
+            await page.goto(FAST_URL, timeout=30_000)
+            await page.wait_for_load_state("networkidle", timeout=15_000)
+            await page.screenshot(path="logs/fast_01_home.png")
+            logger.info(f"[Fast] URL tras goto: {page.url}")
+
+            # Verificar que estamos en point-fast (no en login ni en otra sección)
+            if "login" in page.url or "identificacion" in page.url:
+                await browser.close()
+                os.remove(SESSION_FILE)
+                return {"ok": False, "mensaje": "Sesion expirada. Ejecuta python fast_login_manual.py para renovarla."}
+
+            if "point-fast" not in page.url:
+                await browser.close()
+                return {
+                    "ok": False,
+                    "mensaje": f"Sesion incorrecta o sin permisos Fast. URL actual: {page.url}. "
+                               "Ejecuta python fast_login_manual.py desde la cuenta correcta."
+                }
+
+            # Clic en "Registrar comercio"
+            await page.click('text=Registrar comercio', timeout=10_000)
+            await page.wait_for_load_state("networkidle", timeout=10_000)
+            await page.screenshot(path="logs/fast_02_form.png")
+            logger.info(f"[Fast] URL tras Registrar comercio: {page.url}")
+
+            # ── Sección Contacto ──────────────────────────────────────────────
+            # "Nombre y apellido" — usa el nombre del negocio completo
+            await page.get_by_label("Nombre y apellido").fill(nombre, timeout=8_000)
+
+            # Teléfono — dígitos completos (9XXXXXXXXX), escritura dígito a dígito
+            phone_input = page.locator('input[type="tel"]').first
+            if await phone_input.count() == 0:
+                phone_input = page.locator('input[id*="phone"], input[name*="phone"]').first
+            if await phone_input.count() == 0:
+                phone_input = page.locator('[role="combobox"] ~ input').first
+            await phone_input.click(timeout=8_000)
+            await page.keyboard.press("Control+a")
+            await phone_input.press_sequentially(telefono_fmt, delay=80)
+
+            # ── Sección Comercio ──────────────────────────────────────────────
+            await page.get_by_label("Nombre del comercio").fill(nombre, timeout=8_000)
+
+            # Dirección con autocompletado
+            if not direccion:
+                direccion = "Parque Ibérico 1474"
+
+            # Buscar input de dirección por varios selectores
+            dir_input = None
+            for dir_sel in ['#address', 'input[name*="address" i]', 'input[placeholder*="direcci" i]',
+                            'input[autocomplete*="address" i]', 'input[id*="address" i]']:
+                loc = page.locator(dir_sel).first
+                if await loc.count() > 0:
+                    dir_input = loc
+                    break
+            if dir_input is None:
+                # Último recurso: tercer input visible del formulario
+                dir_input = page.locator('input[type="text"]').nth(2)
+
+            # Scroll al campo de dirección antes de escribir
+            await dir_input.scroll_into_view_if_needed()
+            await dir_input.click(timeout=5_000)
+            await dir_input.fill("", timeout=3_000)
+            await asyncio.sleep(0.3)
+            # Escribir lento para disparar eventos del autocomplete de Google Maps
+            await dir_input.press_sequentially(direccion, delay=120)
+            # Esperar hasta 6 segundos a que aparezca la primera opción del dropdown
+            await asyncio.sleep(1.0)
+            await page.screenshot(path="logs/fast_02b_address.png")
+
+            # Esperar y seleccionar primera sugerencia del autocomplete
+            suggestion_selected = False
+            for sel in ['[role="option"]', '[role="listbox"] li', '.pac-item',
+                        '[class*="suggestion"]', '[class*="autocomplete"]']:
+                try:
+                    sug = page.locator(sel).first
+                    await sug.wait_for(state="visible", timeout=5_000)
+                    box = await sug.bounding_box()
+                    if box and box['width'] > 0:
+                        await page.mouse.click(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+                        suggestion_selected = True
+                        logger.info(f"[Fast] Dirección sugerencia clickeada via '{sel}'")
+                        break
+                except Exception as e:
+                    logger.debug(f"[Fast] {sel}: {e}")
+
+            # Tab para avanzar al siguiente campo (como hace el usuario)
+            await asyncio.sleep(0.5)
+            await dir_input.press("Tab")
+            await asyncio.sleep(0.5)
+            if not suggestion_selected:
+                logger.warning("[Fast] No se encontró sugerencia de dirección")
+
+            await page.screenshot(path="logs/fast_02c_after_address.png")
+
+            import re as _re
+
+            async def _click_element(loc, label):
+                """Scroll + mouse click en el área de contenido (x > 250, fuera del sidebar)."""
+                try:
+                    await loc.scroll_into_view_if_needed(timeout=4_000)
+                    box = await loc.bounding_box()
+                    if box and box['x'] > 250:  # ignorar elementos del sidebar izquierdo
+                        await page.mouse.click(
+                            box['x'] + box['width'] / 2,
+                            box['y'] + box['height'] / 2
+                        )
+                        logger.info(f"[Fast] '{label}' click en ({box['x']+box['width']/2:.0f},{box['y']+box['height']/2:.0f})")
+                        return True
+                    elif box:
+                        logger.debug(f"[Fast] '{label}' ignorado — en sidebar (x={box['x']:.0f})")
+                except Exception as e:
+                    logger.debug(f"[Fast] _click_element '{label}': {e}")
+                return False
+
+            async def click_card(card_text, section=None):
+                """Clickea un card del formulario usando locators Playwright (evita stale coords)."""
+                norm_text = _re.sub(r'[\u00ae\u2122\u00a9\s]+', ' ', card_text).strip()
+                # Patrón exacto — re.IGNORECASE es válido en JS (Playwright lo convierte a /i)
+                pattern = _re.compile(
+                    r'^[\s\u00ae\u2122\u00a9]*' + _re.escape(norm_text) + r'[\s\u00ae\u2122\u00a9]*$',
+                    _re.IGNORECASE
+                )
+
+                # Estrategia 1: coincidencia exacta (con tolerancia de símbolos)
+                for selector in ['button', 'td', 'li', '[role="gridcell"]']:
+                    locs = page.locator(selector).filter(has_text=pattern)
+                    n = await locs.count()
+                    for i in range(min(n, 8)):
+                        loc = locs.nth(i)
+                        try:
+                            box = await loc.bounding_box()
+                            if box and box['x'] > 250 and box['width'] > 40 and box['height'] > 15:
+                                await loc.scroll_into_view_if_needed()
+                                await asyncio.sleep(0.4)
+                                await loc.click(timeout=5_000)
+                                logger.info(f"[Fast] '{card_text}' click OK ({selector}[{i}])")
+                                return True
+                        except Exception as e:
+                            logger.debug(f"[Fast] click_card '{card_text}' {selector}[{i}]: {e}")
+
+                # Estrategia 2: coincidencia parcial (para Getnet con logo/SVG)
+                partial = _re.compile(_re.escape(norm_text), _re.IGNORECASE)
+                for selector in ['button', 'td', 'li']:
+                    locs = page.locator(selector).filter(has_text=partial)
+                    n = await locs.count()
+                    for i in range(min(n, 8)):
+                        loc = locs.nth(i)
+                        try:
+                            box = await loc.bounding_box()
+                            if box and box['x'] > 250 and box['width'] > 40 and box['height'] > 15:
+                                await loc.scroll_into_view_if_needed()
+                                await asyncio.sleep(0.4)
+                                await loc.click(timeout=5_000)
+                                logger.info(f"[Fast] '{card_text}' click parcial OK ({selector}[{i}])")
+                                return True
+                        except Exception as e:
+                            logger.debug(f"[Fast] click_card parcial '{card_text}' {selector}[{i}]: {e}")
+
+                logger.warning(f"[Fast] No se pudo marcar '{card_text}'")
+                return False
+
+            # ── Etapa de la negociación: Calificación PRIMERO ────────────────
+            await click_card("Calificación")
+            await asyncio.sleep(1.5)
+
+            # ── Motivo: andes-dropdown__trigger → Considerando propuesta → Confirmar
+            try:
+                # El trigger del Motivo está dentro del .andes-dropdown que tiene label "Motivo:"
+                motivo_coords = await page.evaluate("""
+                    () => {
+                        const label = [...document.querySelectorAll('span.andes-dropdown__label, label')]
+                            .find(e => (e.innerText||'').trim().startsWith('Motivo'));
+                        if (!label) return null;
+                        const dropdown = label.closest('.andes-dropdown');
+                        if (!dropdown) return null;
+                        const trigger = dropdown.querySelector('.andes-dropdown__trigger, button');
+                        if (!trigger) return null;
+                        trigger.scrollIntoView({block: 'center', behavior: 'instant'});
+                        const r = trigger.getBoundingClientRect();
+                        return {x: r.left + r.width/2, y: r.top + r.height/2};
+                    }
+                """)
+                if motivo_coords:
+                    await page.mouse.click(motivo_coords['x'], motivo_coords['y'])
+                    logger.info(f"[Fast] Motivo dropdown click ({motivo_coords['x']:.0f},{motivo_coords['y']:.0f})")
+                else:
+                    # Fallback: segundo andes-dropdown__trigger (primero = Tipo de comercio)
+                    triggers = page.locator('button.andes-dropdown__trigger')
+                    if await triggers.count() >= 2:
+                        loc = triggers.nth(1)
+                        await loc.scroll_into_view_if_needed()
+                        await asyncio.sleep(0.3)
+                        await loc.click(timeout=5_000)
+                        logger.info("[Fast] Motivo dropdown click (fallback nth 1)")
+
+                await asyncio.sleep(1.2)
+
+                # Seleccionar "Considerando propuesta" en el panel Andes
+                checked = False
+                for sel in [
+                    '.andes-list__item:has-text("Considerando propuesta")',
+                    'li.andes-list__item:has-text("Considerando propuesta")',
+                    'li:has-text("Considerando propuesta")',
+                    '[role="option"]:has-text("Considerando propuesta")',
+                    'text=Considerando propuesta',
+                ]:
+                    try:
+                        opt = page.locator(sel).first
+                        if await opt.count() > 0 and await opt.is_visible(timeout=2_000):
+                            await opt.scroll_into_view_if_needed()
+                            await asyncio.sleep(0.3)
+                            await opt.click(timeout=4_000)
+                            checked = True
+                            logger.info(f"[Fast] 'Considerando propuesta' OK via '{sel}'")
+                            break
+                    except Exception:
+                        continue
+
+                if not checked:
+                    logger.warning("[Fast] 'Considerando propuesta' NO encontrado")
+
+                await asyncio.sleep(0.5)
+                for btn_sel in ['button.andes-button:has-text("Confirmar")', 'button:has-text("Confirmar")']:
+                    try:
+                        btn = page.locator(btn_sel).first
+                        if await btn.count() > 0 and await btn.is_visible(timeout=2_000):
+                            await btn.click(timeout=5_000)
+                            logger.info(f"[Fast] Confirmar OK")
+                            break
+                    except Exception:
+                        continue
+                await asyncio.sleep(0.8)
+            except Exception as e:
+                logger.warning(f"[Fast] Error en Motivo: {e}")
+
+            # ── Forma de pago: Crédito y Débito ───────────────────────────────
+            await click_card("Crédito")
+            await asyncio.sleep(0.5)
+            await click_card("Débito")
+            await asyncio.sleep(0.5)
+
+            # ── Productos de interés: Point ───────────────────────────────────
+            await click_card("Point")
+            await asyncio.sleep(0.5)
+
+            # ── Competencia: Getnet ───────────────────────────────────────────
+            # Getnet tiene innerText vacío (logo CSS), no se puede buscar por texto.
+            # Buscamos el primer .multiple-selection-button debajo del heading "Competencia".
+            getnet_clicked = await page.evaluate("""
+                () => {
+                    const headings = [...document.querySelectorAll('span, p, div, h3, h4, label')];
+                    const heading = headings.find(e =>
+                        e.childElementCount === 0 &&
+                        (e.innerText || e.textContent || '').trim() === 'Competencia'
+                    );
+                    if (!heading) return 'no-heading';
+                    const headingBottom = heading.getBoundingClientRect().bottom;
+                    const btns = [...document.querySelectorAll('.multiple-selection-button')].filter(b => {
+                        const r = b.getBoundingClientRect();
+                        return r.top >= headingBottom - 15 && r.left > 250 && r.width > 40;
+                    });
+                    if (!btns.length) return 'no-btns';
+                    const btn = btns[0];
+                    btn.scrollIntoView({block: 'center', behavior: 'instant'});
+                    const r = btn.getBoundingClientRect();
+                    return {x: r.left + r.width / 2, y: r.top + r.height / 2};
+                }
+            """)
+            await asyncio.sleep(0.4)
+            if isinstance(getnet_clicked, dict) and 'x' in getnet_clicked:
+                await page.mouse.click(getnet_clicked['x'], getnet_clicked['y'])
+                logger.info(f"[Fast] Getnet click ({getnet_clicked['x']:.0f},{getnet_clicked['y']:.0f})")
+            else:
+                logger.warning(f"[Fast] Getnet no encontrado: {getnet_clicked}")
+
+            # ── Registrar visita ──────────────────────────────────────────────
+            await page.screenshot(path="logs/fast_03_before_submit.png", full_page=True)
+
+            # Scroll al fondo para asegurar que el botón sea visible
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await asyncio.sleep(0.8)
+
+            # Intentar con varios selectores por si el texto varía
+            submitted = False
+            for btn_name in ["Registrar visita", "Registrar", "Guardar", "Confirmar visita"]:
+                try:
+                    btn = page.get_by_role("button", name=btn_name)
+                    if await btn.count() > 0 and await btn.is_visible(timeout=2_000):
+                        await btn.click(timeout=8_000)
+                        submitted = True
+                        logger.info(f"[Fast] Botón '{btn_name}' clickeado")
+                        break
+                except Exception:
+                    continue
+
+            if not submitted:
+                # Fallback: buscar botón submit
+                try:
+                    btn = page.locator('button[type="submit"]').last
+                    if await btn.count() > 0:
+                        await btn.click(timeout=8_000)
+                        submitted = True
+                except Exception:
+                    pass
+
+            if not submitted:
+                await page.screenshot(path="logs/fast_error_submit.png", full_page=True)
+                await browser.close()
+                return {"ok": False, "mensaje": "No se encontró el botón Registrar visita. Ver fast_error_submit.png"}
+
+            # Esperar hasta 10 segundos a que la página cambie o aparezca mensaje de éxito
+            submit_url = page.url
+            success = False
+            for tick in range(20):
+                await asyncio.sleep(0.5)
+                current_url = page.url
+                if current_url != submit_url:
+                    success = True
+                    logger.info(f"[Fast] Redirigido a: {current_url}")
+                    break
+                try:
+                    body = await page.evaluate("document.body.innerText")
+                    body_l = body.lower()
+                    if tick == 3:  # log del body a los 1.5s para diagnóstico
+                        logger.info(f"[Fast] Body post-submit (1.5s): {body[:300]!r}")
+                    if any(k in body_l for k in ["registrado con éxito", "visita registrada",
+                                                  "¡listo", "registro exitoso", "fue registrada",
+                                                  "gracias", "comercio registrado"]):
+                        success = True
+                        logger.info("[Fast] Texto de éxito detectado")
+                        break
+                    if "este campo es obligatorio" in body_l:
+                        logger.warning("[Fast] Campo obligatorio vacío")
+                        break
+                except Exception:
+                    pass
+
+            await page.screenshot(path="logs/fast_debug.png", full_page=True)
+            logger.info(f"[Fast] Post-submit URL: {page.url}, success={success}")
+
+            await browser.close()
+            if success:
+                return {"ok": True, "mensaje": f"'{nombre}' registrado exitosamente en Fast"}
+            return {"ok": False, "mensaje": f"Formulario enviado pero no se confirmó éxito — revisar fast_debug.png"}
+
+        except PWTimeout as e:
+            logger.error(f"[Fast] Timeout: {e}")
+            try:
+                await page.screenshot(path="logs/fast_error.png", full_page=True)
+            except Exception:
+                pass
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            return {"ok": False, "mensaje": f"Timeout: {str(e)[:120]}"}
+
+        except Exception as e:
+            logger.error(f"[Fast] Error: {e}", exc_info=True)
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            return {"ok": False, "mensaje": f"Error: {str(e)[:200]}"}
+
+
+@fast_bp.route('/<int:lead_id>/registrar-fast', methods=['POST'])
+def registrar_en_fast(lead_id):
+    if not MP_EMAIL or not MP_PASSWORD:
+        return jsonify({"ok": False, "mensaje": "Faltan MP_FAST_EMAIL o MP_FAST_PASSWORD en .env"}), 500
+
+    data      = request.get_json() or {}
+    nombre    = data.get("nombre", "").strip()
+    telefono  = data.get("telefono", "").strip()
+    direccion = data.get("direccion", "").strip()
+
+    if not nombre or not telefono:
+        return jsonify({"ok": False, "mensaje": "nombre y telefono son obligatorios"}), 400
+
+    try:
+        import threading as _threading
+        result_holder = [None]
+        error_holder  = [None]
+
+        def _run():
+            import asyncio as _asyncio
+            _loop = _asyncio.new_event_loop()
+            _asyncio.set_event_loop(_loop)
+            try:
+                result_holder[0] = _loop.run_until_complete(
+                    _registrar_en_fast(nombre, telefono, direccion)
+                )
+            except Exception as exc:
+                error_holder[0] = exc
+            finally:
+                _loop.close()
+                _asyncio.set_event_loop(None)
+
+        t = _threading.Thread(target=_run, daemon=True)
+        t.start()
+        t.join(timeout=300)
+
+        if error_holder[0] is not None:
+            raise error_holder[0]
+        if result_holder[0] is None:
+            raise RuntimeError("Timeout: la automatización no completó en 5 minutos")
+        result = result_holder[0]
+    except Exception as e:
+        logger.error(f"[Fast] Error en automatización: {e}", exc_info=True)
+        return jsonify({"ok": False, "mensaje": f"Error: {str(e)[:200]}"}), 500
+
+    try:
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO lead_status (lead_id, status, notes, updated_at) VALUES (?, ?, ?, datetime('now'))"
+            " ON CONFLICT(lead_id) DO UPDATE SET notes = excluded.notes, updated_at = excluded.updated_at",
+            (lead_id, "fast_registrado" if result["ok"] else "fast_error", result["mensaje"])
+        )
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"[Fast] No se pudo guardar log en BD: {e}")
+
+    return jsonify({**result, "lead_id": lead_id})
+
+
+@fast_bp.route('/fast-session-status', methods=['GET'])
+def fast_session_status():
+    return jsonify({"session_activa": _session_exists()})
