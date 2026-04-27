@@ -316,6 +316,24 @@ def _migrate_pendiente():
         logger.warning(f"[Migración] Error: {e}")
 
 
+# ── Endpoint temporal para restaurar base de datos ──────────────────
+import os as _os_tmp
+_UPLOAD_SECRET = _os_tmp.environ.get('DB_UPLOAD_SECRET', '')
+
+@app.route('/admin/restore-db', methods=['POST'])
+def restore_db():
+    from flask import request
+    if not _UPLOAD_SECRET or request.headers.get('X-Secret') != _UPLOAD_SECRET:
+        return jsonify({'error': 'unauthorized'}), 401
+    if 'file' not in request.files:
+        return jsonify({'error': 'no file'}), 400
+    f = request.files['file']
+    dest = _os_tmp.path.join(_os_tmp.path.dirname(__file__), 'data', 'prospecting.db')
+    _os_tmp.makedirs(_os_tmp.path.dirname(dest), exist_ok=True)
+    f.save(dest)
+    return jsonify({'ok': True, 'size': _os_tmp.path.getsize(dest)})
+# ────────────────────────────────────────────────────────────────────
+
 if __name__ == '__main__':
     import os as _os
     init_db()
