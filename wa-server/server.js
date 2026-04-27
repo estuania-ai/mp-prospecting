@@ -36,6 +36,11 @@ let webhookUrl   = fs.existsSync(WEBHOOK_FILE) ? fs.readFileSync(WEBHOOK_FILE,'u
 
 const logger = pino({ level: 'silent' });
 
+// ── Health check — ANTES del auth (Railway necesita respuesta 200) ──
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', state: connState, version: '1.0.0' });
+});
+
 // ── Auth middleware ──────────────────────────────────────────────
 function checkApiKey(req, res, next) {
   const key = req.headers['apikey'] || req.headers['x-api-key'] || req.query.apikey;
@@ -104,9 +109,15 @@ async function startSock() {
       sendWebhook({ event: 'CONNECTION_UPDATE', data: { state: 'close' } });
 
       if (code === DisconnectReason.loggedOut) {
-        // Sesión invalidada por WhatsApp → borrar credenciales y pedir QR nuevo
-        console.log('[WA] Sesión cerrada remotamente. Borrando auth y reiniciando...');
-        try { if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true }); } catch(e) {}
+        // Sesión invalidada por WhatsApp → borrar archivos (no el directorio: puede ser un volumen)
+        console.log('[WA] Sesión cerrada remotamente. Limpiando archivos de auth...');
+        try {
+          if (fs.existsSync(AUTH_DIR)) {
+            for (const f of fs.readdirSync(AUTH_DIR)) {
+              fs.rmSync(path.join(AUTH_DIR, f), { recursive: true, force: true });
+            }
+          }
+        } catch(e) { console.error('[WA] Error limpiando auth:', e.message); }
         reconnectCount = 0;
         setTimeout(startSock, 3000);
       } else {
@@ -191,7 +202,11 @@ app.post('/instance/create', async (req, res) => {
 app.delete('/instance/logout/:instance', async (req, res) => {
   try {
     if (sock) { await sock.logout(); sock = null; }
-    if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true });
+    if (fs.existsSync(AUTH_DIR)) {
+      for (const f of fs.readdirSync(AUTH_DIR)) {
+        fs.rmSync(path.join(AUTH_DIR, f), { recursive: true, force: true });
+      }
+    }
     connState = 'close';
     qrBase64  = null;
     res.json({ ok: true });
@@ -256,11 +271,6 @@ app.post('/webhook/set/:instance', (req, res) => {
     if (fs.existsSync(WEBHOOK_FILE)) fs.unlinkSync(WEBHOOK_FILE);
   }
   res.json({ ok: true, webhook: webhookUrl });
-});
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', state: connState, version: '1.0.0' });
 });
 
 // ══════════════════════════════════════════════════════════════════
