@@ -83,6 +83,7 @@ def run_wa_followup() -> dict:
               SELECT et_contact_id FROM wa_messages
               WHERE et_contact_id IS NOT NULL
                 AND message_type = 'followup_email'
+                AND status = 'sent'
           )
         ORDER BY ec.fecha_envio ASC
         LIMIT ?
@@ -110,6 +111,11 @@ def run_wa_followup() -> dict:
         )
 
         result = ev.send_message(phone, message)
+
+        # Número fijo (562, 600, etc.) → saltar sin registrar
+        if result.get('skipped'):
+            logger.info(f"[WA Follow-up] Número no móvil omitido: {phone}")
+            continue
 
         # Guardar en wa_messages
         db = get_db()
