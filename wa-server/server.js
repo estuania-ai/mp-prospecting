@@ -1,17 +1,24 @@
 // PRIMER LOG — si esto no aparece, el archivo no se ejecuta
-process.stdout.write('[WA] Iniciando servidor...\n');
+process.stdout.write('[WA] === ARRANQUE === PID=' + process.pid + '\n');
+process.stdout.write('[WA] Node ' + process.version + ' | CWD=' + process.cwd() + '\n');
+process.stdout.write('[WA] __dirname=' + __dirname + '\n');
 
 /**
  * wa-server: servidor HTTP local compatible con Evolution API.
  */
 
+process.stdout.write('[WA] Cargando módulos...\n');
 const express    = require('express');
+process.stdout.write('[WA] express OK\n');
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+process.stdout.write('[WA] baileys OK\n');
 const QRCode     = require('qrcode');
+process.stdout.write('[WA] qrcode OK\n');
 const pino       = require('pino');
 const fs         = require('fs');
 const path       = require('path');
 const https      = require('https');
+process.stdout.write('[WA] Todos los módulos cargados\n');
 
 const app        = express();
 app.use(express.json());
@@ -41,12 +48,24 @@ app.use(checkApiKey);
 let reconnectCount = 0;
 
 async function startSock() {
+  console.log('[WA] startSock() llamado — cargando auth...');
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const { version } = await fetchLatestBaileysVersion();
+  console.log('[WA] Auth cargado — obteniendo versión Baileys...');
+
+  let version;
+  try {
+    const result = await fetchLatestBaileysVersion();
+    version = result.version;
+    console.log('[WA] Versión Baileys:', version);
+  } catch (e) {
+    version = [2, 3000, 1023767085];  // fallback versión conocida
+    console.warn('[WA] fetchLatestBaileysVersion falló, usando fallback:', version, '—', e.message);
+  }
 
   connState = 'connecting';
   qrBase64  = null;
 
+  console.log('[WA] Creando socket...');
   sock = makeWASocket({
     version,
     auth: state,
@@ -256,8 +275,9 @@ process.on('unhandledRejection', (reason) => {
 // ══════════════════════════════════════════════════════════════════
 // ARRANQUE
 // ══════════════════════════════════════════════════════════════════
+process.stdout.write('[WA] Llamando app.listen en PORT=' + (process.env.PORT || 8080) + '\n');
 app.listen(PORT, () => {
-  console.log(`[WA Server] Corriendo en http://localhost:${PORT}`);
+  console.log(`[WA Server] ✅ Corriendo en http://localhost:${PORT}`);
   console.log(`[WA Server] API Key: ${API_KEY}`);
   // Iniciar conexión WhatsApp automáticamente
   startSock().catch(e => console.error('[WA] Error iniciando:', e.message));
