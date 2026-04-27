@@ -1272,6 +1272,7 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
           <th>Estado</th>
           <th>Seguimiento</th>
           <th onclick="toggleSortFecha()" style="cursor:pointer;user-select:none;white-space:nowrap">Fecha Envío <span id="sortFechaIcon" style="font-size:10px;color:var(--mp-blue)">↕</span></th>
+          <th style="white-space:nowrap">Fuente · Fecha</th>
           <th>Acciones</th>
         </tr>
       </thead>
@@ -3450,6 +3451,13 @@ function renderLeads(leads){
           var d = l.sent_at.substring(0,10).split('-');
           var h = l.sent_at.substring(11,16);
           return d[2]+'-'+d[1]+'-'+d[0]+' '+h;
+        })()}
+      </td>
+      <td style="font-size:10px;color:var(--mp-text-3);white-space:nowrap">
+        ${(function(){
+          var src = (l.source||'google_maps').replace('google_maps','Maps').replace('import','Import').replace('manual','Manual');
+          var fecha = l.created_at ? l.created_at.substring(0,10).split('-').reverse().join('-') : '—';
+          return '<span title="'+src+'">'+src+'</span><br><span>'+fecha+'</span>';
         })()}
       </td>
       <td>

@@ -245,4 +245,14 @@ app.listen(PORT, () => {
   console.log(`[WA Server] API Key: ${API_KEY}`);
   // Iniciar conexión WhatsApp automáticamente
   startSock().catch(e => console.error('[WA] Error iniciando:', e.message));
+
+  // Auto-configurar webhook si está definido en env
+  const autoWebhook = process.env.WA_WEBHOOK_URL;
+  if (autoWebhook) {
+    setTimeout(() => {
+      webhookUrl = autoWebhook;
+      fs.writeFileSync(WEBHOOK_FILE, autoWebhook, 'utf8');
+      console.log(`[WA Server] Webhook auto-configurado: ${autoWebhook}`);
+    }, 3000);
+  }
 });

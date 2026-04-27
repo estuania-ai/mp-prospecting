@@ -17,7 +17,7 @@ def get_leads():
 
     query = '''
         SELECT l.id, l.name, l.phone, l.comuna, l.rubro, l.categoria, l.address,
-               l.fast_ok, l.created_at, l.updated_at,
+               l.fast_ok, l.created_at, l.updated_at, l.source,
                ls.status, ls.notes, ls.optout_motivo,
                m.sent_at, m.opened_at,
                seg24.sent_at as seguimiento_24h_fecha,

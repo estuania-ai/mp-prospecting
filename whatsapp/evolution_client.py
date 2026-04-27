@@ -134,9 +134,20 @@ def _normalize_phone(phone: str) -> str:
     return digits
 
 
+def is_mobile_phone(phone: str) -> bool:
+    """Verifica que sea número móvil chileno (569XXXXXXXX).
+    Filtra fijos (562, 563, etc.) que WhatsApp no acepta."""
+    digits = _normalize_phone(phone)
+    # Número móvil chileno: 569 + 8 dígitos = 11 dígitos totales
+    return digits.startswith('569') and len(digits) == 11
+
+
 def send_text(phone: str, message: str) -> dict:
-    """Envía mensaje de texto plano."""
+    """Envía mensaje de texto plano. Solo números móviles (569XXXXXXXX)."""
     number = _normalize_phone(phone)
+    if not is_mobile_phone(phone):
+        logger.warning(f"[Evolution] Número no móvil ignorado: {number}")
+        return {"ok": False, "phone": number, "error": "not_mobile", "skipped": True}
     try:
         r = requests.post(
             f"{_base_url()}/message/sendText/{_instance()}",
@@ -161,7 +172,10 @@ def send_text(phone: str, message: str) -> dict:
 
 
 def send_image(phone: str, image_url: str, caption: str = "") -> dict:
-    """Envía imagen con caption opcional."""
+    """Envía imagen con caption opcional. Solo números móviles (569XXXXXXXX)."""
+    if not is_mobile_phone(phone):
+        logger.warning(f"[Evolution] Número no móvil ignorado: {phone}")
+        return {"ok": False, "phone": phone, "error": "not_mobile", "skipped": True}
     number = _normalize_phone(phone)
     try:
         r = requests.post(
