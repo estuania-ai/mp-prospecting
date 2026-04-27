@@ -1,17 +1,8 @@
+// PRIMER LOG — si esto no aparece, el archivo no se ejecuta
+process.stdout.write('[WA] Iniciando servidor...\n');
+
 /**
  * wa-server: servidor HTTP local compatible con Evolution API.
- * Usa @whiskeysockets/baileys como motor WhatsApp.
- * Puerto: 8080  |  API Key: definida en WA_API_KEY env var
- *
- * Endpoints expuestos (mismos que usa evolution_client.py):
- *   GET  /instance/connectionState/mp_prospecting
- *   GET  /instance/connect/mp_prospecting          → QR en base64
- *   POST /instance/create                          → crea instancia
- *   DELETE /instance/logout/mp_prospecting
- *   PUT  /instance/restart/mp_prospecting
- *   POST /message/sendText/mp_prospecting
- *   POST /message/sendMedia/mp_prospecting
- *   POST /webhook/set/mp_prospecting
  */
 
 const express    = require('express');
