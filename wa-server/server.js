@@ -89,11 +89,17 @@ async function startSock() {
     if (connection === 'close') {
       connState = 'close';
       const code = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = code !== DisconnectReason.loggedOut;
-      console.log(`[WA] Desconectado (code=${code}). Reconectar: ${shouldReconnect}`);
+      console.log(`[WA] Desconectado (code=${code})`);
       sendWebhook({ event: 'CONNECTION_UPDATE', data: { state: 'close' } });
-      if (shouldReconnect) {
-        // Backoff progresivo: 5s, 15s, 30s, 60s, 60s... para no saturar Railway
+
+      if (code === DisconnectReason.loggedOut) {
+        // Sesión invalidada por WhatsApp → borrar credenciales y pedir QR nuevo
+        console.log('[WA] Sesión cerrada remotamente. Borrando auth y reiniciando...');
+        try { if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true }); } catch(e) {}
+        reconnectCount = 0;
+        setTimeout(startSock, 3000);
+      } else {
+        // Desconexión normal → backoff progresivo
         reconnectCount++;
         const delay = Math.min(5000 * reconnectCount, 60000);
         console.log(`[WA] Reintento ${reconnectCount} en ${delay/1000}s`);
