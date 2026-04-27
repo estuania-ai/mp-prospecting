@@ -220,10 +220,11 @@ def wa_retry_failed():
     from jobs.wa_followup import run_wa_followup
     conn = get_db()
     # Eliminar registros fallidos de números móviles válidos (569XXXXXXXX)
+    # Los teléfonos pueden tener espacios: "+56 9 1234 5678" → comparar sin espacios
     deleted = conn.execute("""
         DELETE FROM wa_messages
         WHERE status = 'failed'
-          AND (phone LIKE '569%' OR phone LIKE '+569%')
+          AND REPLACE(REPLACE(phone, ' ', ''), '+', '') LIKE '569%'
     """).rowcount
     conn.commit()
     conn.close()
