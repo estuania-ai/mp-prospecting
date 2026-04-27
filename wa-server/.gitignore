@@ -1,0 +1,5 @@
+node_modules/
+auth_info/
+*.bat
+*.ps1
+webhook_url.txt

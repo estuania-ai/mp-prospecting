@@ -1,0 +1,248 @@
+/**
+ * wa-server: servidor HTTP local compatible con Evolution API.
+ * Usa @whiskeysockets/baileys como motor WhatsApp.
+ * Puerto: 8080  |  API Key: definida en WA_API_KEY env var
+ *
+ * Endpoints expuestos (mismos que usa evolution_client.py):
+ *   GET  /instance/connectionState/mp_prospecting
+ *   GET  /instance/connect/mp_prospecting          → QR en base64
+ *   POST /instance/create                          → crea instancia
+ *   DELETE /instance/logout/mp_prospecting
+ *   PUT  /instance/restart/mp_prospecting
+ *   POST /message/sendText/mp_prospecting
+ *   POST /message/sendMedia/mp_prospecting
+ *   POST /webhook/set/mp_prospecting
+ */
+
+const express    = require('express');
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const QRCode     = require('qrcode');
+const pino       = require('pino');
+const fs         = require('fs');
+const path       = require('path');
+const https      = require('https');
+
+const app        = express();
+app.use(express.json());
+
+const PORT       = process.env.PORT || 8080;
+const API_KEY    = process.env.WA_API_KEY || 'mp_secret_key';
+const AUTH_DIR   = path.join(__dirname, 'auth_info');
+const WEBHOOK_FILE = path.join(__dirname, 'webhook_url.txt');
+
+let sock         = null;
+let qrBase64     = null;
+let connState    = 'close';  // close | connecting | open
+let webhookUrl   = fs.existsSync(WEBHOOK_FILE) ? fs.readFileSync(WEBHOOK_FILE,'utf8').trim() : null;
+
+const logger = pino({ level: 'silent' });
+
+// ── Auth middleware ──────────────────────────────────────────────
+function checkApiKey(req, res, next) {
+  const key = req.headers['apikey'] || req.headers['x-api-key'] || req.query.apikey;
+  if (key !== API_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+}
+app.use(checkApiKey);
+
+// ── Iniciar WhatsApp ─────────────────────────────────────────────
+async function startSock() {
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const { version } = await fetchLatestBaileysVersion();
+
+  connState = 'connecting';
+  qrBase64  = null;
+
+  sock = makeWASocket({
+    version,
+    auth: state,
+    logger,
+    printQRInTerminal: false,
+    browser: ['Chrome (Linux)', '', ''],
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 60000,
+    keepAliveIntervalMs: 10000,
+  });
+
+  sock.ev.on('creds.update', saveCreds);
+
+  sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
+    if (qr) {
+      qrBase64   = await QRCode.toDataURL(qr);
+      connState  = 'connecting';
+      console.log('[WA] QR listo para escanear');
+      sendWebhook({ event: 'CONNECTION_UPDATE', data: { state: 'connecting' } });
+    }
+
+    if (connection === 'open') {
+      connState = 'open';
+      qrBase64  = null;
+      console.log('[WA] ✅ Conectado!');
+      sendWebhook({ event: 'CONNECTION_UPDATE', data: { state: 'open' } });
+    }
+
+    if (connection === 'close') {
+      connState = 'close';
+      const code = lastDisconnect?.error?.output?.statusCode;
+      const shouldReconnect = code !== DisconnectReason.loggedOut;
+      console.log(`[WA] Desconectado (code=${code}). Reconectar: ${shouldReconnect}`);
+      sendWebhook({ event: 'CONNECTION_UPDATE', data: { state: 'close' } });
+      if (shouldReconnect) {
+        setTimeout(startSock, 3000);
+      }
+    }
+  });
+
+  // Mensajes entrantes → webhook
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
+    for (const msg of messages) {
+      if (msg.key.fromMe) continue;
+      sendWebhook({ event: 'MESSAGES_UPSERT', data: { key: msg.key, message: msg.message } });
+    }
+  });
+
+  // Actualizaciones de estado (delivery, read)
+  sock.ev.on('message-receipt.update', updates => {
+    sendWebhook({ event: 'MESSAGES_UPDATE', data: updates });
+  });
+}
+
+// ── Webhook ──────────────────────────────────────────────────────
+function sendWebhook(payload) {
+  if (!webhookUrl) return;
+  try {
+    const body = Buffer.from(JSON.stringify(payload));
+    const url  = new URL(webhookUrl);
+    const opts = {
+      hostname: url.hostname,
+      port:     url.port || (url.protocol === 'https:' ? 443 : 80),
+      path:     url.pathname,
+      method:   'POST',
+      headers:  { 'Content-Type':'application/json', 'Content-Length': body.length },
+    };
+    const req = (url.protocol === 'https:' ? https : require('http')).request(opts);
+    req.on('error', () => {});
+    req.write(body);
+    req.end();
+  } catch(e) {}
+}
+
+// ── Helpers ──────────────────────────────────────────────────────
+function normalizeJid(phone) {
+  const digits = phone.replace(/\D/g,'');
+  const full   = digits.startsWith('56') ? digits : '56' + digits;
+  return full + '@s.whatsapp.net';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ENDPOINTS
+// ══════════════════════════════════════════════════════════════════
+
+// Estado de conexión
+app.get('/instance/connectionState/:instance', (req, res) => {
+  res.json({ instance: { state: connState } });
+});
+
+// QR code
+app.get('/instance/connect/:instance', (req, res) => {
+  if (connState === 'open') return res.json({ state: 'open', base64: null });
+  if (qrBase64) return res.json({ base64: qrBase64, code: qrBase64 });
+  res.json({ base64: null, message: 'QR no disponible aún. Reintenta en 5 segundos.' });
+});
+
+// Crear instancia (o reiniciar si ya existe)
+app.post('/instance/create', async (req, res) => {
+  if (sock) {
+    try { sock.end(); } catch(e) {}
+    sock = null;
+  }
+  await startSock();
+  res.json({ instance: { instanceName: req.body.instanceName || 'mp_prospecting', state: connState } });
+});
+
+// Logout
+app.delete('/instance/logout/:instance', async (req, res) => {
+  try {
+    if (sock) { await sock.logout(); sock = null; }
+    if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true });
+    connState = 'close';
+    qrBase64  = null;
+    res.json({ ok: true });
+  } catch(e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+// Restart
+app.put('/instance/restart/:instance', async (req, res) => {
+  try {
+    if (sock) { try { sock.end(); } catch(e) {} sock = null; }
+    await startSock();
+    res.json({ ok: true });
+  } catch(e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+// Enviar texto
+app.post('/message/sendText/:instance', async (req, res) => {
+  if (connState !== 'open') return res.status(503).json({ ok: false, error: 'not_connected' });
+  const { number, textMessage, options } = req.body;
+  if (!number || !textMessage?.text) return res.status(400).json({ ok: false, error: 'number y textMessage.text requeridos' });
+
+  try {
+    const jid  = normalizeJid(number);
+    const sent = await sock.sendMessage(jid, { text: textMessage.text });
+    res.json({ key: sent.key, status: 'sent' });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Enviar imagen con caption
+app.post('/message/sendMedia/:instance', async (req, res) => {
+  if (connState !== 'open') return res.status(503).json({ ok: false, error: 'not_connected' });
+  const { number, mediaMessage } = req.body;
+  if (!number) return res.status(400).json({ ok: false, error: 'number requerido' });
+
+  try {
+    const jid = normalizeJid(number);
+    const msg = mediaMessage?.media
+      ? { image: { url: mediaMessage.media }, caption: mediaMessage.caption || '' }
+      : { text: mediaMessage?.caption || '' };
+    const sent = await sock.sendMessage(jid, msg);
+    res.json({ key: sent.key, status: 'sent' });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Configurar webhook
+app.post('/webhook/set/:instance', (req, res) => {
+  const { url, enabled } = req.body;
+  if (enabled && url) {
+    webhookUrl = url;
+    fs.writeFileSync(WEBHOOK_FILE, url, 'utf8');
+    console.log(`[WA] Webhook configurado: ${url}`);
+  } else {
+    webhookUrl = null;
+    if (fs.existsSync(WEBHOOK_FILE)) fs.unlinkSync(WEBHOOK_FILE);
+  }
+  res.json({ ok: true, webhook: webhookUrl });
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', state: connState, version: '1.0.0' });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// ARRANQUE
+// ══════════════════════════════════════════════════════════════════
+app.listen(PORT, () => {
+  console.log(`[WA Server] Corriendo en http://localhost:${PORT}`);
+  console.log(`[WA Server] API Key: ${API_KEY}`);
+  // Iniciar conexión WhatsApp automáticamente
+  startSock().catch(e => console.error('[WA] Error iniciando:', e.message));
+});
