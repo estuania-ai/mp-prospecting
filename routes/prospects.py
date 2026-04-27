@@ -46,13 +46,14 @@ def create_prospect():
             return jsonify({'ok': True, 'id': existing['id'], 'existing': True})
     
     cur = conn.execute("""
-        INSERT INTO prospects (lead_id, name, phone, negocio, rubro, categoria, comuna, competencia, procedencia, notas)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO prospects (lead_id, name, phone, negocio, rubro, categoria, comuna, competencia, procedencia, notas, direccion)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data.get('lead_id'), data.get('name'), data.get('phone'),
         data.get('negocio'), data.get('rubro'), data.get('categoria'),
         data.get('comuna'), data.get('competencia', ''),
-        data.get('procedencia', 'Online'), data.get('notas', '')
+        data.get('procedencia', 'Online'), data.get('notas', ''),
+        data.get('direccion', '')
     ))
     conn.commit()
     prospect_id = cur.lastrowid
@@ -66,11 +67,23 @@ def update_prospect(pid):
     conn = get_db()
     conn.execute("""
         UPDATE prospects SET
-            competencia=?, procedencia=?, notas=?,
+            name=?, phone=?, negocio=?, rubro=?, categoria=?, comuna=?,
+            competencia=?, procedencia=?, notas=?, direccion=?,
             updated_at=datetime('now','localtime')
         WHERE id=?
-    """, (data.get('competencia',''), data.get('procedencia','Online'),
-          data.get('notas',''), pid))
+    """, (
+        data.get('name',''),
+        data.get('phone',''),
+        data.get('negocio',''),
+        data.get('rubro',''),
+        data.get('categoria',''),
+        data.get('comuna',''),
+        data.get('competencia',''),
+        data.get('procedencia','Online'),
+        data.get('notas',''),
+        data.get('direccion',''),
+        pid
+    ))
     conn.commit()
     conn.close()
     return jsonify({'ok': True})
@@ -217,3 +230,174 @@ def reagendar_task(tid):
     conn.commit()
     conn.close()
     return jsonify({'ok': True})
+
+
+@prospects_bp.route('/<int:prospect_id>', methods=['DELETE'])
+def delete_prospect(prospect_id):
+    """Elimina un prospecto de Interesados"""
+    conn = get_db()
+    # Eliminar tareas asociadas
+    conn.execute('DELETE FROM tasks WHERE prospect_id=?', (prospect_id,))
+    # Eliminar prospecto
+    conn.execute('DELETE FROM prospects WHERE id=?', (prospect_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
+# ─── CRM ESTADOS Y ACTIVIDAD ─────────────────────────────────
+
+@prospects_bp.route('/<int:prospect_id>/estado', methods=['PUT'])
+def update_prospect_estado(prospect_id):
+    """Actualiza estado del prospecto y sincroniza con leads"""
+    data = request.json or {}
+    estado = data.get('estado', '')
+    motivo_perdida = data.get('motivo_perdida', '')
+    notas = data.get('notas', '')
+
+    # Mapeo estado prospecto -> estado lead
+    ESTADO_LEAD_MAP = {
+        'en_seguimiento': 'interesado',
+        'reunion_agendada': 'quiere_reunion',
+        'cerrado': 'cerrado',
+        'no_logrado': 'no_interesado',
+        'sin_respuesta': 'enviado'
+    }
+
+    conn = get_db()
+    conn.execute(
+        "UPDATE prospects SET estado=?, updated_at=datetime('now','localtime') WHERE id=?",
+        (estado, prospect_id)
+    )
+
+    # Registrar actividad
+    conn.execute("""
+        INSERT INTO actividad_prospects (prospect_id, tipo, resultado, notas, motivo_perdida)
+        VALUES (?, 'cambio_estado', ?, ?, ?)
+    """, (prospect_id, estado, notas, motivo_perdida))
+
+    # Sincronizar con lead
+    prospect = conn.execute(
+        'SELECT lead_id FROM prospects WHERE id=?', (prospect_id,)
+    ).fetchone()
+
+    if prospect and prospect['lead_id']:
+        lead_status = ESTADO_LEAD_MAP.get(estado, 'interesado')
+        nota_lead = f"Desde Interesados: {estado}" + (f" - {motivo_perdida}" if motivo_perdida else "")
+        conn.execute("""
+            INSERT INTO lead_status (lead_id, status, notes, updated_at)
+            VALUES (?, ?, ?, datetime('now','localtime'))
+            ON CONFLICT(lead_id) DO UPDATE SET
+                status=excluded.status,
+                notes=excluded.notes,
+                updated_at=excluded.updated_at
+        """, (prospect['lead_id'], lead_status, nota_lead))
+        
+        # Si cerrado, crear seller automaticamente
+        if estado == 'cerrado':
+            lead = conn.execute(
+                'SELECT name, phone, rubro, categoria FROM leads WHERE id=?',
+                (prospect['lead_id'],)
+            ).fetchone()
+            if lead:
+                prospect_data = conn.execute(
+                    'SELECT name, negocio FROM prospects WHERE id=?',
+                    (prospect_id,)
+                ).fetchone()
+                contact_name = prospect_data['name'] if prospect_data else lead['name']
+                existing_seller = conn.execute(
+                    'SELECT id FROM sellers WHERE phone=?', (lead['phone'],)
+                ).fetchone()
+                if not existing_seller:
+                    conn.execute("""
+                        INSERT INTO sellers (name, phone, rubro, categoria, pos_type, created_at)
+                        VALUES (?, ?, ?, ?, 'Point Pro 2', datetime('now','localtime'))
+                    """, (contact_name, lead['phone'], lead['rubro'], lead['categoria']))
+        
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@prospects_bp.route('/<int:prospect_id>/actividad', methods=['GET'])
+def get_actividad(prospect_id):
+    """Retorna historial de actividad de un prospecto"""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, tipo, resultado, notas, motivo_perdida, created_at
+        FROM actividad_prospects
+        WHERE prospect_id=?
+        ORDER BY created_at DESC
+    """, (prospect_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@prospects_bp.route('/<int:prospect_id>/actividad', methods=['POST'])
+def add_actividad(prospect_id):
+    """Agrega una actividad al historial del prospecto"""
+    data = request.json or {}
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO actividad_prospects (prospect_id, tipo, resultado, notas, motivo_perdida)
+        VALUES (?, ?, ?, ?, ?)
+    """, (prospect_id, data.get('tipo',''), data.get('resultado',''),
+          data.get('notas',''), data.get('motivo_perdida','')))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@prospects_bp.route('/kpis', methods=['GET'])
+def get_prospects_kpis():
+    """KPIs de interesados para medicion"""
+    conn = get_db()
+
+    # Total por estado
+    por_estado = conn.execute("""
+        SELECT estado, COUNT(*) as total
+        FROM prospects GROUP BY estado
+    """).fetchall()
+
+    # Motivos de perdida
+    motivos = conn.execute("""
+        SELECT motivo_perdida, COUNT(*) as total
+        FROM actividad_prospects
+        WHERE motivo_perdida IS NOT NULL AND motivo_perdida != ''
+        GROUP BY motivo_perdida ORDER BY total DESC
+    """).fetchall()
+
+    # Tasa de cierre
+    total = conn.execute("SELECT COUNT(*) FROM prospects").fetchone()[0]
+    cerrados = conn.execute(
+        "SELECT COUNT(*) FROM prospects WHERE estado='cerrado'"
+    ).fetchone()[0]
+    no_logrados = conn.execute(
+        "SELECT COUNT(*) FROM prospects WHERE estado='no_logrado'"
+    ).fetchone()[0]
+
+    # Tiempo promedio hasta cierre
+    tiempo_cierre = conn.execute("""
+        SELECT AVG(CAST((julianday(updated_at) - julianday(created_at)) AS INTEGER)) as dias_promedio
+        FROM prospects WHERE estado='cerrado'
+    """).fetchone()[0]
+
+    # Competencia mas frecuente
+    competencia = conn.execute("""
+        SELECT competencia, COUNT(*) as total
+        FROM prospects
+        WHERE competencia IS NOT NULL AND competencia != ''
+        GROUP BY competencia ORDER BY total DESC LIMIT 5
+    """).fetchall()
+
+    conn.close()
+    return jsonify({
+        'total': total,
+        'cerrados': cerrados,
+        'no_logrados': no_logrados,
+        'tasa_cierre': round(cerrados/total*100, 1) if total > 0 else 0,
+        'dias_promedio_cierre': round(tiempo_cierre or 0, 1),
+        'por_estado': [dict(r) for r in por_estado],
+        'motivos_perdida': [dict(r) for r in motivos],
+        'competencia': [dict(r) for r in competencia]
+    })

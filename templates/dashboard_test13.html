@@ -570,6 +570,9 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     <div class="kpi" style="--kpi-color:var(--mp-purple)"><div class="kpi-label">Tareas hoy</div><div class="kpi-val" id="int-hoy">0</div></div>
     <div class="kpi" style="--kpi-color:var(--mp-red)"><div class="kpi-label">Atrasadas</div><div class="kpi-val" id="int-atrasadas">0</div></div>
     <div class="kpi" style="--kpi-color:var(--mp-green)"><div class="kpi-label">Completadas</div><div class="kpi-val" id="int-completadas">0</div></div>
+    <div class="kpi" style="--kpi-color:var(--mp-green)"><div class="kpi-label">Cerrados</div><div class="kpi-val" id="int-cerrados">0</div></div>
+    <div class="kpi" style="--kpi-color:var(--mp-blue)"><div class="kpi-label">Tasa cierre</div><div class="kpi-val" id="int-tasa">0%</div></div>
+    <div class="kpi" style="--kpi-color:var(--mp-red)"><div class="kpi-label">No logrados</div><div class="kpi-val" id="int-nologrados">0</div></div>
   </div>
 
   <div class="grid-2" style="margin-bottom:0">
@@ -652,6 +655,10 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
       <div class="form-row">
         <label class="form-lbl">Comuna</label>
         <input class="form-input" id="pComuna" placeholder="Ej: Puente Alto">
+      </div>
+      <div class="form-row" style="grid-column:1/-1">
+        <label class="form-lbl">Direccion del negocio</label>
+        <input class="form-input" id="pDireccion" placeholder="Ej: Av. Providencia 1234, Local 5">
       </div>
       <div class="form-row">
         <label class="form-lbl">Competencia actual</label>
@@ -930,6 +937,13 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     Enviar por WhatsApp
   </button>
   <button class="btn btn-ghost btn-sm" onclick="clearSelection()">Limpiar seleccion</button>
+  <div style="width:1px;background:#ffc107;height:24px;margin:0 4px"></div>
+  <button class="btn btn-sm" onclick="enviarSeguimientoMasivo('24h')" style="background:#856404;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+    🟡 Seguimiento 24h
+  </button>
+  <button class="btn btn-sm" onclick="enviarSeguimientoMasivo('72h')" style="background:#dc3545;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+    🟠 Seguimiento 72h
+  </button>
   <span style="font-size:11px;color:#856404">Anti-spam activo - mensaje segun rubro con imagen</span>
 </div>
 <div class="table-wrap">
@@ -944,6 +958,7 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
           <th>Categoria</th>
           <th>Estado</th>
           <th>Seguimiento</th>
+          <th>Fecha Envío</th>
           <th>Acciones</th>
         </tr>
       </thead>
@@ -1002,6 +1017,12 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
           <div style="font-size:11px;color:var(--mp-text-3);text-align:center;padding:6px">Sin tareas para hoy</div>
         </div>
       </div>
+      <div style="border-top:1px solid var(--mp-border);margin-top:8px;padding-top:8px">
+        <div style="font-size:11px;font-weight:600;color:var(--mp-text-2);margin-bottom:6px">🔔 Seguimientos pendientes</div>
+        <div id="seguimientosPendientes">
+          <div style="font-size:11px;color:var(--mp-text-3);text-align:center;padding:6px">Calculando...</div>
+        </div>
+      </div>
     </div>
     <div class="card">
       <div class="card-title"><span class="card-icon">📋</span>Configuración de envío</div>
@@ -1056,7 +1077,23 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   <!-- Tabla sellers con etapas -->
   <div class="card" style="margin-bottom:16px">
     <div class="card-title">Sellers y estado de fidelizacion</div>
-    <div class="table-wrap">
+    <!-- Metricas Leads -->
+  <div class="grid-3" style="margin-bottom:16px">
+    <div class="card" style="margin:0">
+      <div class="card-title" style="font-size:13px"><span class="card-icon">📊</span>Distribucion de estados</div>
+      <div id="leadsEstadosChart" style="display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto"></div>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="card-title" style="font-size:13px"><span class="card-icon">🚫</span>Motivos Opt-out</div>
+      <div id="leadsOptoutChart" style="display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto"></div>
+    </div>
+    <div class="card" style="margin:0">
+      <div class="card-title" style="font-size:13px"><span class="card-icon">🏪</span>Rubros prospectados</div>
+      <div id="leadsRubrosChart" style="display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -1598,7 +1635,7 @@ function showPage(id, el, label){
 
   const loaders = {
     overview: loadOverview,
-    leads: loadLeads,
+    leads: function(){ loadLeads(); },
     envios: loadEnvios,
     sellers: loadSellers,
     scraping: function(){ loadScraping(); loadScrapingMetrics(); setTimeout(validarTokenApify, 1000); },
@@ -1926,6 +1963,7 @@ async function loadLeads(){
     ).join('');
 
   renderLeads(r);
+  loadLeadsMetrics();
 }
 
 function quickFilter(status){
@@ -1984,6 +2022,14 @@ function renderLeads(leads){
           return '<span style="font-size:13px;color:var(--mp-text-3)">—</span>';
         })()}
       </td>
+      <td style="font-size:11px;color:var(--mp-text-3)">
+        ${(function(){
+          if(!l.sent_at) return '—';
+          var d = l.sent_at.substring(0,10).split('-');
+          var h = l.sent_at.substring(11,16);
+          return d[2]+'-'+d[1]+'-'+d[0]+' '+h;
+        })()}
+      </td>
       <td>
         <div style="display:flex;gap:4px">
           <button class="btn btn-ghost btn-sm" onclick="openStatusModal(${l.id},'${l.status||'enviado'}')">✏️</button>
@@ -2032,6 +2078,9 @@ async function submitStatus(){
     });
     if(r && r.ok){
       toast('Estado registrado: ' + motivo,'success');
+      if(motivo === 'Tiene MP'){
+        setTimeout(function(){ toast('📱 Enviando mensaje automatico "Ya tienes MP"...',''); }, 1000);
+      }
       closeModal('modalStatus');
       loadLeads();
     } else {
@@ -2735,6 +2784,15 @@ async function loadInteresados(){
         '<div class="log-meta">'+p.name+' · '+p.rubro+(p.competencia?' · '+p.competencia:'')+'</div>' +
         '</div>' +
         (pendientes>0?'<span style="background:var(--mp-warn);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">'+pendientes+' tareas</span>':'') +
+        '<select onchange="cambiarEstadoProspecto('+p.id+',this.value,'+(p.lead_id||0)+')" onclick="event.stopPropagation()" style="font-size:11px;border:1px solid #ddd;border-radius:6px;padding:2px 6px;cursor:pointer">' +
+        '<option value="en_seguimiento" '+((!p.estado||p.estado==="en_seguimiento")?"selected":"")+'>🔵 En seguimiento</option>' +
+        '<option value="reunion_agendada" '+(p.estado==="reunion_agendada"?"selected":"")+'>🤝 Reunion</option>' +
+        '<option value="cerrado" '+(p.estado==="cerrado"?"selected":"")+'>✅ Cerrado</option>' +
+        '<option value="no_logrado" '+(p.estado==="no_logrado"?"selected":"")+'>❌ No logrado</option>' +
+        '<option value="sin_respuesta" '+(p.estado==="sin_respuesta"?"selected":"")+'>📵 Sin respuesta</option>' +
+        '</select>' +
+        '<button onclick="event.stopPropagation();abrirActividad('+p.id+',p.negocio)" style="background:#e8f4fd;color:var(--mp-blue);border:1px solid #bee3f8;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px">📋</button>' +
+        '<button onclick="event.stopPropagation();eliminarProspecto('+p.id+','+(p.lead_id||0)+')" style="background:#fff5f5;color:var(--mp-red);border:1px solid #ffd0d0;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px">🗑</button>' +
         '</div>';
     }).join('');
   }
@@ -2920,8 +2978,14 @@ async function renderCalendario(){
     dias.push(d);
   }
 
-  var desde = dias[0].toISOString().slice(0,10);
-  var hasta = dias[6].toISOString().slice(0,10);
+  function fmtLocal(d){
+    var y = d.getFullYear();
+    var m = String(d.getMonth()+1).padStart(2,'0');
+    var dd = String(d.getDate()).padStart(2,'0');
+    return y+'-'+m+'-'+dd;
+  }
+  var desde = fmtLocal(dias[0]);
+  var hasta = fmtLocal(dias[6]);
   document.getElementById('semanaLabel').textContent = desde + ' al ' + hasta;
 
   var tasks = await api('/api/prospects/tasks/calendar');
@@ -3648,6 +3712,104 @@ async function ejecutarCargarLeads(){
     resultDiv.innerHTML = '⚠ Error: '+(r&&r.error||'Error desconocido');
     toast('Error cargando leads','error');
   }
+}
+
+
+async function eliminarProspecto(prospId, leadId){
+  if(!confirm('Eliminar este prospecto de Interesados?')) return;
+  
+  // Eliminar prospecto
+  var r = await api('/api/prospects/'+prospId, {method:'DELETE'});
+  if(r&&r.ok){
+    toast('Prospecto eliminado de Interesados','success');
+    // Si tiene lead asociado, actualizar estado en Leads
+    if(leadId){
+      await api('/api/leads/'+leadId+'/status', {
+        method:'PUT',
+        body:JSON.stringify({status:'enviado', notes:'Removido de Interesados'})
+      });
+    }
+    loadInteresados();
+  } else toast('Error eliminando prospecto','error');
+}
+
+
+async function loadLeadsMetrics(){
+  var d = await api('/api/dashboard/kpis');
+  if(!d) return;
+  var estadosMap = {};
+  (allLeads||[]).forEach(function(l){
+    var s = l.status || 'no_enviado';
+    estadosMap[s] = (estadosMap[s]||0) + 1;
+  });
+  var estados = Object.keys(estadosMap).map(function(k){return {status:k, count:estadosMap[k]};});
+  estados.sort(function(a,b){return b.count-a.count;});
+  var STATUS_LABEL = {'no_enviado':'No enviado','enviado':'Enviado','abierto':'Abierto','interesado':'Interesado','quiere_reunion':'Quiere reunion','cerrado':'Cerrado','no_interesado':'No interesado','opt_out':'Opt-out'};
+  var STATUS_COLOR = {'no_enviado':'#6c757d','enviado':'#009ee3','abierto':'#fd7e14','interesado':'#20c997','quiere_reunion':'#6f42c1','cerrado':'#28a745','no_interesado':'#dc3545','opt_out':'#343a40'};
+  if(estados.length && document.getElementById('leadsEstadosChart')){
+    var maxE = Math.max.apply(null, estados.map(function(e){return e.count;}));
+    document.getElementById('leadsEstadosChart').innerHTML = estados.map(function(e){
+      var pct = Math.round(e.count/maxE*100);
+      return '<div style="margin-bottom:4px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span style="font-weight:600">'+(STATUS_LABEL[e.status]||e.status)+'</span><span style="color:var(--mp-text-3)">'+e.count+'</span></div><div style="background:#eef2f7;border-radius:4px;height:5px"><div style="height:100%;border-radius:4px;background:'+(STATUS_COLOR[e.status]||'#009ee3')+';width:'+pct+'%"></div></div></div>';
+    }).join('');
+  }
+  var motivos = d.optout_motivos || [];
+  if(document.getElementById('leadsOptoutChart')){
+    if(!motivos.length){
+      document.getElementById('leadsOptoutChart').innerHTML = '<div style="font-size:11px;color:var(--mp-text-3);text-align:center;padding:8px">Sin opt-outs registrados</div>';
+    } else {
+      var maxO = Math.max.apply(null, motivos.map(function(m){return m.total||m.count||0;}));
+      if(maxO===0) maxO=1;
+      document.getElementById('leadsOptoutChart').innerHTML = motivos.map(function(m){
+        var val = m.total||m.count||0;
+        var pct = Math.round(val/maxO*100);
+        var label = m.motivo || m.optout_motivo || '?';
+        return '<div style="margin-bottom:4px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span style="font-weight:600">'+label+'</span><span style="color:var(--mp-text-3)">'+val+'</span></div><div style="background:#eef2f7;border-radius:4px;height:5px"><div style="height:100%;border-radius:4px;background:var(--mp-red);width:'+pct+'%"></div></div></div>';
+      }).join('');
+    }
+  }
+  var rubros = d.top_rubros || [];
+  if(rubros.length && document.getElementById('leadsRubrosChart')){
+    var maxR = Math.max.apply(null, rubros.map(function(r){return r.total;}));
+    document.getElementById('leadsRubrosChart').innerHTML = rubros.slice(0,8).map(function(r){
+      var pct = Math.round(r.total/maxR*100);
+      return '<div style="margin-bottom:4px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span style="font-weight:600">'+r.rubro+'</span><span style="color:var(--mp-text-3)">'+r.total+'</span></div><div style="background:#eef2f7;border-radius:4px;height:5px"><div style="height:100%;border-radius:4px;background:var(--mp-green);width:'+pct+'%"></div></div></div>';
+    }).join('');
+  }
+  // Seguimientos pendientes
+  if(document.getElementById('seguimientosPendientes')){
+    api('/api/leads/seguimientos-pendientes').then(function(seg){
+      if(!seg || (!seg.pendientes_24h.length && !seg.pendientes_72h.length)){
+        document.getElementById('seguimientosPendientes').innerHTML = '<div style="font-size:11px;color:var(--mp-green);text-align:center;padding:6px">✓ Sin seguimientos pendientes</div>';
+        return;
+      }
+      var html = '';
+      seg.pendientes_24h.forEach(function(l){
+        html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:7px;background:#fff3cd;margin-bottom:4px"><span style="font-size:13px">🟡</span><div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600;color:var(--mp-text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+l.name+'</div><div style="font-size:10px;color:#856404">Seguimiento 24h · '+l.horas+'h sin respuesta</div></div></div>';
+      });
+      seg.pendientes_72h.forEach(function(l){
+        html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:7px;background:#fff5f5;margin-bottom:4px"><span style="font-size:13px">🟠</span><div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600;color:var(--mp-text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+l.name+'</div><div style="font-size:10px;color:var(--mp-red)">Seguimiento 72h · '+l.horas+'h sin respuesta</div></div></div>';
+      });
+      document.getElementById('seguimientosPendientes').innerHTML = html;
+    });
+  }
+}
+
+async function enviarSeguimientoMasivo(tipo){
+  var ids = Array.from(selectedIds);
+  if(!ids.length){ toast('Selecciona al menos un lead','error'); return; }
+  var msg = tipo === '24h' ? 'Enviar seguimiento 24h a '+ids.length+' leads?' : 'Enviar seguimiento 72h a '+ids.length+' leads?';
+  if(!confirm(msg)) return;
+  toast('Enviando seguimientos...','');
+  var enviados = 0;
+  for(var i=0; i<ids.length; i++){
+    var r = await api('/api/leads/'+ids[i]+'/seguimiento-tipo', {method:'POST', body:JSON.stringify({tipo:tipo})});
+    if(r&&r.ok) enviados++;
+    if(i < ids.length-1) await new Promise(function(res){ setTimeout(res, 3000); });
+  }
+  toast('Seguimiento '+tipo+': '+enviados+' enviados','success');
+  clearSelection();
+  loadLeads();
 }
 
 setInterval(checkWaStatus, 30000);

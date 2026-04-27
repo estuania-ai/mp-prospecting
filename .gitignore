@@ -1,0 +1,71 @@
+# Credenciales y secretos — NUNCA al repo
+.env
+*.env
+data/fast_session.json
+data/gmail_storage.json
+
+# Base de datos local (Railway usa la suya propia)
+data/prospecting.db
+prospecting.db
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Sesión WhatsApp (local únicamente)
+auth_info/
+
+# Scripts de diagnóstico / parches temporales
+mp_check_*.py
+mp_fix_*.py
+fix_*.py
+check_*.py
+run_*.py
+run_*.bat
+inbox_test.py
+fast_*.py
+launch_flask.py
+scheduler_worker.py
+setup_gmail_*.py
+start_chrome_ml.bat
+start_dashboard.bat
+start_flask.bat
+start_server.bat
+start_watchdog.bat
+watchdog.ps1
+
+# Archivos de test HTML
+p_test*.html
+p_preview.html
+
+# Imágenes de debug
+*.png
+*.gif
+test_header.gif
+test_pos.gif
+
+# Backups
+*_BACKUP*
+*_TEST*
+
+# Claude
+.claude/
+
+# Misc
+flask_run.log
+flask_stderr.log
+flask_stdout.log
+app_pythonanywhere.py
+fast_patch.js
+fast_registro.py

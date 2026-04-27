@@ -2735,6 +2735,7 @@ async function loadInteresados(){
         '<div class="log-meta">'+p.name+' · '+p.rubro+(p.competencia?' · '+p.competencia:'')+'</div>' +
         '</div>' +
         (pendientes>0?'<span style="background:var(--mp-warn);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">'+pendientes+' tareas</span>':'') +
+        '<button onclick="eliminarProspecto('+p.id+','+(p.lead_id||0)+')" style="background:#fff5f5;color:var(--mp-red);border:1px solid #ffd0d0;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:6px" title="Eliminar de Interesados">🗑</button>' +
         '</div>';
     }).join('');
   }
@@ -3648,6 +3649,25 @@ async function ejecutarCargarLeads(){
     resultDiv.innerHTML = '⚠ Error: '+(r&&r.error||'Error desconocido');
     toast('Error cargando leads','error');
   }
+}
+
+
+async function eliminarProspecto(prospId, leadId){
+  if(!confirm('Eliminar este prospecto de Interesados?')) return;
+  
+  // Eliminar prospecto
+  var r = await api('/api/prospects/'+prospId, {method:'DELETE'});
+  if(r&&r.ok){
+    toast('Prospecto eliminado de Interesados','success');
+    // Si tiene lead asociado, actualizar estado en Leads
+    if(leadId){
+      await api('/api/leads/'+leadId+'/status', {
+        method:'PUT',
+        body:JSON.stringify({status:'enviado', notes:'Removido de Interesados'})
+      });
+    }
+    loadInteresados();
+  } else toast('Error eliminando prospecto','error');
 }
 
 setInterval(checkWaStatus, 30000);

@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Preview · Cambios propuestos</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:14px;-webkit-font-smoothing:antialiased}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#eef2f7;color:#1a2332;min-height:100vh}
+
+:root{
+  --mp-blue:#009ee3;--mp-blue-dk:#007cba;--mp-blue-lt:#e6f6fd;
+  --mp-yellow:#ffe600;--mp-green:#00a650;--mp-red:#f23d4f;
+  --mp-orange:#ff7733;--mp-gray:#f0f4f8;--mp-gray-md:#d1dbe8;
+  --mp-text:#1a2332;--mp-text-2:#4a5568;--mp-text-3:#8896a8;
+  --mp-card:#ffffff;--mp-border:#dde5ef;
+  --mp-shadow:0 1px 4px rgba(0,30,60,.08),0 4px 16px rgba(0,30,60,.04);
+  --mp-radius:12px;--mp-radius-sm:8px;--nav-w:220px;
+}
+
+/* ─── NAV TABS ─── */
+.tabs{display:flex;gap:0;background:#fff;border-bottom:2px solid var(--mp-border);padding:0 24px;position:sticky;top:0;z-index:10}
+.tab-btn{padding:14px 20px;font-size:13px;font-weight:600;color:var(--mp-text-3);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .15s;background:none;border-top:none;border-left:none;border-right:none}
+.tab-btn:hover{color:var(--mp-blue)}
+.tab-btn.active{color:var(--mp-blue);border-bottom-color:var(--mp-blue)}
+
+.tab-content{display:none;padding:24px}
+.tab-content.active{display:block}
+
+/* ─── TOPBAR MOCKUP ─── */
+.topbar{background:var(--mp-blue);height:48px;display:flex;align-items:center;padding:0 20px;gap:16px}
+.topbar span{color:#fff;font-size:13px;font-weight:600}
+.topbar .badge-pill{background:rgba(255,255,255,.2);color:#fff;font-size:11px;padding:3px 10px;border-radius:20px}
+
+/* ─── SIDEBAR MOCKUP ─── */
+.layout{display:flex;gap:0;height:calc(100vh - 100px)}
+.sidebar{width:220px;background:#fff;border-right:1px solid var(--mp-border);padding:12px 0;flex-shrink:0;font-size:13px}
+.nav-section{font-size:10px;font-weight:700;color:var(--mp-text-3);text-transform:uppercase;letter-spacing:.08em;padding:12px 20px 6px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;cursor:pointer;color:var(--mp-text-2);border-left:3px solid transparent;transition:all .15s}
+.nav-item:hover{background:var(--mp-blue-lt);color:var(--mp-blue)}
+.nav-item.active{background:var(--mp-blue-lt);color:var(--mp-blue);border-left-color:var(--mp-blue);font-weight:600}
+.nav-icon{font-size:15px;width:20px;text-align:center}
+.nav-sub{padding-left:16px}
+.nav-arrow{margin-left:auto;font-size:10px;transform:rotate(90deg);color:var(--mp-text-3)}
+.divider-line{height:1px;background:var(--mp-border);margin:8px 20px}
+
+.main-area{flex:1;padding:24px;overflow-y:auto}
+
+/* ─── CARDS ─── */
+.card{background:var(--mp-card);border-radius:var(--mp-radius);border:1px solid var(--mp-border);box-shadow:var(--mp-shadow);padding:14px 16px;margin-bottom:14px}
+.card-title{font-size:13px;font-weight:600;color:var(--mp-text);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.page-title{font-size:20px;font-weight:700;color:var(--mp-text)}
+.page-sub{font-size:12px;color:var(--mp-text-3);margin-top:2px}
+.page-header{margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+
+/* ─── BTN ─── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+.btn-primary{background:var(--mp-blue);color:#fff}
+.btn-sm{padding:5px 12px;font-size:11px;border-radius:6px}
+.btn-ghost{background:transparent;border:1.5px solid var(--mp-border);color:var(--mp-text-2)}
+
+/* ─── KPI COMPACTO ─── */
+.kpi-grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.kpi-card{background:var(--mp-card);border-radius:var(--mp-radius);border:1px solid var(--mp-border);box-shadow:var(--mp-shadow);padding:12px 14px}
+.kpi-label{font-size:11px;color:var(--mp-text-3);font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.kpi-value{font-size:24px;font-weight:800;color:var(--mp-text)}
+.kpi-value.blue{color:var(--mp-blue)}.kpi-value.green{color:var(--mp-green)}.kpi-value.orange{color:var(--mp-orange)}
+
+/* ─── SCHEDULER NUEVO ─── */
+.sched-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:0}
+.sched-card{background:var(--mp-gray);border-radius:var(--mp-radius-sm);border:1px solid var(--mp-border);padding:12px 14px;display:flex;flex-direction:column;gap:8px;position:relative}
+.sched-top{display:flex;align-items:center;gap:10px}
+.sched-icon-box{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;font-weight:700}
+.sched-icon-box.scraping{background:#FFF7ED;color:#EA580C}
+.sched-icon-box.email{background:#D1FAE5;color:#059669}
+.sched-icon-box.followup{background:#FEF3C7;color:#D97706}
+.sched-icon-box.monitor{background:#F3F4F6;color:#6B7280}
+.sched-info{flex:1;min-width:0}
+.sched-title{font-size:13px;font-weight:700;color:var(--mp-text)}
+.sched-meta{font-size:11px;color:var(--mp-text-3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sched-bottom{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.ct-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px}
+.ct-done{background:#D1FAE5;color:#059669}
+.ct-pending{background:#F3F4F6;color:#9CA3AF}
+.ct-error{background:#FEE2E2;color:#DC2626}
+.ct-running{background:#FEF3C7;color:#D97706}
+.sched-run-btn{font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--mp-border);background:#fff;color:var(--mp-text);cursor:pointer;font-weight:600;white-space:nowrap}
+.sched-run-btn:hover{background:var(--mp-gray)}
+.badge{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px}
+.badge-scraping{background:#FFF7ED;color:#EA580C}
+.badge-email{background:#D1FAE5;color:#059669}
+.badge-seguimiento{background:#FEF3C7;color:#D97706}
+.badge-monitor{background:#F3F4F6;color:#6B7280}
+.section-label{font-size:11px;font-weight:700;color:var(--mp-text-3);letter-spacing:.06em;text-transform:uppercase;margin:16px 0 8px;display:flex;align-items:center;gap:6px}
+.section-label::before{content:'';display:inline-block;width:3px;height:12px;border-radius:2px;background:currentColor}
+
+/* ─── FOLLOWUP COMPACTO ─── */
+.followup-item{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--mp-gray)}
+.followup-item:last-child{border-bottom:none}
+.followup-ico{width:28px;height:28px;border-radius:6px;background:#EFF6FF;color:var(--mp-blue);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.followup-info{flex:1;min-width:0}
+.followup-name{font-size:13px;font-weight:600;color:var(--mp-text)}
+.followup-sub{font-size:11px;color:var(--mp-text-3);margin-top:1px}
+.followup-badge{background:#EFF6FF;color:var(--mp-blue);border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+
+/* ─── TABLE COMPACTO ─── */
+.table-wrap{overflow-x:auto;border-radius:var(--mp-radius-sm);border:1px solid var(--mp-border);background:#fff}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:var(--mp-gray)}
+th{text-align:left;padding:8px 12px;color:var(--mp-text-3);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--mp-border)}
+td{padding:8px 12px;border-bottom:.5px solid #eef2f7;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f8fbff}
+
+/* status badges */
+.badge-enviado{background:#e8f4fd;color:#0078c8}
+.badge-abierto{background:#e8f3ff;color:#3d5a99}
+.badge-interesado{background:#fff3cd;color:#856404}
+.badge-no_enviado{background:#f8f9fa;color:#495057;border:1px solid #ced4da}
+
+/* ─── FILTERS ─── */
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+.filter-pill{font-size:12px;padding:5px 12px;border-radius:20px;cursor:pointer;border:1.5px solid var(--mp-border);background:#fff;color:var(--mp-text-2)}
+.search-box{padding:6px 12px;border:1.5px solid var(--mp-border);border-radius:8px;font-size:12px;outline:none;min-width:180px}
+select.filter-sel{padding:6px 10px;border:1.5px solid var(--mp-border);border-radius:8px;font-size:12px;background:#fff;color:var(--mp-text-2);outline:none}
+
+.actions-cell{display:flex;gap:5px;flex-wrap:nowrap}
+.btn-xs{padding:4px 8px;font-size:11px;border-radius:5px;border:none;cursor:pointer;font-weight:600}
+.btn-xs.blue{background:#EFF6FF;color:var(--mp-blue)}
+.btn-xs.red{background:#FEE2E2;color:#DC2626}
+.btn-xs.green{background:#D1FAE5;color:#059669}
+.btn-xs.gray{background:#F3F4F6;color:#6B7280}
+
+/* ─── STATUS INDICATOR ─── */
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
+.status-dot.active{background:#00c876}
+.status-dot.stopped{background:#f23d4f}
+
+/* ─── INTERESADOS ─── */
+.kpi-native{background:var(--mp-card);border-radius:var(--mp-radius);border:1px solid var(--mp-border);box-shadow:var(--mp-shadow);padding:16px 18px;position:relative;overflow:hidden}
+.kpi-native::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--kpi-color,var(--mp-blue))}
+.kpi-native .kpi-label{font-size:11px;color:var(--mp-text-3);font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.kpi-native .kpi-val{font-size:26px;font-weight:800;color:var(--mp-text);margin:6px 0 4px;line-height:1}
+.kpi-native .kpi-sub{font-size:11px;color:var(--mp-text-3)}
+.kpi-grid-native{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+
+/* callout */
+.callout{background:#fffbea;border:1px solid #ffe08a;border-radius:8px;padding:10px 14px;font-size:12px;color:#7c5500;margin-bottom:14px;display:flex;gap:8px;align-items:flex-start}
+
+/* label tabs */
+.preview-label{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mp-text-3);margin-bottom:8px;padding:0 2px}
+.change-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;background:#ffe600;color:#7c5500;margin-bottom:12px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span>🔵 MercadoPago POS Prospecting</span>
+  <span class="badge-pill">Preview de cambios propuestos</span>
+</div>
+
+<!-- TABS DE NAVEGACIÓN -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('scheduler')">⚙️ Scheduler (fix)</button>
+  <button class="tab-btn" onclick="switchTab('leads')">👥 Email · Leads (compact)</button>
+  <button class="tab-btn" onclick="switchTab('interesados')">⭐ Email · Interesados (nuevo backend)</button>
+  <button class="tab-btn" onclick="switchTab('sidebar')">📌 Sidebar (nuevo)</button>
+</div>
+
+<!-- ═══════ TAB 1: SCHEDULER ═══════ -->
+<div id="tab-scheduler" class="tab-content active" style="padding:24px">
+  <div class="change-pill">✏️ Cambio 1 + 2 — Scheduler rediseñado</div>
+
+  <div class="page-header">
+    <div>
+      <div class="page-title">Email · Scheduler</div>
+      <div class="page-sub">Jobs automáticos · scraping, emails y seguimientos</div>
+    </div>
+    <button class="btn btn-primary btn-sm">↻ Actualizar</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="justify-content:space-between">
+      <span>Jobs programados</span>
+      <span style="font-size:11px;display:flex;align-items:center;gap:5px">
+        <span class="status-dot active"></span>
+        <span style="background:#D1FAE5;color:#059669;font-size:11px;padding:2px 10px;border-radius:12px;font-weight:700">Activo</span>
+      </span>
+    </div>
+
+    <div class="section-label" style="color:#EA580C">Scraping automático</div>
+    <div class="sched-grid">
+      <!-- Scraping job -->
+      <div class="sched-card">
+        <div class="sched-top">
+          <div class="sched-icon-box scraping">⊛</div>
+          <div class="sched-info">
+            <div class="sched-title">Scraping Automático</div>
+            <div class="sched-meta">Próxima: mié 22 abr · 08:00 · Según Inteligencia</div>
+          </div>
+        </div>
+        <div class="sched-bottom">
+          <span class="ct-badge ct-done">✓ 45 ítems · 08:01</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="badge badge-scraping">Scraping</span>
+            <button class="sched-run-btn">▶ Ahora</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label" style="color:#059669">Envío de email</div>
+    <div class="sched-grid">
+      <!-- Email daily -->
+      <div class="sched-card">
+        <div class="sched-top">
+          <div class="sched-icon-box email">✉</div>
+          <div class="sched-info">
+            <div class="sched-title">Email Prospección 11:00 AM</div>
+            <div class="sched-meta">Próxima: mié 22 abr · 11:00 · Contactos pendientes</div>
+          </div>
+        </div>
+        <div class="sched-bottom">
+          <span class="ct-badge ct-pending">⏳ Pendiente</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="badge badge-email">Email</span>
+            <button class="sched-run-btn">▶ Ahora</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label" style="color:#D97706">Seguimiento &amp; Monitor</div>
+    <div class="sched-grid">
+      <!-- Followup -->
+      <div class="sched-card">
+        <div class="sched-top">
+          <div class="sched-icon-box followup">↺</div>
+          <div class="sched-info">
+            <div class="sched-title">Seguimiento Email</div>
+            <div class="sched-meta">Próxima: mar 21 abr · 18:41 · cada 2 horas</div>
+          </div>
+        </div>
+        <div class="sched-bottom">
+          <span class="ct-badge ct-done">✓ OK · 08:41</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="badge badge-seguimiento">Seguimiento</span>
+            <button class="sched-run-btn">▶ Ahora</button>
+          </div>
+        </div>
+      </div>
+      <!-- Monitor -->
+      <div class="sched-card">
+        <div class="sched-top">
+          <div class="sched-icon-box monitor">⊙</div>
+          <div class="sched-info">
+            <div class="sched-title">Monitor de Bandeja</div>
+            <div class="sched-meta">Próxima: mar 21 abr · 17:41 · cada 30 min</div>
+          </div>
+        </div>
+        <div class="sched-bottom">
+          <span class="ct-badge ct-pending">⏳ Pendiente</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="badge badge-monitor">Monitor</span>
+            <button class="sched-run-btn">▶ Ahora</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Seguimientos pendientes -->
+  <div class="card">
+    <div class="card-title">📬 Seguimientos pendientes de envío</div>
+    <div class="followup-item">
+      <div class="followup-ico">✉</div>
+      <div class="followup-info">
+        <div class="followup-name">Clínica Dental Santiago Centro</div>
+        <div class="followup-sub">clinicas dentales · contacto@norden.cl · 20 abr</div>
+      </div>
+      <span class="followup-badge">Seg. #1 (48h)</span>
+      <button class="btn btn-ghost btn-sm" style="font-size:11px">Enviar</button>
+    </div>
+    <div class="followup-item">
+      <div class="followup-ico">✉</div>
+      <div class="followup-info">
+        <div class="followup-name">Contacto y solicitud de horas</div>
+        <div class="followup-sub">clinicas dentales · agendas@odontologia.uchile.cl · 20 abr</div>
+      </div>
+      <span class="followup-badge">Seg. #1 (48h)</span>
+      <button class="btn btn-ghost btn-sm" style="font-size:11px">Enviar</button>
+    </div>
+    <div class="followup-item">
+      <div class="followup-ico">✉</div>
+      <div class="followup-info">
+        <div class="followup-name">Librería Nacional</div>
+        <div class="followup-sub">librería · contactcenter@mallplaza.com · 19 abr</div>
+      </div>
+      <span class="followup-badge">Seg. #2 (96h)</span>
+      <button class="btn btn-ghost btn-sm" style="font-size:11px">Enviar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ TAB 2: LEADS COMPACTO ═══════ -->
+<div id="tab-leads" class="tab-content" style="padding:24px">
+  <div class="change-pill">✏️ Cambio 4 — Vista más compacta</div>
+
+  <div class="page-header">
+    <div>
+      <div class="page-title">Email · Leads</div>
+      <div class="page-sub">Todos los leads recolectados para prospección por email</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="filters">
+      <input class="search-box" placeholder="Filtrar por rubro..." style="max-width:200px">
+      <select class="filter-sel">
+        <option>Todas las comunas</option>
+        <option>Cerrillos</option>
+        <option>Santiago</option>
+      </select>
+      <select class="filter-sel">
+        <option>Todos los estados</option>
+        <option>Enviado</option>
+        <option>Abierto</option>
+        <option>Interesado</option>
+      </select>
+      <input type="date" class="filter-sel" style="font-size:12px">
+      <button class="btn btn-ghost btn-sm">Limpiar todo</button>
+      <span style="margin-left:auto;font-size:12px;color:var(--mp-text-3);font-weight:600">187 leads</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th><input type="checkbox"></th>
+          <th>Negocio</th><th>Email</th><th>Rubro</th><th>Comuna</th>
+          <th>Estado</th><th>Seguimiento</th><th>Fecha envío</th><th>Acciones</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td style="font-weight:600">Librería Nacional</td>
+            <td style="font-size:11px;color:var(--mp-text-3)">contactcenter@mallplaza.com</td>
+            <td>librería</td>
+            <td>Cerrillos</td>
+            <td><span class="badge badge-enviado">Enviado</span></td>
+            <td style="font-size:11px;color:var(--mp-text-3)">48h en 22h</td>
+            <td style="font-size:11px">20 abr · 03:21</td>
+            <td><div class="actions-cell">
+              <button class="btn-xs blue">Ver</button>
+              <button class="btn-xs blue">✉</button>
+              <button class="btn-xs red">🗑</button>
+            </div></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td style="font-weight:600">Contacto</td>
+            <td style="font-size:11px;color:var(--mp-text-3)">lasvocalesderimbaud@gmail.com</td>
+            <td>librería</td>
+            <td>Cerrillos</td>
+            <td><span class="badge badge-enviado">Enviado</span></td>
+            <td style="font-size:11px;color:var(--mp-text-3)">48h en 22h</td>
+            <td style="font-size:11px">20 abr · 03:21</td>
+            <td><div class="actions-cell">
+              <button class="btn-xs blue">Ver</button>
+              <button class="btn-xs blue">✉</button>
+              <button class="btn-xs red">🗑</button>
+            </div></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td style="font-weight:600">Puntos de venta</td>
+            <td style="font-size:11px;color:var(--mp-text-3)">tobalabamil@queleochile.cl</td>
+            <td>librería</td>
+            <td>Cerrillos</td>
+            <td><span class="badge badge-abierto">Abierto</span></td>
+            <td style="font-size:11px;color:#D97706">96h en 2h</td>
+            <td style="font-size:11px">20 abr · 03:20</td>
+            <td><div class="actions-cell">
+              <button class="btn-xs blue">Ver</button>
+              <button class="btn-xs green">✉ Seguim.</button>
+              <button class="btn-xs red">🗑</button>
+            </div></td>
+          </tr>
+          <tr>
+            <td><input type="checkbox"></td>
+            <td style="font-weight:600">Frutería El Huerto</td>
+            <td style="font-size:11px;color:var(--mp-text-3)">huerto@gmail.com</td>
+            <td>frutería</td>
+            <td>Santiago</td>
+            <td><span class="badge badge-no_enviado">No enviado</span></td>
+            <td style="font-size:11px;color:var(--mp-text-3)">—</td>
+            <td style="font-size:11px;color:var(--mp-text-3)">—</td>
+            <td><div class="actions-cell">
+              <button class="btn-xs blue">Ver</button>
+              <button class="btn-xs blue">✉</button>
+              <button class="btn-xs red">🗑</button>
+            </div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ TAB 3: INTERESADOS ═══════ -->
+<div id="tab-interesados" class="tab-content" style="padding:24px">
+  <div class="change-pill">✏️ Cambio 3 — Usa backend de Gestión (misma página)</div>
+
+  <div class="callout">
+    ℹ️ "Email · Interesados" en el sidebar ahora navega directamente a la página <strong>Prospectos Interesados</strong> de Gestión — mismos datos, mismos botones (WA, Fast, tareas, etc.)
+  </div>
+
+  <!-- Replica de la página nativa de Interesados -->
+  <div class="page-header">
+    <div>
+      <div class="page-title">Prospectos Interesados</div>
+      <div class="page-sub">Seguimiento detallado de leads en estado interesado</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm">+ Agregar Manual</button>
+      <button class="btn btn-ghost btn-sm">📊 Exportar Excel</button>
+      <button class="btn btn-primary btn-sm">↻ Actualizar</button>
+      <button class="btn btn-sm" style="background:#00a650;color:#fff">Registrar en Fast</button>
+    </div>
+  </div>
+
+  <div class="kpi-grid-native">
+    <div class="kpi-native" style="--kpi-color:var(--mp-blue)"><div class="kpi-label">Interesados</div><div class="kpi-val">5</div></div>
+    <div class="kpi-native" style="--kpi-color:var(--mp-orange)"><div class="kpi-label">Tareas hoy</div><div class="kpi-val">2</div></div>
+    <div class="kpi-native" style="--kpi-color:var(--mp-red)"><div class="kpi-label">Atrasadas</div><div class="kpi-val">0</div></div>
+    <div class="kpi-native" style="--kpi-color:var(--mp-green)"><div class="kpi-label">Cerrados</div><div class="kpi-val">2</div></div>
+    <div class="kpi-native" style="--kpi-color:var(--mp-blue)"><div class="kpi-label">Tasa cierre</div><div class="kpi-val">40%</div></div>
+    <div class="kpi-native" style="--kpi-color:var(--mp-gray-md)"><div class="kpi-label">No logrados</div><div class="kpi-val">0</div></div>
+    <div class="kpi-native" style="--kpi-color:var(--mp-purple,#7b3fe4)"><div class="kpi-label">Días prom. cierre</div><div class="kpi-val">4d</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Leads activos</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Negocio</th><th>Teléfono</th><th>Rubro</th><th>Estado</th><th>Próxima acción</th><th>Acciones</th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:600">Pizzas Pizzería</td>
+            <td style="font-size:11px;color:var(--mp-text-3)">+56912345678</td>
+            <td>Gastronomía</td>
+            <td><span class="badge" style="background:#fff3cd;color:#856404">Interesado</span></td>
+            <td style="font-size:11px">Llamada · Hoy 17:30</td>
+            <td><div class="actions-cell">
+              <button class="btn-xs blue">Ver</button>
+              <button class="btn-xs green">WA</button>
+              <button class="btn-xs gray" style="background:#ffe600;color:#7c5500">Fast</button>
+            </div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ TAB 4: SIDEBAR ═══════ -->
+<div id="tab-sidebar" class="tab-content" style="padding:24px">
+  <div class="change-pill">✏️ Sidebar — sección Emailing con sub-items</div>
+
+  <div style="display:flex;gap:24px;align-items:flex-start">
+    <!-- Sidebar mockup -->
+    <div class="sidebar" style="width:220px;min-height:600px;border-radius:12px;box-shadow:var(--mp-shadow)">
+      <div class="nav-section">Principal</div>
+      <div class="nav-item active"><span class="nav-icon">📊</span> Resumen</div>
+      <div class="nav-item"><span class="nav-icon">👥</span> Leads</div>
+      <div class="nav-item"><span class="nav-icon">📨</span> Envíos</div>
+      <div class="nav-section">Gestión</div>
+      <div class="nav-item"><span class="nav-icon">🤝</span> Sellers</div>
+      <div class="nav-item"><span class="nav-icon">🗺</span> Scraping</div>
+      <div class="nav-item"><span class="nav-icon">⭐</span> Interesados</div>
+      <div class="nav-item"><span class="nav-icon">*</span> Inteligencia</div>
+      <div class="nav-item"><span class="nav-icon">⚙</span> Configuración</div>
+      <div class="divider-line"></div>
+      <div class="nav-section">Emailing</div>
+      <!-- Emailing toggle — abierto -->
+      <div class="nav-item" style="background:var(--mp-blue-lt);color:var(--mp-blue);border-left:3px solid var(--mp-blue)">
+        <span class="nav-icon">✉</span> Emailing
+        <span class="nav-arrow">▶</span>
+      </div>
+      <!-- Sub items -->
+      <div class="nav-sub">
+        <div class="nav-item" style="font-size:12px"><span class="nav-icon" style="font-size:13px">👥</span> Leads</div>
+        <div class="nav-item active" style="font-size:12px"><span class="nav-icon" style="font-size:13px">📣</span> Campañas</div>
+        <div class="nav-item" style="font-size:12px"><span class="nav-icon" style="font-size:13px">⭐</span> Interesados</div>
+        <div class="nav-item" style="font-size:12px"><span class="nav-icon" style="font-size:13px">🧠</span> Inteligencia</div>
+        <div class="nav-item" style="font-size:12px"><span class="nav-icon" style="font-size:13px">📊</span> KPIs</div>
+        <div class="nav-item" style="font-size:12px"><span class="nav-icon" style="font-size:13px">🕐</span> Scheduler</div>
+      </div>
+    </div>
+
+    <!-- Explicación -->
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:700;color:var(--mp-text);margin-bottom:12px">Notas sobre el sidebar</div>
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--mp-text-2)">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="background:#D1FAE5;color:#059669;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap">✓ Nuevo</span>
+          <span>Sección <strong>Emailing</strong> desplegable con 6 sub-items</span>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="background:#FEF3C7;color:#D97706;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap">↩ Redirige</span>
+          <span><strong>Interesados</strong> bajo Emailing → navega a la página nativa de Gestión (mismo backend /api/prospects/)</span>
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="background:#D1FAE5;color:#059669;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap">✓ OK</span>
+          <span>El resto de sub-items (Leads, Campañas, KPIs, Scheduler) mantienen sus páginas dedicadas</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(id) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

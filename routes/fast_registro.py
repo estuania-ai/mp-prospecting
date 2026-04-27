@@ -517,15 +517,28 @@ def registrar_en_fast(lead_id):
 
     try:
         conn = get_db()
-        # Marcar fast_ok en leads sin alterar el estado del pipeline
         if result["ok"]:
+            # Marcar fast_ok y actualizar status a 'enviado'
             conn.execute("UPDATE leads SET fast_ok=1 WHERE id=?", (lead_id,))
-        # Solo guardar nota informativa, sin cambiar status
-        conn.execute(
-            "INSERT INTO lead_status (lead_id, status, notes, updated_at) VALUES (?, 'no_enviado', ?, datetime('now'))"
-            " ON CONFLICT(lead_id) DO UPDATE SET notes = excluded.notes, updated_at = excluded.updated_at",
-            (lead_id, result["mensaje"])
-        )
+            conn.execute(
+                """INSERT INTO lead_status (lead_id, status, notes, updated_at)
+                   VALUES (?, 'enviado', ?, datetime('now','localtime'))
+                   ON CONFLICT(lead_id) DO UPDATE SET
+                       status = 'enviado',
+                       notes  = excluded.notes,
+                       updated_at = excluded.updated_at""",
+                (lead_id, result["mensaje"])
+            )
+        else:
+            # Solo guardar nota informativa sin cambiar status cuando falla
+            conn.execute(
+                """INSERT INTO lead_status (lead_id, status, notes, updated_at)
+                   VALUES (?, 'no_enviado', ?, datetime('now','localtime'))
+                   ON CONFLICT(lead_id) DO UPDATE SET
+                       notes = excluded.notes,
+                       updated_at = excluded.updated_at""",
+                (lead_id, result["mensaje"])
+            )
         conn.commit()
     except Exception as e:
         logger.warning(f"[Fast] No se pudo guardar log en BD: {e}")

@@ -70,6 +70,7 @@ def register_send(contact: dict, success: bool, error: str = None):
 
 
 def run_prospecting_batch(limit: int, batch_name: str = ""):
+    import time, random
     logger.info(f"[PROSPECCION {batch_name}] Iniciando - {limit} mensajes - {datetime.now().strftime('%H:%M')}")
 
     leads = get_pending_leads(limit)
@@ -79,32 +80,74 @@ def run_prospecting_batch(limit: int, batch_name: str = ""):
 
     logger.info(f"[{batch_name}] {len(leads)} leads encontrados")
 
-    from whatsapp.sender_desktop import get_sender
-    sender = get_sender()
-    if not sender._is_logged_in:
-        sender.start()
+    # ── Usar Evolution API (servidor) si está conectado,
+    #    si no, intentar sender de escritorio como fallback ──────────
+    from whatsapp import evolution_client as ev
+    use_evolution = ev.is_connected()
 
-    results = sender.send_batch(
-        contacts=leads,
-        get_message_fn=build_message,
-        get_image_fn=build_image_url
-    )
+    if not use_evolution:
+        logger.warning(f"[{batch_name}] Evolution API no conectada — intentando sender de escritorio")
+        try:
+            from whatsapp.sender_desktop import get_sender
+            sender = get_sender()
+            if not sender._is_logged_in:
+                sender.start()
+            results = sender.send_batch(
+                contacts=leads,
+                get_message_fn=build_message,
+                get_image_fn=build_image_url
+            )
+            sent = failed = no_phone = 0
+            for r in results:
+                contact = r.get('contact', {})
+                error   = r.get('error', '')
+                if r.get('success'):
+                    register_send(contact, True)
+                    sent += 1
+                elif 'phone' in str(error).lower() or error == 'phone_not_exists':
+                    register_send(contact, False, 'phone_not_exists')
+                    no_phone += 1
+                else:
+                    register_send(contact, False, error)
+                    failed += 1
+            logger.info(f"[{batch_name}] (desktop) Completado: {sent} enviados, {no_phone} sin tel, {failed} fallidos")
+        except Exception as e:
+            logger.error(f"[{batch_name}] Sender de escritorio falló: {e}")
+        return
+
+    # ── Evolution API ─────────────────────────────────────────────
+    conn = get_db()
+    delay_min = int(conn.execute("SELECT value FROM config WHERE key='wa_delay_min_sec'").fetchone()[0] or 30)
+    delay_max = int(conn.execute("SELECT value FROM config WHERE key='wa_delay_max_sec'").fetchone()[0] or 60)
+    conn.close()
 
     sent = failed = no_phone = 0
-    for r in results:
-        contact = r.get('contact', {})
-        error   = r.get('error', '')
-        if r.get('success'):
-            register_send(contact, True)
+    for i, contact in enumerate(leads):
+        phone     = contact.get('phone', '')
+        message   = build_message(contact)
+        image_url = build_image_url(contact)
+
+        result = ev.send_message(phone, message, image_url)
+        ok     = result.get("ok", False)
+        error  = result.get("error", "")
+
+        register_send(contact, ok, None if ok else error)
+
+        if ok:
             sent += 1
-        elif 'phone' in str(error).lower() or error == 'phone_not_exists':
-            register_send(contact, False, 'phone_not_exists')
+        elif 'phone' in str(error).lower():
             no_phone += 1
         else:
-            register_send(contact, False, error)
             failed += 1
 
-    logger.info(f"[{batch_name}] Completado: {sent} enviados, {no_phone} sin telefono, {failed} fallidos")
+        logger.info(f"[{batch_name}] [{i+1}/{len(leads)}] {phone} → {'OK' if ok else 'FAIL'}")
+
+        # Delay anti-bloqueo entre mensajes
+        if i < len(leads) - 1:
+            delay = random.uniform(delay_min, delay_max)
+            time.sleep(delay)
+
+    logger.info(f"[{batch_name}] Completado: {sent} enviados, {no_phone} sin tel, {failed} fallidos")
 
     conn = get_db()
     conn.execute('''

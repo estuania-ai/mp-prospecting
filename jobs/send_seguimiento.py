@@ -16,12 +16,6 @@ MSG_72H = "Hola {nombre}! Te escribo cortito para no quitarte tiempo ni ser inva
 
 
 def get_leads_para_seguimiento(horas: int, tipo: str) -> list:
-    """
-    Retorna leads que:
-    - Tienen estado 'enviado' (sin respuesta)
-    - El mensaje fue enviado hace exactamente N horas (+/- 30 min)
-    - No han recibido el seguimiento de este tipo
-    """
     conn = get_db()
     rows = conn.execute(f'''
         SELECT l.id, l.name, l.phone, l.comuna, l.rubro,
@@ -44,7 +38,7 @@ def get_leads_para_seguimiento(horas: int, tipo: str) -> list:
           )
         GROUP BY l.id
         ORDER BY m.sent_at ASC
-    ''', (horas, horas + 1)).fetchall()
+    ''', (horas,)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -60,6 +54,20 @@ def register_seguimiento(lead: dict, tipo: str, success: bool):
         'sent' if success else 'failed',
         lead.get('rubro', ''), lead.get('comuna', '')
     ))
+    if success:
+        # Actualizar columna seguimiento en leads
+        if tipo == '24h':
+            conn.execute("""
+                UPDATE leads SET seguimiento_24h=1, 
+                seguimiento_24h_fecha=datetime('now','localtime')
+                WHERE id=?
+            """, (lead['id'],))
+        elif tipo == '72h':
+            conn.execute("""
+                UPDATE leads SET seguimiento_72h=1,
+                seguimiento_72h_fecha=datetime('now','localtime')
+                WHERE id=?
+            """, (lead['id'],))
     conn.commit()
     conn.close()
 
@@ -67,12 +75,13 @@ def register_seguimiento(lead: dict, tipo: str, success: bool):
 def run_seguimiento():
     logger.info(f"[SEGUIMIENTO] Iniciando - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
-    from whatsapp.sender_desktop import get_sender
+    from whatsapp.sender_desktop import get_sender, human_delay
     sender = get_sender()
     if not sender._is_logged_in:
         sender.start()
 
-    total_enviados = 0
+    total_24h = 0
+    total_72h = 0
 
     # Mensaje 24 horas
     leads_24h = get_leads_para_seguimiento(24, '24h')
@@ -82,8 +91,10 @@ def run_seguimiento():
         result = sender.send_message(lead['phone'], msg, None)
         register_seguimiento(lead, '24h', result['success'])
         if result['success']:
-            total_enviados += 1
+            total_24h += 1
             logger.info(f"[SEGUIMIENTO 24h] OK - {lead['name']}")
+        if lead != leads_24h[-1]:
+            human_delay()
 
     # Mensaje 72 horas
     leads_72h = get_leads_para_seguimiento(72, '72h')
@@ -93,7 +104,27 @@ def run_seguimiento():
         result = sender.send_message(lead['phone'], msg, None)
         register_seguimiento(lead, '72h', result['success'])
         if result['success']:
-            total_enviados += 1
+            total_72h += 1
             logger.info(f"[SEGUIMIENTO 72h] OK - {lead['name']}")
+        if lead != leads_72h[-1]:
+            human_delay()
 
-    logger.info(f"[SEGUIMIENTO] Completado: {total_enviados} mensajes enviados")
+    total_enviados = total_24h + total_72h
+
+    # Registrar en campanas si hubo envios
+    if total_enviados > 0:
+        conn = get_db()
+        if total_24h > 0:
+            conn.execute('''
+                INSERT INTO campaigns (name, total_sent, sent_at, status)
+                VALUES (?, ?, datetime('now','localtime'), 'completed')
+            ''', (f"Seguimiento 24h {datetime.now().strftime('%d/%m/%Y %H:%M')}", total_24h))
+        if total_72h > 0:
+            conn.execute('''
+                INSERT INTO campaigns (name, total_sent, sent_at, status)
+                VALUES (?, ?, datetime('now','localtime'), 'completed')
+            ''', (f"Seguimiento 72h {datetime.now().strftime('%d/%m/%Y %H:%M')}", total_72h))
+        conn.commit()
+        conn.close()
+
+    logger.info(f"[SEGUIMIENTO] Completado: {total_24h} msgs 24h + {total_72h} msgs 72h")

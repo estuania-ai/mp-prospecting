@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MP Prospecting · Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
 <style>
 /* ─── RESET & BASE ─────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -359,6 +360,250 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
 .chart-h200{height:200px}
 .chart-h240{height:240px}
 .chart-h160{height:160px}
+
+/* ─── EMAIL TOOL: KPI GRID 4 ────────────────────────────── */
+.kpi-grid-4{grid-template-columns:repeat(4,1fr)}
+.kpi-card{background:#fff;border-radius:12px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.kpi-card .kpi-label{font-size:12px;color:#6B7280;font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
+.kpi-card .kpi-value{font-size:28px;font-weight:700;color:#1A1A2E}
+.kpi-card .kpi-value.blue{color:#009EE3}
+.kpi-card .kpi-value.green{color:#00A650}
+.kpi-card .kpi-value.navy{color:#2D3277}
+.kpi-card .kpi-value.orange{color:#F59E0B}
+.kpi-card .kpi-value.red{color:#DC2626}
+
+/* ─── EMAIL TOOL: PROGRESS BAR ──────────────────────────── */
+.progress-wrap{margin:12px 0}
+.progress-bar-bg{background:#E5E7EB;border-radius:8px;height:8px;overflow:hidden}
+.progress-bar-fill{height:100%;background:#009EE3;border-radius:8px;transition:width .3s;width:0%}
+.progress-status{font-size:13px;color:#6B7280;margin-top:6px}
+
+/* ─── EMAIL TOOL: SORTABLE TABLE ────────────────────────── */
+.sortable-th{cursor:pointer;user-select:none;white-space:nowrap}
+.sortable-th:hover{background:#F0F4F8}
+.sort-icon{font-size:11px;color:#9CA3AF;margin-left:3px}
+.sort-icon.asc{color:#009EE3}
+.sort-icon.desc{color:#009EE3}
+
+/* ─── EMAIL TOOL: RUBRO CARDS ───────────────────────────── */
+.rubro-card{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1.5px solid #E5E7EB;display:flex;flex-direction:column;transition:box-shadow .15s}
+.rubro-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.10)}
+.rubro-card-header{padding:14px 16px 12px;display:flex;align-items:center;gap:10px;border-left:4px solid #009EE3}
+.rubro-card-icon{font-size:22px;line-height:1;flex-shrink:0}
+.rubro-card-name{font-size:14px;font-weight:700;color:#1A1A2E;flex:1}
+.rubro-card-badge{background:#EFF6FF;color:#009EE3;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+.rubro-card-actions{padding:10px 14px 14px;display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+.rubro-card-subject{padding:0 16px 10px;font-size:11px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ─── EMAIL TOOL: CAMPAIGN LAYOUT ──────────────────────── */
+.camp-filter-bar{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+.camp-filter-bar input{flex:1;min-width:200px;border:1.5px solid #E5E7EB;border-radius:8px;padding:8px 12px;font-size:14px;color:#1A1A2E;outline:none;transition:border-color .15s}
+.camp-filter-bar input:focus{border-color:#009EE3}
+.camp-rubro-strip{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;align-items:center}
+.camp-chip{padding:6px 14px;border-radius:20px;font-size:13px;font-weight:500;cursor:pointer;border:1.5px solid #E5E7EB;background:#fff;color:#6B7280;transition:all .15s;white-space:nowrap}
+.camp-chip:hover{border-color:#009EE3;color:#009EE3}
+.camp-chip.active{background:#009EE3;color:#fff;border-color:#009EE3}
+.camp-search-box{border:1.5px solid #E5E7EB;border-radius:8px;padding:6px 12px;font-size:13px;color:#1A1A2E;outline:none;transition:border-color .15s;width:180px}
+.camp-search-box:focus{border-color:#009EE3}
+.camp-split{display:grid;grid-template-columns:1fr 420px;gap:20px;align-items:start}
+@media(max-width:1100px){.camp-split{grid-template-columns:1fr}}
+.camp-contacts-panel{background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.06);overflow:hidden}
+.camp-contacts-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1.5px solid #F0F4F8;flex-wrap:wrap}
+.camp-contacts-head .label{font-size:14px;font-weight:600;color:#1A1A2E;flex:1}
+.camp-contacts-head .cnt{font-size:12px;color:#6B7280}
+.camp-contacts-table{width:100%;border-collapse:collapse}
+.camp-contacts-table th{font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;padding:8px 12px;background:#F9FAFB;border-bottom:1.5px solid #F0F4F8;text-align:left}
+.camp-contacts-table td{padding:9px 12px;font-size:13px;border-bottom:1px solid #F0F4F8;vertical-align:middle}
+.camp-contacts-table tr:hover td{background:#F9FAFB}
+.camp-contacts-table tr.selected td{background:#EFF6FF}
+.camp-contact-cb{width:16px;height:16px;cursor:pointer;accent-color:#009EE3}
+.camp-empty{padding:40px;text-align:center;color:#9CA3AF;font-size:14px}
+.camp-tpl-panel{background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.06);position:sticky;top:20px}
+.camp-tpl-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1.5px solid #F0F4F8}
+.camp-tpl-icon{font-size:22px}
+.camp-tpl-title{font-size:14px;font-weight:700;color:#1A1A2E;flex:1}
+.camp-tpl-body{padding:16px;display:flex;flex-direction:column;gap:12px}
+.camp-tpl-label{font-size:11px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.camp-tpl-input{width:100%;border:1.5px solid #E5E7EB;border-radius:8px;padding:8px 10px;font-size:13px;color:#1A1A2E;outline:none;transition:border-color .15s;font-family:inherit;box-sizing:border-box}
+.camp-tpl-input:focus{border-color:#009EE3}
+.camp-tpl-textarea{resize:vertical;min-height:120px;max-height:280px}
+.camp-tpl-pdf{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.camp-tpl-pdf-badge{display:flex;align-items:center;gap:6px;background:#EFF6FF;color:#1D4ED8;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:600}
+.camp-tpl-actions{padding:12px 16px;border-top:1.5px solid #F0F4F8;display:flex;gap:8px;flex-wrap:wrap}
+.camp-bulk-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1A1A2E;color:#fff;border-radius:14px;padding:14px 20px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:200;flex-wrap:wrap;max-width:calc(100vw - 280px)}
+.camp-bulk-bar .sel-label{font-size:13px;font-weight:600;white-space:nowrap;margin-right:6px}
+.camp-bulk-bar .btn-send-email{background:#009EE3;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s}
+.camp-bulk-bar .btn-send-email:hover{background:#007bb5}
+.camp-bulk-bar .btn-followup{background:rgba(255,255,255,.12);color:#fff;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s}
+.camp-bulk-bar .btn-followup:hover{background:rgba(255,255,255,.22)}
+.camp-bulk-bar .btn-clear{background:transparent;color:rgba(255,255,255,.6);border:none;font-size:18px;cursor:pointer;padding:0 4px;line-height:1;transition:color .15s}
+.camp-bulk-bar .btn-clear:hover{color:#fff}
+
+/* ─── EMAIL TOOL: EMAIL PREVIEW MODAL ──────────────────── */
+.preview-modal-card{background:#F5F0E8;border-radius:14px;padding:24px;width:660px;max-width:98vw;max-height:92vh;overflow-y:auto;position:relative;box-shadow:0 8px 40px rgba(0,0,0,.18)}
+#email-preview-iframe{width:100%;border:none;border-radius:12px;min-height:700px;background:#fff}
+.email-preview-wrap{background:#fff;border-radius:20px;overflow:hidden;border:1.5px solid #E0D9CC;box-shadow:6px 6px 0px #C8BFA8;max-width:560px;margin:0 auto;font-family:Arial,Helvetica,sans-serif}
+.ep-header{padding:24px 28px 20px;position:relative}
+.ep-logo-row{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.ep-logo-box{width:28px;height:28px;background:#FFE600;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#1A1A2E}
+.ep-logo-text{font-size:12px;font-weight:700;color:#FFE600;letter-spacing:.05em}
+.ep-h1{font-size:22px;font-weight:800;color:#fff;line-height:1.2}
+.ep-h2{color:#FFE600}
+.ep-preheader{margin-top:8px;font-size:12px;color:rgba(255,255,255,.5)}
+.ep-strip{background:#FFE600;padding:9px 28px;display:flex;align-items:center;gap:8px}
+.ep-body{padding:24px 28px}
+.ep-greeting{font-size:14px;color:#555;margin-bottom:14px}
+.ep-pain{border-left:3px solid #FFE600;border-radius:0 8px 8px 0;padding:12px 16px;font-size:13px;color:#333;line-height:1.6;margin-bottom:16px}
+.ep-body-text{font-size:13px;color:#444;line-height:1.7;margin-bottom:18px}
+.ep-benefits{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px}
+.ep-benefit{background:#F8F6F2;border-radius:8px;padding:10px 12px;display:flex;align-items:flex-start;gap:8px}
+.ep-benefit-icon{width:26px;height:26px;background:#1A1A2E;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.ep-benefit-text{font-size:11px;font-weight:700;color:#1A1A2E}
+.ep-benefit-sub{font-size:10px;color:#888;margin-top:2px}
+.ep-cta-wrap{text-align:center;margin-bottom:14px}
+.ep-cta{display:inline-block;background:#1A1A2E;color:#FFE600;font-size:13px;font-weight:700;letter-spacing:.04em;padding:14px 28px;border-radius:100px;text-decoration:none;box-shadow:3px 3px 0px #C8BFA8}
+.ep-cta-sub{font-size:10px;color:#aaa;margin-top:6px}
+.ep-wa-wrap{text-align:center;margin-bottom:20px}
+.ep-wa{display:inline-block;font-size:12px;color:#555;padding:7px 14px;border:1px solid #E0D9CC;border-radius:100px;background:#F5F0E8;text-decoration:none}
+.ep-sig{display:flex;align-items:center;gap:12px;padding-top:16px;border-top:1px solid #EEE}
+.ep-avatar{width:40px;height:40px;background:#1A1A2E;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#FFE600;flex-shrink:0}
+.ep-sig-name{font-size:13px;font-weight:600;color:#1A1A2E}
+.ep-sig-title{font-size:10px;color:#888;margin-top:2px}
+.ep-footer{background:#F8F6F2;padding:12px 28px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #EEE;font-size:10px;color:#bbb}
+
+/* ─── EMAIL TOOL: CHARTS ROW ────────────────────────────── */
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+.chart-single{margin-bottom:20px}
+
+/* ─── EMAIL TOOL: COMMUNE GRID ──────────────────────────── */
+.commune-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.commune-chip{padding:8px 10px;border-radius:8px;font-size:12px;text-align:center;cursor:default;position:relative;transition:all .15s}
+.commune-chip.prospected{background:#DCFCE7;color:#00A650;border:1px solid #BBF7D0}
+.commune-chip.unprospected{background:#F3F4F6;color:#9CA3AF;border:1px solid #E5E7EB}
+.commune-chip:hover::after{content:attr(data-count);position:absolute;top:-28px;left:50%;transform:translateX(-50%);background:#1A1A2E;color:#fff;padding:3px 8px;border-radius:6px;font-size:11px;white-space:nowrap}
+
+/* ─── EMAIL TOOL: FOLLOWUP ──────────────────────────────── */
+.followup-item{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid #F1F5F9}
+.followup-item:last-child{border-bottom:none}
+.followup-date{font-size:12px;font-weight:700;color:#009EE3;min-width:80px}
+.followup-info{flex:1}
+.followup-info .biz{font-size:14px;font-weight:600}
+.followup-info .sub{font-size:12px;color:#6B7280}
+.followup-badge{background:#EFF6FF;color:#009EE3;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700}
+
+/* ─── EMAIL TOOL: EMPTY STATE ───────────────────────────── */
+.empty-state{text-align:center;padding:40px 20px;color:#9CA3AF}
+.empty-state p{font-size:14px}
+
+/* ─── EMAIL TOOL: TEMPLATE LIST ─────────────────────────── */
+.template-list{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.template-item{background:#F8FAFC;border:1.5px solid #E5E7EB;border-radius:10px;padding:14px}
+.template-item .t-rubro{font-size:14px;font-weight:600;color:#1A1A2E;margin-bottom:8px}
+.template-item .t-subject{font-size:12px;color:#6B7280;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ─── EMAIL TOOL: DETAIL ROW ────────────────────────────── */
+.detail-row{display:flex;gap:8px;margin-bottom:10px}
+.detail-label{font-size:12px;font-weight:600;color:#6B7280;min-width:120px;text-transform:uppercase}
+.detail-value{font-size:14px;color:#1A1A2E}
+
+/* ─── EMAIL TOOL: INLINE SELECT ─────────────────────────── */
+.inline-select{border:1.5px solid #E5E7EB;border-radius:6px;padding:3px 6px;font-size:12px;cursor:pointer}
+
+/* ─── EMAIL TOOL: ACTIONS CELL ──────────────────────────── */
+.actions-cell{display:flex;gap:6px;flex-wrap:wrap}
+
+/* ─── EMAIL TOOL: SECTION TITLE / DIVIDER ──────────────── */
+.section-title{font-size:16px;font-weight:700;color:#1A1A2E;margin-bottom:12px}
+.divider{height:1px;background:#E5E7EB;margin:20px 0}
+
+/* ─── EMAIL TOOL: INFO BOX ──────────────────────────────── */
+.info-box{background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;padding:14px 16px;font-size:14px;color:#1e40af;margin-bottom:14px}
+
+/* ─── EMAIL TOOL: MODAL CARD ────────────────────────────── */
+.modal-card{background:#fff;border-radius:14px;padding:28px;width:560px;max-width:95vw;max-height:90vh;overflow-y:auto;position:relative;box-shadow:0 8px 40px rgba(0,0,0,.18)}
+.modal-card.wide{width:720px}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.modal-header h2{font-size:18px;font-weight:700}
+.modal-close{cursor:pointer;color:#9CA3AF;font-size:22px;line-height:1}
+.modal-close:hover{color:#1A1A2E}
+.modal-footer{margin-top:20px;display:flex;gap:10px;justify-content:flex-end}
+
+/* ─── EMAIL TOOL: BADGES ────────────────────────────────── */
+.badge-en_negociacion{background:#DBEAFE;color:#009EE3}
+.badge-no_interesado{background:#FEE2E2;color:#DC2626}
+
+/* ─── EMAIL TOOL: CHIPS ROW ─────────────────────────────── */
+.chips-row{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.chip{padding:5px 12px;border-radius:20px;font-size:13px;cursor:pointer;background:#EFF6FF;color:#009EE3;border:1.5px solid #BFDBFE;transition:all .15s}
+.chip:hover{background:#009EE3;color:#fff;border-color:#009EE3}
+
+/* ─── EMAIL TOOL: FORM GROUP ────────────────────────────── */
+.form-group{display:flex;flex-direction:column;gap:6px}
+.form-group label{font-size:12px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:.04em}
+.form-group input,.form-group select,.form-group textarea{border:1.5px solid #E5E7EB;border-radius:8px;padding:8px 12px;font-size:14px;color:#1A1A2E;background:#fff;outline:none;transition:border-color .15s}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:#009EE3}
+.form-group textarea{resize:vertical;min-height:100px;font-family:inherit}
+
+/* ─── EMAIL TOOL: EXTRA BUTTONS ─────────────────────────── */
+.btn-success{background:#00A650;color:#fff}
+.btn-success:hover{background:#008040}
+.btn-navy{background:#1A1A2E;color:#fff}
+.btn-navy:hover{background:#2D3277}
+
+/* ─── EMAIL LEADS: STATUS PILLS ─────────────────────────── */
+.et-status-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.et-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1.5px solid #E5E7EB;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:#374151;transition:all .12s;white-space:nowrap}
+.et-pill:hover,.et-pill.active{border-color:currentColor;background:rgba(0,158,227,.08)}
+.et-pill .et-cnt{background:currentColor;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700}
+/* ─── EMAIL LEADS: CONVERSATION MODAL ───────────────────── */
+.conv-timeline{display:flex;flex-direction:column;gap:0}
+.conv-event{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #F1F5F9;position:relative}
+.conv-event:last-child{border-bottom:none}
+.conv-dot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;margin-top:2px}
+.conv-dot.sent{background:#DBEAFE;color:#1D4ED8}
+.conv-dot.opened{background:#D1FAE5;color:#059669}
+.conv-dot.replied{background:#D1FAE5;color:#059669}
+.conv-dot.bounced{background:#FEE2E2;color:#DC2626}
+.conv-dot.click{background:#EDE9FE;color:#7C3AED}
+.conv-dot.upcoming{background:#FEF3C7;color:#B45309}
+.conv-body{flex:1}
+.conv-label{font-size:13px;font-weight:600;color:#1A1A2E}
+.conv-sub{font-size:11px;color:#6B7280;margin-top:2px}
+.conv-fecha{font-size:11px;color:#9CA3AF;white-space:nowrap}
+/* ─── EMAIL LEADS: COMPACT TABLE ────────────────────────── */
+#page-email-contactos .table-wrap table th,
+#page-email-contactos .table-wrap table td{padding:5px 8px;font-size:12px;vertical-align:middle;line-height:1.3}
+#page-email-contactos .table-wrap table tr:hover td{background:#F0F7FF}
+.et-actions{display:flex;gap:4px;align-items:center;flex-wrap:nowrap}
+.et-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;border:1.5px solid #E5E7EB;background:#fff;cursor:pointer;font-size:13px;padding:0;flex-shrink:0;transition:all .12s}
+.et-btn:hover{border-color:#009EE3;background:#EFF6FF}
+.et-btn.primary{background:#009EE3;border-color:#009EE3;color:#fff}
+.et-btn.primary:hover{background:#007cba}
+.et-btn.danger{background:#FEF2F2;border-color:#FECACA;color:#DC2626}
+.et-btn.danger:hover{background:#FEE2E2}
+.et-btn.warn{background:#FEF9E7;border-color:#FDE68A;color:#D97706}
+.et-btn-ver{padding:0 8px;height:26px;border-radius:6px;border:1.5px solid #E5E7EB;background:#fff;font-size:11px;font-weight:600;cursor:pointer;color:#374151;white-space:nowrap}
+.et-btn-ver:hover{border-color:#009EE3;color:#009EE3}
+
+/* ─── EMAIL TOOL: SCHEDULER ─────────────────────────────── */
+.sched-section-label{font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin:12px 0 5px;padding-bottom:4px;border-bottom:1px solid #E5E7EB}
+.sched-list{display:flex;flex-direction:column;gap:5px;margin-bottom:6px}
+.sched-item{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:8px;font-size:12px}
+.sched-ico{font-size:15px;min-width:20px;text-align:center;flex-shrink:0;color:#6B7280}
+.sched-info{flex:1;min-width:0}
+.sched-title{font-weight:600;color:#1A1A2E;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sched-meta{font-size:11px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.sched-run-btn{padding:3px 9px;background:#009EE3;color:#fff;border:none;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;font-weight:600}
+.sched-run-btn:hover{background:#007cba}
+.badge-scraping{background:#F3E8FF;color:#7C3AED}
+.badge-email{background:#DBEAFE;color:#1D4ED8}
+.badge-seguimiento{background:#D1FAE5;color:#059669}
+.badge-monitor{background:#FEF3C7;color:#B45309}
+.ct-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;flex-shrink:0}
+.ct-pending{background:#F1F5F9;color:#64748B}
+.ct-running{background:#DBEAFE;color:#1D4ED8}
+.ct-done{background:#D1FAE5;color:#059669}
+.ct-error{background:#FEE2E2;color:#DC2626}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -416,9 +661,14 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   </div>
   <div class="nav-item" onclick="showPage('interesados',this,'Interesados')" style="position:relative"><span class="nav-icon">⭐</span> Interesados<span id="badgeInteresados" style="position:absolute;top:6px;right:8px;background:var(--mp-warn);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;display:none">0</span></div>
   <div class="nav-item" onclick="showPage('intel',this,'Inteligencia')"><span class="nav-icon">*</span> Inteligencia</div>
+  <div class="nav-item" onclick="showPage('whatsapp',this,'WhatsApp')" style="position:relative">
+    <span class="nav-icon">💬</span> WhatsApp
+    <span id="badgeWaStatus" style="position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:#9CA3AF;display:inline-block" title="Desconectado"></span>
+  </div>
   <div class="nav-item" onclick="showPage('config',this,'Configuración')">
     <span class="nav-icon">⚙️</span> Configuración
   </div>
+
   <div style="padding:20px;margin-top:auto">
     <div style="background:var(--mp-blue-lt);border-radius:10px;padding:12px;border:1px solid #bee3f8">
       <div style="font-size:11px;font-weight:700;color:var(--mp-blue);margin-bottom:4px">Proximas tareas</div>
@@ -965,6 +1215,7 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
           <button id="btnAnularImport" class="btn btn-ghost btn-sm" onclick="anularImportacion()" style="display:none;color:var(--mp-red)">↩ Anular importacion</button>
           <input type="file" id="importFile" accept=".xlsx" style="display:none" onchange="importarLeads(this)">
       <button class="btn btn-primary btn-sm" onclick="loadLeads()">↻ Actualizar</button>
+      <button id="btnFastMasivo" class="btn-fast btn-sm" onclick="registrarFastMasivo()" style="font-size:12px;padding:5px 12px" title="Registrar en Fast todos los Interesados y Opt-out pendientes">⚡ Fast Masivo</button>
     </div>
   </div>
 
@@ -1479,6 +1730,105 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   </div>
 </div>
 <!-- ─── CONFIGURACIÓN ─────────────────────────── -->
+<!-- ══════════════ PAGE: WHATSAPP ══════════════ -->
+<div class="page" id="page-whatsapp">
+  <div class="page-header">
+    <div class="page-title">💬 WhatsApp</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary" onclick="waRefreshStatus()">🔄 Actualizar estado</button>
+      <button class="btn btn-primary" id="btnWaConnect" onclick="waConnect()">Conectar</button>
+    </div>
+  </div>
+
+  <!-- Estado de conexión -->
+  <div class="grid-3" style="margin-bottom:16px">
+    <div class="card" style="text-align:center">
+      <div style="font-size:32px;margin-bottom:8px" id="waStatusIcon">⏳</div>
+      <div style="font-weight:700;font-size:15px" id="waStatusText">Verificando...</div>
+      <div style="font-size:12px;color:#6B7280;margin-top:4px" id="waStatusSub"></div>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Enviados (30d)</div>
+      <div style="font-size:28px;font-weight:700;color:#10B981" id="waStatSent">—</div>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:11px;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Respondidos</div>
+      <div style="font-size:28px;font-weight:700;color:#3B82F6" id="waStatReplied">—</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- QR Code -->
+    <div class="card" id="cardWaQR">
+      <div style="font-weight:600;margin-bottom:12px">📱 Escanear QR</div>
+      <div id="waQRContainer" style="text-align:center;padding:20px">
+        <div style="color:#6B7280;font-size:13px">Haz clic en "Conectar" para obtener el QR</div>
+      </div>
+      <div style="font-size:12px;color:#6B7280;margin-top:12px;line-height:1.5">
+        1. Abre WhatsApp en tu teléfono<br>
+        2. Ve a Dispositivos vinculados → Vincular dispositivo<br>
+        3. Escanea el código QR de aquí
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-secondary" style="flex:1" onclick="waGetQR()">🔁 Nuevo QR</button>
+        <button class="btn" style="flex:1;background:#FEF3C7;color:#92400E;border:1px solid #FDE68A" onclick="waDisconnect()">⛔ Desconectar</button>
+      </div>
+    </div>
+
+    <!-- Follow-up automático -->
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:12px">⚙️ Follow-up automático</div>
+      <div style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:16px">
+        Envía un mensaje de WhatsApp a contactos que recibieron email pero no respondieron.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:13px;color:#374151">Activado</span>
+          <label style="position:relative;display:inline-block;width:44px;height:24px">
+            <input type="checkbox" id="waFollowupEnabled" style="opacity:0;width:0;height:0" onchange="waToggleFollowup(this.checked)">
+            <span id="waFollowupToggle" onclick="document.getElementById('waFollowupEnabled').click()" style="position:absolute;cursor:pointer;inset:0;background:#D1D5DB;border-radius:24px;transition:.3s"></span>
+          </label>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:13px;color:#374151;flex:1">Días sin respuesta para activar</span>
+          <input type="number" id="waFollowupDays" min="1" max="30" value="3" style="width:60px;padding:4px 8px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;text-align:center" onchange="waSaveFollowupConfig()">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:13px;color:#374151;flex:1">Límite diario de mensajes</span>
+          <input type="number" id="waDailyLimit" min="10" max="300" value="150" style="width:70px;padding:4px 8px;border:1px solid #D1D5DB;border-radius:6px;font-size:13px;text-align:center" onchange="waSaveFollowupConfig()">
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%;margin-top:16px" onclick="waRunFollowup()">▶ Ejecutar follow-up ahora</button>
+      <div id="waFollowupResult" style="margin-top:8px;font-size:12px;color:#6B7280;text-align:center"></div>
+    </div>
+  </div>
+
+  <!-- Historial de mensajes WA -->
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-weight:600">📋 Mensajes enviados</div>
+      <input type="text" id="waSearchPhone" placeholder="Buscar teléfono..." style="padding:6px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:12px;width:180px" oninput="waLoadMessages()">
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Teléfono</th><th>Tipo</th><th>Mensaje</th><th>Estado</th>
+          <th>Enviado</th><th>Leído</th><th>Respondido</th>
+        </tr></thead>
+        <tbody id="waMessagesBody">
+          <tr><td colspan="7" style="text-align:center;padding:20px"><div class="spinner"></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+      <button class="btn btn-secondary" id="btnWaPrev" onclick="waPageChange(-1)" disabled>← Anterior</button>
+      <span style="font-size:12px;color:#6B7280;padding:4px 8px" id="waPageInfo">Pág 1</span>
+      <button class="btn btn-secondary" id="btnWaNext" onclick="waPageChange(1)">Siguiente →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ PAGE: CONFIG ══════════════ -->
 <div class="page" id="page-config">
   <div class="page-header">
     <div class="page-title">Configuración</div>
@@ -1538,6 +1888,509 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     <div class="cfg-row">
       <div><div class="cfg-lbl">Delay máximo (seg)</div><div class="cfg-desc">Entre mensajes — máx recomendado: 240</div></div>
       <input class="cfg-input" id="cfg-max_delay_sec" type="number" style="min-width:100px;width:100px">
+    </div>
+  </div>
+</div>
+
+<!-- ─── EMAIL · LEADS ─────────────────────────── -->
+<div class="page" id="page-email-contactos">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Email · Leads</div>
+      <div class="page-sub">Todos los leads recolectados para prospección por email</div>
+    </div>
+  </div>
+  <div class="card" style="padding:10px 16px;margin-bottom:10px">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+      <div class="form-group" style="flex:1;min-width:120px;margin:0">
+        <label>Rubro</label>
+        <input type="text" id="filter-rubro" placeholder="Filtrar..." oninput="loadEmailContacts()">
+      </div>
+      <div class="form-group" style="flex:1;min-width:150px;margin:0">
+        <label>Comuna</label>
+        <select id="filter-comuna" onchange="loadEmailContacts()">
+          <option value="">Todas</option>
+          <option>Santiago Centro</option><option>Providencia</option><option>Las Condes</option>
+          <option>Vitacura</option><option>La Florida</option><option>Maipú</option>
+          <option>Pudahuel</option><option>Quilicura</option><option>Huechuraba</option>
+          <option>Recoleta</option><option>Independencia</option><option>Conchalí</option>
+          <option>Renca</option><option>Cerro Navia</option><option>Lo Prado</option>
+          <option>Quinta Normal</option><option>Estación Central</option><option>Cerrillos</option>
+          <option>Peñalolén</option><option>Macul</option><option>Ñuñoa</option>
+          <option>La Reina</option><option>Lo Barnechea</option><option>Colina</option>
+          <option>San Bernardo</option><option>El Bosque</option><option>La Granja</option>
+          <option>La Pintana</option><option>San Ramón</option><option>Pedro Aguirre Cerda</option>
+          <option>Lo Espejo</option><option>Talagante</option><option>Padre Hurtado</option>
+          <option>Peñaflor</option><option>Melipilla</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1;min-width:140px;margin:0">
+        <label>Estado</label>
+        <select id="filter-estado" onchange="loadEmailContacts()">
+          <option value="">Todos</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="no_enviado">No enviado</option>
+          <option value="enviado">Enviado</option>
+          <option value="respondido">Respondido</option>
+          <option value="interesado">Interesado</option>
+          <option value="quiere_reunion">Quiere reunión</option>
+          <option value="cerrado">Cerrado</option>
+          <option value="no_interesado">No interesado</option>
+          <option value="opt_out">Opt-out</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:0 0 138px;margin:0">
+        <label>Enviado desde</label>
+        <input type="date" id="filter-fecha-desde" onchange="_applyLeadsFiltersAndSort()">
+      </div>
+      <div class="form-group" style="flex:0 0 138px;margin:0">
+        <label>Enviado hasta</label>
+        <input type="date" id="filter-fecha-hasta" onchange="_applyLeadsFiltersAndSort()">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;padding-bottom:1px">
+        <button class="btn btn-secondary" onclick="clearContactFilters()">Limpiar todo</button>
+        <span id="leads-result-count" style="font-size:13px;color:#6B7280;white-space:nowrap"></span>
+      </div>
+    </div>
+  </div>
+  <!-- Pills de estado -->
+  <div class="et-status-pills" id="leads-status-pills"></div>
+  <div id="leads-bulk-bar" style="display:none;align-items:center;gap:12px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;padding:10px 16px;margin-bottom:12px">
+    <span id="leads-bulk-count" style="font-size:14px;font-weight:600;color:#1D4ED8"></span>
+    <button class="btn btn-primary btn-sm" onclick="leadsSendEmailBatch()">✉ Enviar email</button>
+    <button class="btn btn-secondary btn-sm" onclick="leadsClearSelection()">✕ Limpiar selección</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="table-wrap" style="margin:0">
+      <table style="font-size:12px">
+        <thead><tr style="background:#F8FAFC">
+          <th style="width:30px;padding:6px 8px"><input type="checkbox" id="leads-check-all" onchange="leadsToggleAll(this)" title="Seleccionar todos"></th>
+          <th class="sortable-th" style="padding:6px 8px" onclick="sortLeads('business_name')">Negocio <span class="sort-icon" id="si-business_name">↕</span></th>
+          <th style="padding:6px 8px">Email</th>
+          <th class="sortable-th" style="padding:6px 8px" onclick="sortLeads('rubro')">Rubro <span class="sort-icon" id="si-rubro">↕</span></th>
+          <th class="sortable-th" style="padding:6px 8px" onclick="sortLeads('categoria')">Categoría <span class="sort-icon" id="si-categoria">↕</span></th>
+          <th class="sortable-th" style="padding:6px 8px" onclick="sortLeads('comuna')">Comuna <span class="sort-icon" id="si-comuna">↕</span></th>
+          <th class="sortable-th" style="padding:6px 8px" onclick="sortLeads('campaign_status')">Estado <span class="sort-icon" id="si-campaign_status">↕</span></th>
+          <th style="padding:6px 8px">Seguimiento</th>
+          <th class="sortable-th" style="padding:6px 8px" onclick="sortLeads('fecha_envio')">Enviado <span class="sort-icon" id="si-fecha_envio">↕</span></th>
+          <th style="padding:6px 8px">Acciones</th>
+        </tr></thead>
+        <tbody id="contacts-table-body">
+          <tr><td colspan="10"><div class="empty-state"><p>Cargando contactos...</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ─── EMAIL · CAMPAÑAS ──────────────────────── -->
+<div class="page" id="page-email-campanas">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div class="page-title">Email · Campañas</div>
+      <div class="page-sub">Templates de email personalizados · edita asunto, cuerpo y PDF por rubro</div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="openNuevoRubro()" style="margin-top:4px">
+      ➕ Nuevo rubro
+    </button>
+  </div>
+  <div class="camp-filter-bar">
+    <input type="text" id="camp-search" placeholder="🔍  Filtrar rubros..." oninput="filterRubroCards()">
+    <span id="camp-count-label" style="font-size:13px;color:#6B7280;white-space:nowrap"></span>
+  </div>
+  <div class="rubro-grid" id="rubro-card-grid">
+    <p style="color:#9CA3AF;font-size:14px;grid-column:1/-1">Cargando rubros...</p>
+  </div>
+</div>
+
+<!-- ─── EMAIL · INTERESADOS ───────────────────── -->
+<div class="page" id="page-email-interesados">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Email · Interesados</div>
+      <div class="page-sub">Leads activos y seguimiento de reuniones</div>
+    </div>
+  </div>
+  <div class="kpi-grid kpi-grid-4">
+    <div class="kpi-card"><div class="kpi-label">Interesados</div><div class="kpi-value green" id="int-kpi-1">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">En negociación</div><div class="kpi-value blue" id="int-kpi-2">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">Cerrados</div><div class="kpi-value navy" id="int-kpi-3">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">Reuniones pendientes</div><div class="kpi-value" id="int-kpi-4">—</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Leads activos</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Negocio</th><th>Email</th><th>Rubro</th><th>Estado</th>
+          <th>Notas</th><th>Próxima acción</th><th>Acciones</th>
+        </tr></thead>
+        <tbody id="int-table-body">
+          <tr><td colspan="7"><div class="empty-state"><p>Cargando...</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Reuniones próximas</div>
+    <div id="fc-container"></div>
+  </div>
+</div>
+
+<!-- ─── EMAIL · INTELIGENCIA ──────────────────── -->
+<div class="page" id="page-email-inteligencia">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div class="page-title">Email · Inteligencia</div>
+      <div class="page-sub">Motor de decisiones: dónde buscar, qué está funcionando, qué priorizar</div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="loadEmailInteligencia()" style="margin-top:4px">
+      ↻ Actualizar
+    </button>
+  </div>
+  <div class="kpi-grid kpi-grid-4">
+    <div class="kpi-card">
+      <div class="kpi-label">Rubros con leads</div>
+      <div class="kpi-value blue" id="intel-k1">—</div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:2px" id="intel-k1-sub"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Rubros sin leads</div>
+      <div class="kpi-value orange" id="intel-k2">—</div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:2px" id="intel-k2-sub"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Comunas cubiertas</div>
+      <div class="kpi-value green" id="intel-k3">—</div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:2px" id="intel-k3-sub"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Acciones urgentes</div>
+      <div class="kpi-value red" id="intel-k4">—</div>
+      <div style="font-size:11px;color:#9CA3AF;margin-top:2px">rubros/comunas sin respuesta</div>
+    </div>
+  </div>
+  <div class="charts-row">
+    <div class="card" style="flex:2">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:0">Criterio de envío por rubro</div>
+        <span style="font-size:11px;color:#9CA3AF">Leads / Enviados / Interesados / Tasa / Prioridad</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Rubro</th><th style="text-align:right">Leads</th>
+            <th style="text-align:right">Enviados</th>
+            <th style="text-align:right">Interesados</th>
+            <th style="text-align:right">Tasa %</th>
+            <th>Prioridad</th>
+          </tr></thead>
+          <tbody id="intel-rubros-tbody">
+            <tr><td colspan="6"><div class="empty-state"><p>Cargando...</p></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card" style="flex:1;min-width:220px">
+      <div class="card-title">Distribución por estado</div>
+      <canvas id="chart-estados-donut" style="max-height:230px"></canvas>
+    </div>
+  </div>
+  <div class="charts-row">
+    <div class="card" style="flex:1">
+      <div class="card-title">Tasa de respuesta por comuna</div>
+      <canvas id="chart-tasa-comunas" style="max-height:220px"></canvas>
+    </div>
+    <div class="card" style="flex:1">
+      <div class="card-title">Cobertura por comunas</div>
+      <div class="commune-grid" id="commune-grid"></div>
+    </div>
+  </div>
+  <div class="charts-row">
+    <div class="card" style="flex:1">
+      <div class="card-title">📍 Dónde buscar nuevos leads</div>
+      <p style="font-size:12px;color:#9CA3AF;margin-bottom:12px">Combinaciones rubro × comuna sin prospectar aún</p>
+      <div id="intel-proximas-list"></div>
+    </div>
+    <div class="card" style="flex:1">
+      <div class="card-title">🚨 Rubros sin ningún lead todavía</div>
+      <div id="intel-rubros-sin" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"></div>
+      <div class="card-title" style="margin-top:20px">✅ Próximas búsquedas recomendadas</div>
+      <div id="intel-recomendadas" style="margin-top:8px"></div>
+    </div>
+  </div>
+  <!-- ── Ejecutar campaña inteligente ─────────────────────────── -->
+  <div class="card" id="card-campaign-intel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div>
+        <div class="card-title" style="margin-bottom:2px">&#9889; Ejecutar campaña ahora</div>
+        <div style="font-size:12px;color:#9CA3AF">Scraping + envío inmediato según sugerencias de Inteligencia · registra en historial de campañas</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="campaign-intel-target" style="border:1px solid #E5E7EB;border-radius:8px;padding:5px 10px;font-size:13px;color:#374151">
+          <option value="20">20 leads</option>
+          <option value="50" selected>50 leads</option>
+          <option value="100">100 leads</option>
+        </select>
+        <button class="btn btn-primary" id="btn-campaign-intel" onclick="runCampaignIntel()" style="gap:6px">
+          &#9654; Ejecutar campaña
+        </button>
+      </div>
+    </div>
+
+    <!-- Panel de progreso (oculto hasta que se inicia) -->
+    <div id="campaign-intel-progress" style="display:none;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:600;color:#374151" id="campaign-intel-msg">Iniciando...</span>
+        <span style="font-size:12px;color:#9CA3AF" id="campaign-intel-pct">0%</span>
+      </div>
+      <div style="height:8px;background:#E5E7EB;border-radius:4px;overflow:hidden;margin-bottom:10px">
+        <div id="campaign-intel-bar" style="height:100%;background:#009EE3;border-radius:4px;width:0%;transition:width 0.4s ease"></div>
+      </div>
+      <div style="display:flex;gap:16px">
+        <span style="font-size:12px;color:#374151">&#128279; Scrapeados: <strong id="ci-scraped">0</strong></span>
+        <span style="font-size:12px;color:#10B981">&#10003; Enviados: <strong id="ci-sent">0</strong></span>
+        <span style="font-size:12px;color:#DC2626">&#10007; Errores: <strong id="ci-errors">0</strong></span>
+      </div>
+      <!-- Detalle de rubros en tiempo real -->
+      <div id="campaign-intel-detalle" style="margin-top:10px;max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+    </div>
+
+    <!-- Historial de campañas enviadas -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;margin-top:4px">
+      <div class="card-title" style="margin-bottom:0;font-size:13px">Historial de campañas</div>
+      <button class="btn btn-secondary btn-sm" onclick="loadCampaignBatchesIntel()">&#8635; Actualizar</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Fecha</th><th>Rubros</th><th>Comunas</th>
+          <th style="text-align:right">Enviados</th>
+          <th style="text-align:right">Errores</th>
+          <th>Descargar</th>
+        </tr></thead>
+        <tbody id="campaign-batches-intel-tbody">
+          <tr><td colspan="6"><div class="empty-state"><p>Sin campañas aún</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Historial de scraping ─────────────────────────────────── -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-title" style="margin-bottom:0">Historial de scraping</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Fecha</th><th>Tipo</th><th>Rubro</th><th>Comuna</th>
+          <th style="text-align:right">Encontrados</th>
+          <th style="text-align:right">Insertados</th>
+          <th style="text-align:right">Duplicados</th>
+          <th>Estado</th>
+        </tr></thead>
+        <tbody id="intel-historial-tbody">
+          <tr><td colspan="8"><div class="empty-state"><p>Sin historial aún</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ─── EMAIL · KPIs ──────────────────────────── -->
+<div class="page" id="page-email-kpis">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div class="page-title">Email · KPIs</div>
+      <div class="page-sub">Métricas de rendimiento del email tool · tracking en tiempo real</div>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="syncInbox()" id="btn-sync-inbox" style="margin-top:4px">
+      ↻ Sincronizar bandeja
+    </button>
+  </div>
+  <!-- KPIs compactos: 3 grupos en 1 sola fila de 12 tarjetas mini -->
+  <div style="display:grid;grid-template-columns:repeat(12,1fr);gap:8px;margin-bottom:14px">
+    <!-- Envío -->
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Total leads</div>
+      <div class="kpi-value" style="font-size:20px" id="kpi-total">—</div>
+    </div>
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Enviados</div>
+      <div class="kpi-value blue" style="font-size:20px" id="kpi-enviados">—</div>
+    </div>
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Seg. 48h</div>
+      <div class="kpi-value" style="font-size:20px" id="kpi-seg48">—</div>
+    </div>
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Sin resp. 96h</div>
+      <div class="kpi-value red" style="font-size:20px" id="kpi-seg96">—</div>
+    </div>
+    <!-- Engagement -->
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Aperturas</div>
+      <div class="kpi-value green" style="font-size:20px" id="kpi-opened">—</div>
+      <div style="font-size:10px;color:#9CA3AF" id="kpi-open-rate"></div>
+    </div>
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Respondieron</div>
+      <div class="kpi-value blue" style="font-size:20px" id="kpi-replied">—</div>
+      <div style="font-size:10px;color:#9CA3AF" id="kpi-reply-rate"></div>
+    </div>
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Clicks agenda</div>
+      <div class="kpi-value" style="font-size:20px;color:#8B5CF6" id="kpi-clicks">—</div>
+      <div style="font-size:10px;color:#9CA3AF" id="kpi-click-rate"></div>
+    </div>
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Rebotes</div>
+      <div class="kpi-value red" style="font-size:20px" id="kpi-bounced">—</div>
+      <div style="font-size:10px;color:#9CA3AF" id="kpi-bounce-rate"></div>
+    </div>
+    <!-- Pipeline -->
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Interesados</div>
+      <div class="kpi-value green" style="font-size:20px" id="kpi-email-interesados">—</div>
+    </div>
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Quieren reunión</div>
+      <div class="kpi-value" style="font-size:20px;color:#8B5CF6" id="kpi-reunion">—</div>
+    </div>
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Reuniones pend.</div>
+      <div class="kpi-value navy" style="font-size:20px" id="kpi-negociacion">—</div>
+    </div>
+    <div class="kpi-card" style="padding:8px 10px;grid-column:span 1">
+      <div class="kpi-label" style="font-size:10px">Cerrados</div>
+      <div class="kpi-value green" style="font-size:20px" id="kpi-email-cerrados">—</div>
+    </div>
+  </div>
+  <!-- Etiquetas de grupos -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;margin-top:-6px">
+    <div style="font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:2px solid #E5E7EB;padding-bottom:3px">Envío</div>
+    <div style="font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:2px solid #E5E7EB;padding-bottom:3px">Engagement</div>
+    <div style="font-size:10px;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;text-align:center;border-bottom:2px solid #E5E7EB;padding-bottom:3px">Pipeline</div>
+  </div>
+  <div class="charts-row">
+    <div class="card" style="flex:2">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:0">Actividad reciente de tracking</div>
+        <span style="font-size:11px;color:#9CA3AF">Últimos eventos detectados</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Evento</th><th>Negocio</th><th>Email</th><th>Rubro</th><th>Fecha</th>
+          </tr></thead>
+          <tbody id="kpi-activity-tbody">
+            <tr><td colspan="5"><div class="empty-state"><p>Cargando actividad...</p></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card" style="flex:1">
+      <div class="card-title">Distribución de estados</div>
+      <canvas id="chart-kpi-estados" style="max-height:220px"></canvas>
+    </div>
+  </div>
+  <div class="card chart-single">
+    <div class="card-title">Emails enviados por día (últimos 14 días)</div>
+    <canvas id="chart-emails-linea"></canvas>
+  </div>
+  <div class="card">
+    <div class="card-title">Contactos por rubro</div>
+    <canvas id="chart-kpi-rubros"></canvas>
+  </div>
+  <div class="card" id="gmail-api-panel" style="background:#FFFBEB;border-color:#FCD34D">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:22px">📬</span>
+      <div>
+        <div style="font-weight:700;color:#92400E;font-size:14px">Sincronización de bandeja</div>
+        <div style="font-size:12px;color:#B45309;margin-top:2px" id="gmail-api-status">
+          Haz clic en "Sincronizar bandeja" para detectar respuestas y rebotes.
+        </div>
+      </div>
+      <div style="margin-left:auto;text-align:right">
+        <div style="font-size:11px;color:#9CA3AF">Última sync</div>
+        <div style="font-size:12px;font-weight:600;color:#374151" id="last-sync-time">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── EMAIL · SCHEDULER ─────────────────────── -->
+<div class="page" id="page-email-scheduler">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div class="page-title">Email · Scheduler</div>
+      <div class="page-sub">Jobs automáticos · scraping, emails y seguimientos</div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="loadEmailScheduler()" style="margin-top:4px">
+      ↻ Actualizar
+    </button>
+  </div>
+  <!-- Jobs programados: grid 2 columnas -->
+  <div class="card">
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>&#9881; Jobs programados</span>
+      <span id="sched-status-badge" style="font-size:11px;padding:3px 10px;border-radius:12px;background:#D1FAE5;color:#059669;font-weight:700">Activo</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div class="sched-section-label">&#9675; Scraping automático</div>
+        <div class="sched-list" id="sched-scraping">
+          <div style="color:#9CA3AF;font-size:12px">Cargando...</div>
+        </div>
+        <div class="sched-section-label">&#9993; Envío de email</div>
+        <div class="sched-list" id="sched-email">
+          <div style="color:#9CA3AF;font-size:12px">Cargando...</div>
+        </div>
+      </div>
+      <div>
+        <div class="sched-section-label">&#8634; Seguimiento &amp; Monitor</div>
+        <div class="sched-list" id="sched-seguimiento">
+          <div style="color:#9CA3AF;font-size:12px">Cargando...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Seguimientos + Reuniones en grid 2 columnas -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-bottom:16px">
+    <div class="card" style="margin-bottom:0">
+      <div class="card-title">&#9993; Seguimientos pendientes</div>
+      <div id="followups-list"><p style="color:#9CA3AF;font-size:13px">Cargando...</p></div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div class="card-title">&#9675; Próximas reuniones</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Fecha</th><th>Hora</th><th>Negocio</th><th>Rubro</th><th>Lugar</th><th>Estado</th>
+          </tr></thead>
+          <tbody id="scheduler-reuniones-body">
+            <tr><td colspan="6"><div class="empty-state"><p>Cargando reuniones...</p></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <!-- Historial de campañas -->
+  <div class="card">
+    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>&#9881; Historial de campañas</span>
+      <button class="btn btn-ghost btn-sm" onclick="loadEmailScheduler()">&#8635; Actualizar</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Fecha envío</th><th>Rubro</th><th>Comunas</th><th>Enviados</th><th>Errores</th><th>Descarga</th>
+        </tr></thead>
+        <tbody id="campaign-batches-tbody">
+          <tr><td colspan="6"><div class="empty-state"><p>Cargando historial...</p></div></td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -1677,6 +2530,271 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   </div>
 </div>
 
+<!-- ══════════════ EMAIL TOOL MODALS ══════════════ -->
+
+<!-- MODAL: CONVERSACIÓN EMAIL -->
+<div class="modal-overlay email-modal-overlay" id="modal-email-conv">
+  <div class="modal-card" style="width:560px;max-width:95vw;max-height:82vh;display:flex;flex-direction:column">
+    <div class="modal-header" style="flex-shrink:0">
+      <div>
+        <h2 id="conv-business-name" style="font-size:16px;font-weight:700">—</h2>
+        <div id="conv-email-addr" style="font-size:12px;color:#6B7280;margin-top:2px"></div>
+      </div>
+      <span class="modal-close" onclick="closeEmailModal('modal-email-conv')">&#x2715;</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;padding:0 0 12px;flex-shrink:0" id="conv-badges"></div>
+    <div style="overflow-y:auto;flex:1;padding-right:4px">
+      <div class="conv-timeline" id="conv-timeline">
+        <p style="color:#9CA3AF;font-size:13px">Cargando...</p>
+      </div>
+    </div>
+    <div class="modal-footer" style="flex-shrink:0">
+      <button class="btn btn-secondary" onclick="closeEmailModal('modal-email-conv')">Cerrar</button>
+      <button class="btn btn-primary" id="conv-send-btn" onclick="_convSendEmail()">&#9993; Enviar email ahora</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR ESTADO EMAIL -->
+<div class="modal-overlay" id="modal-edit-status">
+  <div class="modal-card" style="max-width:360px">
+    <div class="modal-header">
+      <h2>Cambiar estado</h2>
+      <span class="modal-close" onclick="closeEmailModal('modal-edit-status')">&#x2715;</span>
+    </div>
+    <input type="hidden" id="edit-status-contact-id">
+    <div style="display:flex;flex-direction:column;gap:8px;margin:16px 0" id="status-options-list"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEmailModal('modal-edit-status')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: DETALLE CONTACTO EMAIL -->
+<div class="modal-overlay" id="modal-detalle">
+  <div class="modal-card wide">
+    <div class="modal-header">
+      <h2>Detalle del contacto</h2>
+      <span class="modal-close" onclick="closeEmailModal('modal-detalle')">&#x2715;</span>
+    </div>
+    <div id="modal-detalle-content"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEmailModal('modal-detalle')">Cerrar</button>
+      <button class="btn btn-primary" onclick="openAgendarFromDetail()">Agendar reunión</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: AGENDAR REUNION EMAIL -->
+<div class="modal-overlay" id="modal-agendar">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>Agendar reunión</h2>
+      <span class="modal-close" onclick="closeEmailModal('modal-agendar')">&#x2715;</span>
+    </div>
+    <input type="hidden" id="agendar-contact-id">
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Fecha</label>
+      <input type="date" id="agendar-fecha">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Hora</label>
+      <input type="time" id="agendar-hora">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Lugar</label>
+      <input type="text" id="agendar-lugar" placeholder="Ej: Oficina Las Condes, Zoom...">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Notas</label>
+      <textarea id="agendar-notas" placeholder="Notas adicionales..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEmailModal('modal-agendar')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveReunion()">Guardar reunión</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NUEVA CAMPANA EMAIL -->
+<div class="modal-overlay" id="modal-nueva-campana">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>Nueva campaña</h2>
+      <span class="modal-close" onclick="closeEmailModal('modal-nueva-campana')">&#x2715;</span>
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Nombre</label>
+      <input type="text" id="nc-nombre" placeholder="Nombre de la campaña">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Rubro</label>
+      <select id="nc-rubro" onchange="onRubroChange()">
+        <option value="">— Todos los contactos —</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Asunto</label>
+      <input type="text" id="nc-asunto" placeholder="Asunto del email">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Cuerpo del email</label>
+      <textarea id="nc-cuerpo" style="min-height:150px" placeholder="Escribe el cuerpo del email..."></textarea>
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Horario</label>
+      <input type="text" id="nc-horario" placeholder="Ej: Lun-Vie 9:00 AM">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEmailModal('modal-nueva-campana')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveCampana()">Guardar campaña</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EMAIL PREVIEW -->
+<div class="modal-overlay" id="modal-email-preview">
+  <div class="preview-modal-card">
+    <div class="modal-header" style="margin-bottom:12px">
+      <h2 id="preview-modal-title" style="font-size:16px">Vista previa del email</h2>
+      <span class="modal-close" onclick="closeEmailModal('modal-email-preview')">&#x2715;</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+      <input id="preview-test-email" type="email" placeholder="tu@email.com"
+        style="flex:1;padding:8px 12px;border:1px solid #E0D9CC;border-radius:8px;font-size:13px;"
+        value="juansebastian.pinto@mercadolibre.cl">
+      <button class="btn btn-success btn-sm" onclick="sendPreviewTest()" style="white-space:nowrap">
+        ✉ Enviar test
+      </button>
+    </div>
+    <iframe id="email-preview-iframe" src="about:blank"></iframe>
+  </div>
+</div>
+
+<!-- MODAL: ENVIAR CAMPAÑA -->
+<div class="modal-overlay" id="modal-send-campana">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2 id="send-campana-title">Enviar campaña</h2>
+      <span class="modal-close" onclick="closeEmailModal('modal-send-campana')">&#x2715;</span>
+    </div>
+    <div id="send-campana-info" style="margin-bottom:16px;font-size:14px;color:#374151;line-height:1.6"></div>
+    <div class="info-box" id="send-campana-stats"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEmailModal('modal-send-campana')">Cancelar</button>
+      <button class="btn btn-success" id="send-campana-confirm-btn" onclick="confirmSendCampana()">
+        ▶ Enviar ahora
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR TEMPLATE EMAIL -->
+<div class="modal-overlay" id="modal-template">
+  <div class="modal-card wide">
+    <div class="modal-header">
+      <h2 id="modal-template-title">Editar template</h2>
+      <span class="modal-close" onclick="closeEmailModal('modal-template')">&#x2715;</span>
+    </div>
+    <input type="hidden" id="template-id">
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Asunto</label>
+      <input type="text" id="template-subject">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Cuerpo</label>
+      <textarea id="template-body" style="min-height:200px"></textarea>
+    </div>
+    <div class="form-group" style="margin-bottom:4px">
+      <label>PDF de propuesta comercial</label>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px">
+        <label style="display:inline-flex;align-items:center;gap:6px;background:#F3F4F6;border:1.5px dashed #D1D5DB;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;color:#374151;font-weight:500">
+          ↑ Subir PDF
+          <input type="file" id="template-pdf-input" accept=".pdf" style="display:none" onchange="onPdfSelected(this)">
+        </label>
+        <span id="template-pdf-name" style="font-size:13px;color:#6B7280;">Sin PDF subido</span>
+        <span id="template-pdf-status" style="font-size:12px;font-weight:600;"></span>
+      </div>
+      <p style="font-size:11px;color:#9CA3AF;margin-top:6px;">Este PDF se adjuntará automáticamente en todos los emails enviados para este rubro.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEmailModal('modal-template')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveTemplate()">Guardar template</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: PROGRESO BATCH EMAIL -->
+<div class="modal-overlay" id="modal-batch-progress">
+  <div class="modal-card" style="max-width:440px">
+    <div class="modal-header">
+      <h2>✉ Enviando emails</h2>
+    </div>
+    <div style="text-align:center;margin:10px 0 18px">
+      <span id="bp-sent" style="font-size:48px;font-weight:800;color:#009EE3;line-height:1">0</span>
+      <span style="font-size:28px;color:#9CA3AF;font-weight:400"> / </span>
+      <span id="bp-total" style="font-size:36px;font-weight:700;color:#374151">0</span>
+      <div style="font-size:13px;color:#6B7280;margin-top:4px">emails enviados</div>
+    </div>
+    <div style="background:#E5E7EB;border-radius:8px;height:10px;overflow:hidden;margin-bottom:10px">
+      <div id="bp-bar-fill" style="height:100%;width:0%;background:#009EE3;border-radius:8px;transition:width 0.4s ease"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:#6B7280;margin-bottom:10px">
+      <span>Errores: <strong id="bp-errors" style="color:#DC2626">0</strong></span>
+      <span id="bp-status" style="color:#374151;font-weight:500">Preparando…</span>
+    </div>
+    <div id="bp-email" style="font-size:12px;color:#9CA3AF;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;min-height:16px"></div>
+    <div class="modal-footer" style="margin-top:16px">
+      <button id="bp-close-btn" class="btn btn-primary" style="display:none" onclick="closeBatchProgress()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NUEVO RUBRO EMAIL -->
+<div class="modal-overlay" id="modal-nuevo-rubro">
+  <div class="modal-card wide">
+    <div class="modal-header">
+      <h2>➕ Nuevo rubro</h2>
+      <span class="modal-close" onclick="closeEmailModal('modal-nuevo-rubro')">&#x2715;</span>
+    </div>
+    <p style="font-size:13px;color:#6B7280;margin-bottom:16px">
+      Crea un template de email para un nuevo rubro.
+    </p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div class="form-group" style="flex:2">
+        <label>Nombre del rubro <span style="color:#DC2626">*</span></label>
+        <input type="text" id="nr-rubro" placeholder="Ej: joyería, peluquería, óptica..." oninput="nrUpdatePreview()">
+      </div>
+      <div class="form-group" style="flex:0 0 110px">
+        <label>Emoji / icono</label>
+        <input type="text" id="nr-icon" value="📧" style="font-size:22px;text-align:center" maxlength="4" oninput="nrUpdatePreview()">
+      </div>
+      <div class="form-group" style="flex:0 0 140px">
+        <label>Color header</label>
+        <input type="color" id="nr-header-bg" value="#1A1A2E" style="width:100%;height:38px;padding:2px">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:4px">
+      <label>Asunto del email <span style="color:#DC2626">*</span></label>
+      <input type="text" id="nr-subject" placeholder="Ej: Cobra sin complicaciones en tu joyería — MercadoPago">
+    </div>
+    <div class="form-group" style="margin-top:4px">
+      <label>Titular principal (H1)</label>
+      <input type="text" id="nr-h1" placeholder="Ej: Esto tarda menos de 5 minutos">
+    </div>
+    <div class="form-group" style="margin-top:4px">
+      <label>Cuerpo del email</label>
+      <textarea id="nr-body" rows="5" style="width:100%;padding:10px;border:1px solid #E5E7EB;border-radius:8px;font-size:13px;resize:vertical"
+        placeholder="Hola {nombre},&#10;&#10;Te escribo desde MercadoPago..."></textarea>
+    </div>
+    <div id="nr-error" style="display:none;color:#DC2626;font-size:13px;margin-top:8px;padding:8px 12px;background:#FEF2F2;border-radius:8px"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeEmailModal('modal-nuevo-rubro')">Cancelar</button>
+      <button class="btn btn-primary" id="nr-save-btn" onclick="saveNuevoRubro()">Crear rubro</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════ SCRIPTS ══════════════ -->
 <script>
 const API = '';  // misma origen Flask
@@ -1704,8 +2822,29 @@ function showPage(id, el, label){
     config: loadConfig,
     intel: loadIntel,
     interesados: loadInteresados,
+    'email-contactos':    function(){ loadEmailContacts(); },
+    'email-campanas':     function(){ loadEmailCampanas(); },
+    'email-interesados':  function(){ loadEmailInteresados(); },
+    'email-inteligencia': function(){ loadEmailInteligencia(); },
+    'email-kpis':         function(){ loadEmailKpis(); },
+    'email-scheduler':    function(){ loadEmailScheduler(); },
+    'whatsapp':           function(){ waRefreshStatus(); waLoadMessages(); waLoadStats(); waLoadConfig(); },
   };
   if(loaders[id]) loaders[id]();
+}
+
+function toggleEmailSub(el) {
+  var menu = document.getElementById('emailSubMenu');
+  var arrow = document.getElementById('emailSubArrow');
+  var open = menu.style.display === 'block';
+  menu.style.display = open ? 'none' : 'block';
+  arrow.style.transform = open ? '' : 'rotate(90deg)';
+}
+
+function goToInteresados() {
+  // Email · Interesados usa la misma página de gestión (mismo backend /api/prospects/)
+  var navItem = document.querySelector('.nav-item[onclick*="showPage(\'interesados\'"]');
+  showPage('interesados', navItem, 'Interesados');
 }
 
 // ─── TOAST ──────────────────────────────────────────
@@ -2492,9 +3631,12 @@ async function loadEnvios(){
         'fidelizacion_weekly':'Fidelizacion Sellers',
         'prospecting_daily':'Prospeccion L-V'
       };
+      var WA_JOBS = new Set(['batch_0930','batch_1500','batch_1730','fidelizacion_weekly','prospecting_daily']);
       var msgs = {'batch_0930':'15 mensajes','batch_1500':'10 mensajes','batch_1730':'15 mensajes'};
-      var jobs = (waStatus.jobs||[]).sort(function(a,b){return new Date(a.next_run)-new Date(b.next_run);});
-      return jobs.slice(0,6).map(function(j){
+      var jobs = (waStatus.jobs||[])
+        .filter(function(j){ return WA_JOBS.has(j.id); })
+        .sort(function(a,b){return new Date(a.next_run)-new Date(b.next_run);});
+      return jobs.map(function(j){
         var titulo = jobNames[j.id] || j.id;
         var nextDate = j.next_run ? new Date(j.next_run) : null;
         var nextStr = nextDate ? nextDate.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'short'}) + ' ' + nextDate.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}) : 'Sin programar';
@@ -3061,12 +4203,22 @@ async function loadInteresados(){
     document.getElementById('prospectosList').innerHTML = '<div style="text-align:center;padding:24px;color:var(--mp-text-3)">Sin prospectos interesados aun</div>';
   } else {
     document.getElementById('prospectosList').innerHTML = prospects.map(function(p){
-      var pendientes = p.tareas_pendientes || 0;
-      return '<div class="log-item" style="cursor:pointer;border-left:3px solid '+(pendientes>0?'var(--mp-warn)':'var(--mp-border)')+';margin-bottom:6px" onclick="abrirProspecto('+p.id+')">' +
-        '<div class="log-ico">⭐</div>' +
+      var pendientes  = p.tareas_pendientes || 0;
+      var esEmail     = p.source === 'email';
+      var iconoCanal  = esEmail
+        ? '<span style="background:#EFF6FF;color:var(--mp-blue);font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:6px">✉ Email</span>'
+        : '';
+      var contactoSub = esEmail
+        ? (p.email || '—')
+        : (p.name + (p.competencia ? ' · ' + p.competencia : ''));
+      var btnContacto = esEmail
+        ? '<a href="mailto:'+p.email+'" onclick="event.stopPropagation()" title="Enviar email" style="background:#EFF6FF;color:var(--mp-blue);border:1px solid #bee3f8;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px;text-decoration:none">✉</a>'
+        : '<a href="https://wa.me/'+(p.phone||'')+'" target="_blank" onclick="event.stopPropagation()" style="background:#d4f5e2;color:#00875a;border:1px solid #b2dfc9;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px;text-decoration:none">💬 WA</a>';
+      return '<div class="log-item" style="cursor:pointer;border-left:3px solid '+(pendientes>0?'var(--mp-warn)':'(esEmail?\'var(--mp-blue)\':\'var(--mp-border)\')')+';margin-bottom:6px" onclick="abrirProspecto('+p.id+')">' +
+        '<div class="log-ico">'+(esEmail?'✉':'⭐')+'</div>' +
         '<div class="log-info">' +
-        '<div class="log-title">'+p.negocio+'</div>' +
-        '<div class="log-meta">'+p.name+' · '+p.rubro+(p.competencia?' · '+p.competencia:'')+'</div>' +
+        '<div class="log-title">'+p.negocio+iconoCanal+'</div>' +
+        '<div class="log-meta">'+contactoSub+' · '+p.rubro+'</div>' +
         '</div>' +
         (pendientes>0?'<span style="background:var(--mp-warn);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">'+pendientes+' tareas</span>':'') +
         '<select onchange="cambiarEstadoProspecto('+p.id+',this.value,'+(p.lead_id||0)+')" onclick="event.stopPropagation()" style="font-size:11px;border:1px solid #ddd;border-radius:6px;padding:2px 6px;cursor:pointer">' +
@@ -3076,6 +4228,7 @@ async function loadInteresados(){
         '<option value="no_logrado" '+(p.estado==="no_logrado"?"selected":"")+'>❌ No logrado</option>' +
         '<option value="sin_respuesta" '+(p.estado==="sin_respuesta"?"selected":"")+'>📵 Sin respuesta</option>' +
         '</select>' +
+        btnContacto +
         '<button onclick="event.stopPropagation();abrirActividad('+p.id+',p.negocio)" style="background:#e8f4fd;color:var(--mp-blue);border:1px solid #bee3f8;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px">📋</button>' +
         '<button onclick="event.stopPropagation();eliminarProspecto('+p.id+','+(p.lead_id||0)+')" style="background:#fff5f5;color:var(--mp-red);border:1px solid #ffd0d0;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px">🗑</button>' +
         '</div>';
@@ -3129,11 +4282,44 @@ function renderTareasWidget(tasks){
       '<div style="display:flex;gap:4px">' +
       '<button onclick="event.stopPropagation();completarTareaWidget('+t.id+')" style="background:var(--mp-green);color:#fff;border:none;border-radius:6px;padding:2px 6px;cursor:pointer;font-size:10px">✓</button>' +
       '<button onclick="event.stopPropagation();abrirReagendar('+t.id+')" style="background:var(--mp-blue-lt);color:var(--mp-blue);border:none;border-radius:6px;padding:2px 6px;cursor:pointer;font-size:10px">↻</button>' +
-      '<a href="https://wa.me/'+t.phone+'?text=Hola+'+encodeURIComponent(t.name)+'!" target="_blank" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:2px 6px;cursor:pointer;font-size:10px;text-decoration:none">💬</a>' +
+      (t.source==='email'
+        ? '<a href="mailto:'+(t.email||'')+'\" style="background:#EFF6FF;color:var(--mp-blue);border:none;border-radius:6px;padding:2px 6px;cursor:pointer;font-size:10px;text-decoration:none">✉</a>'
+        : '<a href="https://wa.me/'+t.phone+'?text=Hola+'+encodeURIComponent(t.name)+'!" target="_blank" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:2px 6px;cursor:pointer;font-size:10px;text-decoration:none">💬</a>'
+      ) +
       '</div></div>' +
       '<div style="color:var(--mp-text-3);margin-top:2px">'+t.tipo+' · '+(t.hora||'')+' · '+(t.fecha||'')+'</div>' +
       '</div>';
   }).join('');
+}
+
+async function cambiarEstadoProspecto(prospId, nuevoEstado, leadId) {
+  // Actualiza estado del prospecto en DB vía PUT /api/prospects/{id}/estado
+  var body = { estado: nuevoEstado };
+  // Si se marca como no_logrado pedir motivo (opcional, sin bloquear)
+  if (nuevoEstado === 'no_logrado') {
+    var motivo = prompt('Motivo de no logrado (opcional):') || '';
+    if (motivo) body.motivo_perdida = motivo;
+  }
+  try {
+    var r = await api('/api/prospects/' + prospId + '/estado', {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    });
+    if (r && r.ok) {
+      var labels = {
+        en_seguimiento: 'En seguimiento', reunion_agendada: 'Reunión agendada',
+        cerrado: 'Cerrado', no_logrado: 'No logrado', sin_respuesta: 'Sin respuesta'
+      };
+      toast(labels[nuevoEstado] || nuevoEstado, 'success');
+      loadInteresados();
+    } else {
+      toast('Error actualizando estado', 'error');
+      loadInteresados(); // recargar para revertir visual
+    }
+  } catch(e) {
+    toast('Error de conexión', 'error');
+    loadInteresados();
+  }
 }
 
 async function abrirProspecto(pid){
@@ -4494,6 +5680,55 @@ async function registrarEnFast(lead, btnEl) {
   }
 }
 
+async function registrarFastMasivo() {
+  var pendientes = (allLeads||[]).filter(function(l){
+    return FAST_TRIGGER_STATES.indexOf(l.status) !== -1 && !l.fast_ok;
+  });
+  if (!pendientes.length) { toast('No hay leads pendientes de Fast', 'info'); return; }
+
+  var btn = document.getElementById('btnFastMasivo');
+  btn.disabled = true;
+  var ok = 0, err = 0;
+
+  for (var i = 0; i < pendientes.length; i++) {
+    var lead = pendientes[i];
+    btn.textContent = '⚡ Fast ' + (i+1) + '/' + pendientes.length;
+    toast('Fast [' + (i+1) + '/' + pendientes.length + '] ' + lead.name, 'info');
+    try {
+      var res = await fetch('/api/leads/' + lead.id + '/registrar-fast', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          nombre:   lead.name    || '',
+          telefono: lead.phone   || '',
+          direccion: lead.address || lead.direccion || ''
+        })
+      }).then(function(r){ return r.json(); });
+
+      if (res && res.ok) {
+        lead.fast_ok = 1;
+        ok++;
+        // Actualizar botón en la fila
+        var row = document.querySelector('tr[data-id="' + lead.id + '"]');
+        if (row) {
+          var btnFast = row.querySelector('.btn-fast');
+          if (btnFast) { btnFast.textContent = 'En Fast'; btnFast.classList.add('success'); btnFast.disabled = true; }
+        }
+      } else {
+        err++;
+        toast('Error en ' + lead.name + ': ' + ((res && res.mensaje) || 'sin respuesta'), 'error');
+      }
+    } catch(e) {
+      err++;
+      toast('Error en ' + lead.name, 'error');
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = '⚡ Fast Masivo';
+  toast('Fast Masivo completado: ' + ok + ' ok, ' + err + ' errores', ok > 0 ? 'success' : 'error');
+}
+
 function editarDireccion(leadId, btnEl) {
   var lead = (allLeads||[]).find(function(l){ return l.id===leadId; });
   var actual = (lead && (lead.address||lead.direccion)) || '';
@@ -4545,11 +5780,10 @@ window.updateLeadStatus = async function(leadId, newStatus) {
 
   if (FAST_TRIGGER_STATES.indexOf(newStatus) !== -1) {
     var lead = (allLeads || []).find(function(l){ return l.id === leadId; });
-    if (lead) {
+    if (lead && !lead.fast_ok) {
       setTimeout(function() {
-        if (confirm('Registrar a "' + lead.name + '" en MercadoPago Fast?')) {
-          registrarEnFast(Object.assign({}, lead, { id: leadId }), null);
-        }
+        toast('Registrando "' + lead.name + '" en Fast automáticamente...', 'info');
+        registrarEnFast(Object.assign({}, lead, { id: leadId }), null);
       }, 800);
     }
   }
@@ -4628,6 +5862,1853 @@ if (_originalShowPage) {
 document.addEventListener('DOMContentLoaded', function() {
   setTimeout(agregarBotonFastMasivo, 1000);
 });
+
+// ══════════════════════════════════════════════════════
+// EMAIL TOOL FUNCTIONS — merged from email_tool.html
+// ══════════════════════════════════════════════════════
+
+// ── Email modal helpers ──────────────────────────────
+function openEmailModal(id) { document.getElementById(id).classList.add('open'); }
+function closeEmailModal(id) { document.getElementById(id).classList.remove('open'); }
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.modal-overlay').forEach(function(m) {
+    m.addEventListener('click', function(e) { if (e.target === m) m.classList.remove('open'); });
+  });
+  _populateScrapingRubros();
+});
+
+// ── Email: apiCall wrapper (delegates to existing api()) ──
+function apiCall(method, url, body) {
+  var opts = { method: method };
+  if (body) opts.body = JSON.stringify(body);
+  return api(url, opts).then(function(r) { return r || {}; });
+}
+
+// ── Email: showAlert (uses existing toast()) ──────────
+function showAlert(msg, type) {
+  toast(msg, type === 'error' ? 'error' : type === 'success' ? 'success' : '');
+}
+
+// ── Email: utils ──────────────────────────────────────
+function emailStatusBadge(s) {
+  var map = {
+    'no_enviado':    ['No enviado',    '#6B7280','#F3F4F6'],
+    'enviado':       ['Enviado',       '#1D4ED8','#DBEAFE'],
+    'respondido':    ['Respondido',    '#065F46','#D1FAE5'],
+    'interesado':    ['Interesado',    '#92400E','#FEF3C7'],
+    'quiere_reunion':['Quiere reunión','#5B21B6','#EDE9FE'],
+    'cerrado':       ['Cerrado',       '#065F46','#D1FAE5'],
+    'no_interesado': ['No interesado', '#991B1B','#FEE2E2'],
+    'opt_out':       ['Opt-out',       '#374151','#E5E7EB'],
+    'pendiente':     ['No enviado',    '#6B7280','#F3F4F6'],
+  };
+  var m = map[s] || [s, '#6B7280','#F3F4F6'];
+  return '<span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:12px;color:'+m[1]+';background:'+m[2]+'">' + m[0] + '</span>';
+}
+
+function seguimientoBadge(c) {
+  var count  = c.seguimiento_count || 0;
+  var status = c.campaign_status || '';
+  var next   = c.proximo_seguimiento;
+  var now    = new Date();
+  if (count === 0 && status === 'enviado') {
+    if (!next) return '<span style="font-size:11px;color:#9CA3AF">—</span>';
+    var nextDate = new Date(next);
+    var hoursLeft = Math.round((nextDate - now) / 3600000);
+    if (hoursLeft > 0) return '<span style="font-size:11px;color:#6B7280">48h en <b>' + hoursLeft + 'h</b></span>';
+    return '<span style="font-size:11px;font-weight:600;color:#F59E0B">⏳ 48h pendiente</span>';
+  }
+  if (count === 1 || status === 'seguimiento_48h') {
+    if (next && status === 'seguimiento_48h') {
+      var nextDate2 = new Date(next);
+      var hoursLeft2 = Math.round((nextDate2 - now) / 3600000);
+      var badge48 = '<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;color:#1D4ED8;background:#DBEAFE">✓ 48h</span>';
+      if (hoursLeft2 > 0) return badge48 + ' <span style="font-size:11px;color:#6B7280">96h en <b>' + hoursLeft2 + 'h</b></span>';
+      return badge48 + ' <span style="font-size:11px;font-weight:600;color:#F59E0B">⏳ 96h pendiente</span>';
+    }
+    return '<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;color:#1D4ED8;background:#DBEAFE">✓ 48h</span>';
+  }
+  if (count >= 2 || status === 'no_responde') {
+    return '<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;color:#065F46;background:#D1FAE5">✓ 48h</span> ' +
+           '<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;color:#5B21B6;background:#EDE9FE">✓ 96h</span>';
+  }
+  return '<span style="font-size:11px;color:#9CA3AF">—</span>';
+}
+
+function emailFormatDate(d) {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleDateString('es-CL', {day:'2-digit',month:'short',year:'numeric'}); }
+  catch(e) { return d; }
+}
+
+function emailFormatDateTime(d) {
+  if (!d) return '—';
+  try {
+    var dt = new Date(d);
+    var date = dt.toLocaleDateString('es-CL', {day:'2-digit', month:'short', year:'numeric'});
+    var time = dt.toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
+    return '<span style="white-space:nowrap">' + date + '</span><br><span style="font-size:11px;color:#9CA3AF">' + time + '</span>';
+  } catch(e) { return d; }
+}
+
+function destroyEmailChart(key) {
+  if (emailCharts[key]) { emailCharts[key].destroy(); delete emailCharts[key]; }
+}
+
+var emailCharts = {};
+var currentDetailContact = null;
+var fcCalendar = null;
+
+// ── Email: CATEGORIA MAPPING ──────────────────────────
+var RUBRO_CAT = {
+  'clínica dental':'Clínicas','clinica dental':'Clínicas',
+  'clínica de belleza':'Clínicas','clinica de belleza':'Clínicas',
+  'oftalmología':'Clínicas','oftalmologia':'Clínicas',
+  'veterinaria':'Clínicas',
+  'spa':'Gimnasios / Clínicas','centro de spa':'Gimnasios / Clínicas',
+  'gimnasio':'Gimnasios / Clínicas',
+  'tienda de muebles':'Retail','muebleria':'Retail','mueblería':'Retail',
+  'florería':'Retail','floreria':'Retail',
+  'librería':'Retail','libreria':'Retail',
+  'lubricentro':'Retail / Servicios',
+  'frenos':'Retail / Servicios','taller de frenos':'Retail / Servicios',
+  'sushi':'Gastronomía','restaurant de sushi':'Gastronomía',
+  'pizzería':'Gastronomía','pizzeria':'Gastronomía',
+  'restaurant de pollos asados':'Gastronomía',
+  'cafetería':'Gastronomía','cafeteria':'Gastronomía',
+  'pastelería':'Gastronomía','pasteleria':'Gastronomía',
+  'emporio':'Minimarket / Conveniencia',
+};
+function getCategoria(rubro) {
+  if (!rubro) return '—';
+  var r = rubro.toLowerCase().trim();
+  return RUBRO_CAT[r] || '—';
+}
+
+// ── Email: LEADS (Contactos) ──────────────────────────
+var _allLeadsData = [];
+var _sortCol = 'fecha_envio';
+var _sortDir = 'desc';
+var _leadsSelected = new Set();
+var _batchPollInterval = null;
+
+function loadEmailContacts() {
+  var rubro  = (document.getElementById('filter-rubro')  || {}).value || '';
+  var comuna = (document.getElementById('filter-comuna') || {}).value || '';
+  var params = new URLSearchParams();
+  if (rubro)  params.set('rubro', rubro);
+  if (comuna) params.set('comuna', comuna);
+  // Status se filtra client-side para poder calcular pills
+  api('/api/email-tool/contacts?' + params.toString()).then(function(data) {
+    _allLeadsData = (data && (data.contacts || data)) || [];
+    if (!Array.isArray(_allLeadsData)) _allLeadsData = [];
+    renderStatusPills(_allLeadsData);  // pills con TODOS los registros
+    _applyLeadsFiltersAndSort();
+  });
+}
+
+function _applyLeadsFiltersAndSort() {
+  var desde  = (document.getElementById('filter-fecha-desde') || {}).value || '';
+  var hasta  = (document.getElementById('filter-fecha-hasta') || {}).value || '';
+  var estado = (document.getElementById('filter-estado') || {}).value || '';
+  var filtered = _allLeadsData.filter(function(c) {
+    if (estado) {
+      var s = c.campaign_status || 'pendiente';
+      if (estado === 'no_enviado') { if (s !== 'no_enviado' && s !== 'pendiente') return false; }
+      else if (s !== estado) return false;
+    }
+    if (desde || hasta) {
+      var fe = c.fecha_envio;
+      if (!fe) return !desde;  // sin fecha: excluir si hay filtro de fecha
+      var d = fe.substring(0, 10);
+      if (desde && d < desde) return false;
+      if (hasta && d > hasta) return false;
+    }
+    return true;
+  });
+  var col = _sortCol, dir = _sortDir;
+  filtered.sort(function(a, b) {
+    var va, vb;
+    if (col === 'categoria') {
+      va = getCategoria(a.rubro) || '';
+      vb = getCategoria(b.rubro) || '';
+    } else if (col === 'fecha_envio') {
+      va = a.fecha_envio || '';
+      vb = b.fecha_envio || '';
+    } else {
+      va = (a[col] || '').toString().toLowerCase();
+      vb = (b[col] || '').toString().toLowerCase();
+    }
+    if (va < vb) return dir === 'asc' ? -1 : 1;
+    if (va > vb) return dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+  var cnt = document.getElementById('leads-result-count');
+  if (cnt) cnt.textContent = filtered.length + ' lead' + (filtered.length !== 1 ? 's' : '');
+  renderContactsTable(filtered);
+}
+
+function sortLeads(col) {
+  if (_sortCol === col) {
+    _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _sortCol = col;
+    _sortDir = col === 'fecha_envio' ? 'desc' : 'asc';
+  }
+  document.querySelectorAll('.sort-icon').forEach(function(el) { el.textContent = '↕'; el.className = 'sort-icon'; });
+  var si = document.getElementById('si-' + col);
+  if (si) { si.textContent = _sortDir === 'asc' ? '↑' : '↓'; si.className = 'sort-icon ' + _sortDir; }
+  _applyLeadsFiltersAndSort();
+}
+
+function leadsToggleAll(cb) {
+  var boxes = document.querySelectorAll('.leads-cb');
+  boxes.forEach(function(b) {
+    b.checked = cb.checked;
+    if (cb.checked) _leadsSelected.add(Number(b.value));
+    else _leadsSelected.delete(Number(b.value));
+  });
+  updateLeadsBulkBar();
+}
+
+function leadsToggleCb(id, cb) {
+  if (cb.checked) _leadsSelected.add(id);
+  else _leadsSelected.delete(id);
+  var all = document.querySelectorAll('.leads-cb');
+  var checked = document.querySelectorAll('.leads-cb:checked');
+  var allCb = document.getElementById('leads-check-all');
+  if (allCb) allCb.checked = all.length > 0 && checked.length === all.length;
+  updateLeadsBulkBar();
+}
+
+function updateLeadsBulkBar() {
+  var bar = document.getElementById('leads-bulk-bar');
+  var cnt = document.getElementById('leads-bulk-count');
+  if (_leadsSelected.size > 0) {
+    bar.style.display = 'flex';
+    cnt.textContent = _leadsSelected.size + ' contacto' + (_leadsSelected.size > 1 ? 's' : '') + ' seleccionado' + (_leadsSelected.size > 1 ? 's' : '');
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function leadsClearSelection() {
+  _leadsSelected.clear();
+  document.querySelectorAll('.leads-cb').forEach(function(b) { b.checked = false; });
+  var allCb = document.getElementById('leads-check-all');
+  if (allCb) allCb.checked = false;
+  updateLeadsBulkBar();
+}
+
+function leadsSendEmailBatch() {
+  if (_leadsSelected.size === 0) return;
+  var ids = Array.from(_leadsSelected);
+  var btn = document.querySelector('#leads-bulk-bar .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Iniciando…'; }
+  api('/api/email-tool/contacts/send-email-batch', {method:'POST', body:JSON.stringify({contact_ids: ids})})
+    .then(function(r) {
+      if (btn) { btn.disabled = false; btn.textContent = '✉ Enviar email'; }
+      if (r && r.ok) {
+        leadsClearSelection();
+        _openBatchProgress(r.job_id, r.total || ids.length);
+      } else {
+        showAlert('Error: ' + (r && r.error ? r.error : 'sin respuesta'), 'error');
+      }
+    });
+}
+
+function _openBatchProgress(jobId, total) {
+  var modal = document.getElementById('modal-batch-progress');
+  if (!modal) return;
+  document.getElementById('bp-total').textContent   = total;
+  document.getElementById('bp-sent').textContent    = '0';
+  document.getElementById('bp-errors').textContent  = '0';
+  document.getElementById('bp-email').textContent   = '';
+  document.getElementById('bp-bar-fill').style.width = '0%';
+  document.getElementById('bp-status').textContent  = 'Enviando…';
+  document.getElementById('bp-close-btn').style.display = 'none';
+  openEmailModal('modal-batch-progress');
+  if (_batchPollInterval) clearInterval(_batchPollInterval);
+  _batchPollInterval = setInterval(function() {
+    api('/api/email-tool/contacts/send-progress/' + jobId)
+      .then(function(p) {
+        if (!p || !p.ok) return;
+        var realTotal = p.total || total;
+        var pct = realTotal > 0 ? Math.round(((p.sent + p.errors) / realTotal) * 100) : 0;
+        document.getElementById('bp-sent').textContent   = p.sent;
+        document.getElementById('bp-errors').textContent = p.errors;
+        document.getElementById('bp-total').textContent  = realTotal;
+        document.getElementById('bp-bar-fill').style.width = pct + '%';
+        if (p.last_email) document.getElementById('bp-email').textContent = p.last_email;
+        if (p.done) {
+          clearInterval(_batchPollInterval);
+          _batchPollInterval = null;
+          var msg = p.sent + ' enviado' + (p.sent !== 1 ? 's' : '');
+          if (p.errors) msg += ' · ' + p.errors + ' error' + (p.errors !== 1 ? 'es' : '');
+          document.getElementById('bp-status').textContent = '✅ Completado — ' + msg;
+          document.getElementById('bp-bar-fill').style.width = '100%';
+          document.getElementById('bp-bar-fill').style.background = '#00A650';
+          document.getElementById('bp-close-btn').style.display = 'inline-block';
+          setTimeout(loadEmailContacts, 800);
+        }
+      });
+  }, 1500);
+}
+
+function closeBatchProgress() {
+  if (_batchPollInterval) { clearInterval(_batchPollInterval); _batchPollInterval = null; }
+  closeEmailModal('modal-batch-progress');
+}
+
+// ── Rubro chip para Email Leads ──────────────────────────
+var _rubroColors = {
+  'librería':'#EDE9FE,#7C3AED','libreria':'#EDE9FE,#7C3AED',
+  'minimarket':'#D1FAE5,#059669','almacén':'#D1FAE5,#059669','almacen':'#D1FAE5,#059669',
+  'restaurante':'#FEF3C7,#B45309','restaurant':'#FEF3C7,#B45309','comida':'#FEF3C7,#B45309',
+  'farmacia':'#DBEAFE,#1D4ED8','clínica':'#DBEAFE,#1D4ED8','clinica':'#DBEAFE,#1D4ED8',
+  'bazar':'#FEE2E2,#DC2626','ferretería':'#FEF9E7,#D97706','ferreteria':'#FEF9E7,#D97706',
+  'cafetería':'#FDF4FF,#9333EA','cafeteria':'#FDF4FF,#9333EA','café':'#FDF4FF,#9333EA',
+  'peluquería':'#FCE7F3,#BE185D','peluqueria':'#FCE7F3,#BE185D',
+};
+function rubroChip(rubro) {
+  if (!rubro) return '<span style="color:#9CA3AF">—</span>';
+  var key = rubro.toLowerCase().trim();
+  var colors = null;
+  for (var k in _rubroColors) { if (key.includes(k)) { colors = _rubroColors[k]; break; } }
+  if (!colors) colors = '#F1F5F9,#475569';
+  var parts = colors.split(',');
+  return '<span style="background:' + parts[0] + ';color:' + parts[1] + ';border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;white-space:nowrap">' + rubro + '</span>';
+}
+
+// ── Status pills ──────────────────────────────────────────
+var _etStatusFilter = '';
+var _ET_STATUS_DEFS = [
+  {v:'pendiente',    l:'Pendiente',     c:'#64748B'},
+  {v:'no_enviado',   l:'No enviado',    c:'#374151'},
+  {v:'enviado',      l:'Enviado',       c:'#1D4ED8'},
+  {v:'abierto',      l:'Abierto',       c:'#0EA5E9'},
+  {v:'respondido',   l:'Respondido',    c:'#059669'},
+  {v:'interesado',   l:'Interesado',    c:'#D97706'},
+  {v:'quiere_reunion',l:'Quiere reunión',c:'#7C3AED'},
+  {v:'cerrado',      l:'Cerrado',       c:'#00A650'},
+  {v:'no_interesado',l:'No interesado', c:'#DC2626'},
+  {v:'opt_out',      l:'Opt-out',       c:'#6B7280'},
+];
+function renderStatusPills(contacts) {
+  var pillsEl = document.getElementById('leads-status-pills');
+  if (!pillsEl) return;
+  var counts = {};
+  contacts.forEach(function(c) { var s = c.campaign_status||'pendiente'; counts[s]=(counts[s]||0)+1; });
+  var html = '';
+  _ET_STATUS_DEFS.forEach(function(d) {
+    var cnt = counts[d.v] || 0;
+    if (cnt === 0) return;
+    var active = _etStatusFilter === d.v ? ' active' : '';
+    html += '<button class="et-pill' + active + '" style="color:' + d.c + '" onclick="filterByStatus(\'' + d.v + '\')">' +
+      d.l + ' <span class="et-cnt">' + cnt + '</span></button>';
+  });
+  if (_etStatusFilter) {
+    html += '<button class="et-pill" style="color:#9CA3AF" onclick="filterByStatus(\'\')">&#10005; Ver todos</button>';
+  }
+  pillsEl.innerHTML = html;
+}
+function filterByStatus(val) {
+  _etStatusFilter = val;
+  var sel = document.getElementById('filter-estado');
+  if (sel) sel.value = val;
+  loadEmailContacts();
+}
+
+// ── Render tabla compacta ──────────────────────────────────
+function renderContactsTable(contacts) {
+  var tbody = document.getElementById('contacts-table-body');
+  if (!tbody) return;
+  var allCb = document.getElementById('leads-check-all');
+  if (allCb) allCb.checked = false;
+  if (!contacts || !contacts.length) {
+    tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><p>No hay contactos con estos filtros</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = contacts.map(function(c) {
+    var status = c.campaign_status || 'no_enviado';
+    var cat    = getCategoria(c.rubro);
+    var isSel  = _leadsSelected.has(c.id);
+    // Fecha compacta: "20 abr · 03:21"
+    var fecha = '—';
+    if (c.fecha_envio) {
+      var d = new Date(c.fecha_envio);
+      var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+      if (!isNaN(d)) fecha = d.getDate() + ' ' + meses[d.getMonth()] + ' · ' +
+                             String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+      else fecha = c.fecha_envio.substring(0,16);
+    }
+    // Estado cell
+    var replyTag = c.email_replied ? ' <span style="font-size:10px;color:#059669;font-weight:700">&#10003;Resp</span>'
+                 : c.email_bounced ? ' <span style="font-size:10px;color:#DC2626;font-weight:700">&#9650;Reb</span>' : '';
+    var statusCell = emailStatusBadge(status) + replyTag +
+      ' <button class="et-btn" title="Cambiar estado" onclick="openEditStatus(' + c.id + ',\'' + status + '\')">&#9998;</button>';
+    // Acciones: ✉ enviar | 💬 conversación | ↵ respuesta | ▲ rebote | ✕ eliminar
+    var acts = '<button class="et-btn primary" title="Enviar email ahora" onclick="sendContactEmail(' + c.id + ')">&#9993;</button>' +
+               '<button class="et-btn" style="background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8" title="Ver conversación" onclick="openEmailConversation(' + c.id + ')">&#9993;&#8230;</button>';
+    if (!c.email_replied && !c.email_bounced) {
+      acts += '<button class="et-btn" style="background:#EFF6FF;border-color:#BFDBFE;color:#009EE3" title="Marcar respuesta" onclick="markReply(' + c.id + ')">&#8629;</button>' +
+              '<button class="et-btn warn" title="Marcar rebote" onclick="markBounce(' + c.id + ')">&#9650;</button>';
+    }
+    acts += '<button class="et-btn danger" title="Eliminar" onclick="deleteContact(' + c.id + ')">&#10005;</button>';
+
+    return '<tr id="contact-row-' + c.id + '">' +
+      '<td style="padding:4px 6px"><input type="checkbox" class="leads-cb" value="' + c.id + '"' + (isSel?' checked':'') + ' onchange="leadsToggleCb(' + c.id + ',this)"></td>' +
+      '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><strong style="font-size:12px">' + (c.business_name||'—') + '</strong></td>' +
+      '<td style="color:#6B7280;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (c.email||'—') + '</td>' +
+      '<td>' + rubroChip(c.rubro) + '</td>' +
+      '<td style="color:#6B7280;font-size:11px">' + cat + '</td>' +
+      '<td style="font-size:11px">' + (c.comuna||'—') + '</td>' +
+      '<td style="white-space:nowrap">' + statusCell + '</td>' +
+      '<td style="white-space:nowrap">' + seguimientoBadge(c) + '</td>' +
+      '<td style="white-space:nowrap;color:#374151;font-size:11px">' + fecha + '</td>' +
+      '<td><div class="et-actions">' + acts + '</div></td>' +
+    '</tr>';
+  }).join('');
+}
+
+// ── Conversación email ─────────────────────────────────────
+var _convContactId = null;
+function openEmailConversation(id) {
+  _convContactId = id;
+  document.getElementById('conv-business-name').textContent = 'Cargando...';
+  document.getElementById('conv-email-addr').textContent = '';
+  document.getElementById('conv-badges').innerHTML = '';
+  document.getElementById('conv-timeline').innerHTML = '<p style="color:#9CA3AF;font-size:13px">Cargando...</p>';
+  openEmailModal('modal-email-conv');
+  api('/api/email-tool/contacts/' + id + '/conversation').then(function(data) {
+    if (!data || data.error) { document.getElementById('conv-timeline').innerHTML = '<p style="color:#DC2626">Error al cargar</p>'; return; }
+    var c = data.contact || {};
+    document.getElementById('conv-business-name').textContent = c.business_name || '—';
+    document.getElementById('conv-email-addr').textContent = c.email || '—';
+    // Badges de estado
+    var badges = emailStatusBadge(c.campaign_status||'');
+    if (c.email_replied) badges += ' <span style="background:#D1FAE5;color:#059669;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:600">&#10003; Respondió</span>';
+    if (c.email_bounced) badges += ' <span style="background:#FEE2E2;color:#DC2626;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:600">&#9650; Rebotó</span>';
+    if (c.email_opened_at) badges += ' <span style="background:#D1FAE5;color:#059669;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:600">&#128065; Abrió</span>';
+    document.getElementById('conv-badges').innerHTML = badges;
+    // Timeline
+    var timeline = data.timeline || [];
+    if (!timeline.length) {
+      document.getElementById('conv-timeline').innerHTML = '<p style="color:#9CA3AF;font-size:13px">Sin actividad registrada aún</p>';
+      return;
+    }
+    var icons = {
+      email_sent: {dot:'sent',  ico:'&#9993;',  label:'Email enviado'},
+      opened:     {dot:'opened',ico:'&#128065;',label:'Email abierto'},
+      replied:    {dot:'replied',ico:'&#8629;',  label:'Respuesta recibida'},
+      bounced:    {dot:'bounced',ico:'&#9650;',  label:'Email rebotado'},
+      click_cta:  {dot:'click', ico:'&#9654;',  label:'Clic en enlace de agenda'},
+      upcoming:   {dot:'upcoming',ico:'&#9711;',label:'Próximo seguimiento'},
+    };
+    var html = timeline.map(function(ev) {
+      var def = icons[ev.tipo] || {dot:'sent', ico:'&#9679;', label: ev.tipo};
+      var fechaStr = '';
+      if (ev.fecha) {
+        var d2 = new Date(ev.fecha);
+        var meses2 = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+        fechaStr = !isNaN(d2)
+          ? d2.getDate() + ' ' + meses2[d2.getMonth()] + ' ' + d2.getFullYear() + ' · ' + String(d2.getHours()).padStart(2,'0') + ':' + String(d2.getMinutes()).padStart(2,'0')
+          : ev.fecha.substring(0,16);
+      }
+      var subText = ev.subject || ev.notas || '';
+      return '<div class="conv-event">' +
+        '<div class="conv-dot ' + def.dot + '">' + def.ico + '</div>' +
+        '<div class="conv-body">' +
+          '<div class="conv-label">' + def.label + (subText ? ' <span style="font-weight:400;color:#6B7280">— ' + subText + '</span>' : '') + '</div>' +
+          (fechaStr ? '<div class="conv-sub">' + fechaStr + '</div>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+    document.getElementById('conv-timeline').innerHTML = html;
+  });
+}
+function _convSendEmail() {
+  if (!_convContactId) return;
+  sendContactEmail(_convContactId);
+  closeEmailModal('modal-email-conv');
+}
+
+function clearContactFilters() {
+  var fi = document.getElementById('filter-rubro'); if (fi) fi.value = '';
+  var fc = document.getElementById('filter-comuna'); if (fc) fc.value = '';
+  var fe = document.getElementById('filter-estado'); if (fe) fe.value = '';
+  var fd = document.getElementById('filter-fecha-desde'); if (fd) fd.value = '';
+  var fh = document.getElementById('filter-fecha-hasta'); if (fh) fh.value = '';
+  _sortCol = 'fecha_envio'; _sortDir = 'desc';
+  document.querySelectorAll('.sort-icon').forEach(function(el) { el.textContent = '↕'; el.className = 'sort-icon'; });
+  loadEmailContacts();
+}
+
+function openEditStatus(id, currentStatus) {
+  var states = [
+    ['no_enviado','No enviado'],['enviado','Enviado'],['respondido','Respondido'],
+    ['interesado','Interesado'],['quiere_reunion','Quiere reunión'],['cerrado','Cerrado'],
+    ['no_interesado','No interesado'],['opt_out','Opt-out']
+  ];
+  document.getElementById('edit-status-contact-id').value = id;
+  document.getElementById('status-options-list').innerHTML = states.map(function(s) {
+    var active = s[0] === currentStatus ? 'background:#EFF6FF;font-weight:700;' : '';
+    return '<button onclick="setContactStatus('+id+',\''+s[0]+'\')" style="width:100%;text-align:left;padding:10px 14px;border-radius:8px;border:1px solid #E5E7EB;cursor:pointer;font-size:13px;'+active+'">'+emailStatusBadge(s[0])+' '+s[1]+'</button>';
+  }).join('');
+  openEmailModal('modal-edit-status');
+}
+
+function setContactStatus(id, status) {
+  api('/api/email-tool/contacts/' + id, {method:'PATCH', body:JSON.stringify({campaign_status: status})}).then(function(r) {
+    if (r && r.ok) { showAlert('Estado actualizado', 'success'); closeEmailModal('modal-edit-status'); loadEmailContacts(); }
+    else showAlert('Error al actualizar', 'error');
+  });
+}
+
+function deleteContact(id) {
+  if (!confirm('¿Eliminar este contacto?')) return;
+  api('/api/email-tool/contacts/' + id, {method:'DELETE'}).then(function() {
+    showAlert('Contacto eliminado', 'success');
+    loadEmailContacts();
+  });
+}
+
+function markReply(id) {
+  api('/api/email-tool/contacts/' + id + '/mark-reply', {method:'POST', body:JSON.stringify({})}).then(function(r) {
+    if (r && r.ok) {
+      showAlert('✅ Respuesta registrada', 'success');
+      var row = document.getElementById('contact-row-' + id);
+      if (row) {
+        var ac = row.querySelector('.actions-cell');
+        if (ac) {
+          var rb = ac.querySelector('[onclick*="markReply"]');
+          var bb = ac.querySelector('[onclick*="markBounce"]');
+          if (rb) rb.replaceWith(Object.assign(document.createElement('span'), {textContent:'💬 Respondió', style:'font-size:11px;color:#009EE3;font-weight:600'}));
+          if (bb) bb.remove();
+        }
+      }
+    } else showAlert('Error al registrar respuesta', 'error');
+  });
+}
+
+function markBounce(id) {
+  api('/api/email-tool/contacts/' + id + '/mark-bounce', {method:'POST', body:JSON.stringify({})}).then(function(r) {
+    if (r && r.ok) {
+      showAlert('⚠ Rebote registrado', '');
+      var row = document.getElementById('contact-row-' + id);
+      if (row) {
+        var ac = row.querySelector('.actions-cell');
+        if (ac) {
+          var rb = ac.querySelector('[onclick*="markReply"]');
+          var bb = ac.querySelector('[onclick*="markBounce"]');
+          if (bb) bb.replaceWith(Object.assign(document.createElement('span'), {textContent:'⚠ Rebotó', style:'font-size:11px;color:#DC2626;font-weight:600'}));
+          if (rb) rb.remove();
+        }
+      }
+    } else showAlert('Error al registrar rebote', 'error');
+  });
+}
+
+function openContactDetail(id) {
+  api('/api/email-tool/contacts?id=' + id).then(function(data) {
+    var arr = (data && (data.contacts || data)) || [];
+    var c = Array.isArray(arr) ? arr.find(function(x) { return x.id === id; }) : data;
+    if (!c) c = {};
+    currentDetailContact = c;
+    var seguimientos = (c.seguimientos || []).map(function(s) {
+      return '<div class="followup-item"><span class="followup-date">' + emailFormatDate(s.fecha) + '</span><div class="followup-info"><div class="biz">' + (s.tipo||'Email') + '</div><div class="sub">' + (s.notas||'—') + '</div></div></div>';
+    }).join('') || '<p style="color:#9CA3AF;font-size:13px">Sin historial</p>';
+    var html =
+      '<div class="detail-row"><span class="detail-label">Negocio</span><span class="detail-value">' + (c.business_name||'—') + '</span></div>' +
+      '<div class="detail-row"><span class="detail-label">Email</span><span class="detail-value">' + (c.email||'—') + '</span></div>' +
+      '<div class="detail-row"><span class="detail-label">Rubro</span><span class="detail-value">' + (c.rubro||'—') + '</span></div>' +
+      '<div class="detail-row"><span class="detail-label">Comuna</span><span class="detail-value">' + (c.comuna||'—') + '</span></div>' +
+      '<div class="detail-row"><span class="detail-label">Estado</span><span class="detail-value">' + emailStatusBadge(c.estado_interes||'pendiente') + '</span></div>' +
+      '<div class="detail-row"><span class="detail-label">Próx. seguimiento</span><span class="detail-value">' + emailFormatDate(c.proximo_seguimiento) + '</span></div>' +
+      '<div class="divider"></div>' +
+      '<div class="section-title">Notas</div>' +
+      '<div class="form-group"><textarea id="detail-notas" style="min-height:80px">' + (c.notas||'') + '</textarea></div>' +
+      '<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="saveContactNotes(' + c.id + ')">Guardar notas</button>' +
+      '<div class="divider"></div>' +
+      '<div class="section-title">Historial de seguimientos</div>' +
+      '<div id="detail-followups">' + seguimientos + '</div>';
+    document.getElementById('modal-detalle-content').innerHTML = html;
+    openEmailModal('modal-detalle');
+  });
+}
+
+function saveContactNotes(id) {
+  var notas = document.getElementById('detail-notas').value;
+  api('/api/email-tool/contacts/' + id, {method:'PATCH', body:JSON.stringify({notas: notas})}).then(function() {
+    showAlert('Notas guardadas', 'success');
+  });
+}
+
+function openAgendarContact(id) {
+  document.getElementById('agendar-contact-id').value = id;
+  openEmailModal('modal-agendar');
+}
+
+function openAgendarFromDetail() {
+  if (currentDetailContact) {
+    closeEmailModal('modal-detalle');
+    openAgendarContact(currentDetailContact.id);
+  }
+}
+
+function saveReunion() {
+  var contact_id = document.getElementById('agendar-contact-id').value;
+  var fecha = document.getElementById('agendar-fecha').value;
+  var hora = document.getElementById('agendar-hora').value;
+  var lugar = document.getElementById('agendar-lugar').value;
+  var notas = document.getElementById('agendar-notas').value;
+  if (!fecha || !hora) { showAlert('Completa fecha y hora', 'error'); return; }
+  api('/api/email-tool/reuniones', {method:'POST', body:JSON.stringify({contact_id: contact_id, fecha: fecha, hora: hora, lugar: lugar, notas: notas})}).then(function() {
+    showAlert('Reunión agendada', 'success');
+    closeEmailModal('modal-agendar');
+    loadEmailInteresados();
+  });
+}
+
+function sendContactEmail(id) {
+  if (!confirm('¿Enviar email de prospección a este contacto?')) return;
+  api('/api/email-tool/contacts/' + id + '/send-email', {method:'POST', body:JSON.stringify({})}).then(function(r) {
+    if (r && r.ok) showAlert('Email enviado correctamente', 'success');
+    else showAlert('Error: ' + (r && r.error ? r.error : ''), 'error');
+  });
+}
+
+// ── Email: INTERESADOS ────────────────────────────────
+function loadEmailInteresados() {
+  Promise.all([
+    api('/api/email-tool/contacts'),
+    api('/api/email-tool/reuniones')
+  ]).then(function(results) {
+    var allContacts = (results[0] && (results[0].contacts || results[0])) || [];
+    if (!Array.isArray(allContacts)) allContacts = [];
+    var reunList = (results[1] && (results[1].reuniones || results[1])) || [];
+    if (!Array.isArray(reunList)) reunList = [];
+    var interesados = allContacts.filter(function(c) { return c.estado_interes === 'interesado'; });
+    var neg = allContacts.filter(function(c) { return c.estado_interes === 'en_negociacion'; });
+    var cerr = allContacts.filter(function(c) { return c.estado_interes === 'cerrado'; });
+    var pending = reunList.filter(function(r) { return r.estado !== 'completada'; });
+    var _setText = function(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; };
+    _setText('int-kpi-1', interesados.length);
+    _setText('int-kpi-2', neg.length);
+    _setText('int-kpi-3', cerr.length);
+    _setText('int-kpi-4', pending.length);
+    var active = allContacts.filter(function(c) {
+      return ['interesado','en_negociacion','cerrado','no_interesado'].indexOf(c.estado_interes) >= 0;
+    });
+    renderInteresadosTable(active);
+    initFullCalendar(reunList);
+  });
+}
+
+function renderInteresadosTable(contacts) {
+  var tbody = document.getElementById('int-table-body');
+  if (!tbody) return;
+  if (!contacts || !contacts.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>Sin leads activos</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = contacts.map(function(c) {
+    return '<tr>' +
+      '<td><strong>' + (c.business_name||c.name||'—') + '</strong></td>' +
+      '<td style="font-size:13px;color:#6B7280">' + (c.email||'—') + '</td>' +
+      '<td>' + (c.rubro||'—') + '</td>' +
+      '<td>' + emailStatusBadge(c.estado_interes) + '</td>' +
+      '<td style="font-size:13px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (c.notas||'—') + '</td>' +
+      '<td style="font-size:13px">' + (emailFormatDate(c.proximo_seguimiento)||'—') + '</td>' +
+      '<td><div class="actions-cell">' +
+        '<button class="btn btn-secondary btn-sm" onclick="openContactDetail(' + c.id + ')">Ver</button>' +
+        '<button class="btn btn-primary btn-sm" onclick="openAgendarContact(' + c.id + ')">📅</button>' +
+      '</div></td>' +
+    '</tr>';
+  }).join('');
+}
+
+function initFullCalendar(reuniones) {
+  var container = document.getElementById('fc-container');
+  if (!container) return;
+  if (fcCalendar) { try { fcCalendar.destroy(); } catch(e){} fcCalendar = null; }
+  container.innerHTML = '';
+  if (typeof FullCalendar === 'undefined') {
+    container.innerHTML = '<p style="color:#9CA3AF;font-size:14px;padding:20px">FullCalendar no disponible. Agrega el script en el head.</p>';
+    return;
+  }
+  var events = (reuniones || []).map(function(r) {
+    return { title: r.business_name||r.contact_name||'Reunión', start: r.fecha + (r.hora ? 'T'+r.hora : ''), color: '#009EE3' };
+  });
+  fcCalendar = new FullCalendar.Calendar(container, {
+    initialView: 'dayGridMonth', locale: 'es', height: 380, events: events,
+    headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' }
+  });
+  fcCalendar.render();
+}
+
+// ── Email: CAMPAÑAS ───────────────────────────────────
+var RUBRO_META = {
+  'cafetería':                 { icon: '⏱️', header_bg: '#1A1A2E', pain_bg: '#FFF8E1' },
+  'pastelería':                { icon: '🎂', header_bg: '#4A1C3A', pain_bg: '#FFF0F8' },
+  'sushi':                     { icon: '🍣', header_bg: '#0D2B2B', pain_bg: '#F0FFFE' },
+  'emporio':                   { icon: '🧀', header_bg: '#1F3320', pain_bg: '#F2FFF3' },
+  'pizzería':                  { icon: '🍕', header_bg: '#6B1A0F', pain_bg: '#FFF5F0' },
+  'restaurant de pollos asados':{ icon: '🍗', header_bg: '#5C3000', pain_bg: '#FFF8EE' },
+  'clínica dental':            { icon: '🦷', header_bg: '#0F2A4A', pain_bg: '#EAF4FF' },
+  'frenos':                    { icon: '🔧', header_bg: '#1A1A1A', pain_bg: '#FFF9E6' },
+  'lubricentro':               { icon: '🛢️', header_bg: '#1C2B1A', pain_bg: '#F0FFF4' },
+  'oftalmología':              { icon: '👁️', header_bg: '#0A2744', pain_bg: '#EAF4FF' },
+  'spa':                       { icon: '🌿', header_bg: '#2A3A30', pain_bg: '#F0FFF6' },
+  'tienda de muebles':         { icon: '🛋️', header_bg: '#2D1F0E', pain_bg: '#FFF8F0' },
+  'veterinaria':               { icon: '🐾', header_bg: '#1A3040', pain_bg: '#EAF6FF' },
+  'florería':                  { icon: '🌸', header_bg: '#2D1040', pain_bg: '#FDF0FF' },
+  'librería':                  { icon: '📚', header_bg: '#1E2D4A', pain_bg: '#EEF4FF' },
+  'clínica de belleza':        { icon: '💎', header_bg: '#3D1A4A', pain_bg: '#F9F0FF' },
+  'gimnasio':                  { icon: '💪', header_bg: '#1A1A2E', pain_bg: '#FFF5E6' },
+};
+
+var _campTemplates = [];
+var _campContacts = {};
+var _pendingContacts = [];
+var _pendingSendRubroId = null;
+var _campAllContacts = [];
+var _campSelIds = new Set();
+var _campCurrentRubro = null;
+var _campVisContacts = [];
+
+function _normRubro(s) {
+  return (s || '').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function _rubroMatch(templateRubro, contactRubro) {
+  var t = _normRubro(templateRubro);
+  var c = _normRubro(contactRubro);
+  if (!t) return true;
+  if (t === c || c.indexOf(t) >= 0 || t.indexOf(c) >= 0) return true;
+  var tWords = t.split(' ').filter(function(w) { return w.length > 3; });
+  var cWords = c.split(' ');
+  return tWords.length > 0 && tWords.every(function(tw) {
+    return cWords.some(function(cw) { return cw.indexOf(tw) === 0 || tw.indexOf(cw) === 0; });
+  });
+}
+function _countPendingForRubro(templateRubro) {
+  return _pendingContacts.filter(function(c) {
+    return _rubroMatch(templateRubro, c.rubro || '');
+  }).length;
+}
+
+function loadEmailCampanas() {
+  Promise.all([
+    api('/api/email-tool/templates'),
+    api('/api/email-tool/contacts')
+  ]).then(function(results) {
+    var templates = (results[0] && (results[0].templates || results[0])) || [];
+    if (!Array.isArray(templates)) templates = [];
+    var contacts  = (results[1] && (results[1].contacts || results[1])) || [];
+    if (!Array.isArray(contacts)) contacts = [];
+    window._templateBodies = {};
+    window._templatePdfs   = {};
+    templates.forEach(function(t) {
+      window._templateBodies[t.id] = t.body || '';
+      if (t.pdf_path) window._templatePdfs[t.id] = true;
+    });
+    _pendingContacts = contacts.filter(function(c) {
+      var st = c.campaign_status || 'no_enviado';
+      return st === 'pendiente' || st === 'no_enviado';
+    });
+    _campContacts = {};
+    _pendingContacts.forEach(function(c) {
+      var r = (c.rubro || '').toLowerCase().trim();
+      _campContacts[r] = (_campContacts[r] || 0) + 1;
+    });
+    _campAllContacts = contacts;
+    _campTemplates   = templates;
+    renderRubroGrid(templates);
+  });
+}
+
+function renderRubroGrid(templates) {
+  var grid = document.getElementById('rubro-card-grid');
+  if (!grid) return;
+  var searchEl = document.getElementById('camp-search');
+  var searchVal = searchEl ? searchEl.value.toLowerCase() : '';
+  var tplMap = {};
+  templates.forEach(function(t) { tplMap[(t.rubro||'').toLowerCase().trim()] = t; });
+  var rubros = Object.keys(RUBRO_META);
+  var visible = rubros.filter(function(r) { return !searchVal || r.includes(searchVal); });
+  var countEl = document.getElementById('camp-count-label');
+  if (countEl) countEl.textContent = visible.length + ' de ' + rubros.length + ' rubros';
+  if (!visible.length) {
+    grid.innerHTML = '<p style="color:#9CA3AF;font-size:14px;grid-column:1/-1">Sin rubros que coincidan</p>';
+    return;
+  }
+  grid.innerHTML = visible.map(function(rubro) {
+    var meta = RUBRO_META[rubro];
+    var tpl  = tplMap[rubro];
+    var tid  = tpl ? tpl.id : 0;
+    var cnt  = _countPendingForRubro(rubro);
+    var subject = tpl ? (tpl.subject || '') : '';
+    var hasPdf  = tpl && window._templatePdfs && window._templatePdfs[tid];
+    var rubroEsc = rubro.replace(/'/g, "\\'");
+    var subjectEsc = subject.replace(/'/g, "\\'");
+    var accentBorder = 'border-left-color:' + meta.header_bg;
+    return '<div class="rubro-card" id="rcard-' + tid + '">' +
+      '<div class="rubro-card-header" style="' + accentBorder + '">' +
+        '<span class="rubro-card-icon">' + meta.icon + '</span>' +
+        '<span class="rubro-card-name">' + rubro.charAt(0).toUpperCase() + rubro.slice(1) + '</span>' +
+        '<span class="rubro-card-badge">' + cnt + ' contactos</span>' +
+      '</div>' +
+      '<div class="rubro-card-subject" title="' + subject + '">' + (subject || '—') + '</div>' +
+      '<div class="rubro-card-actions">' +
+        '<button class="btn btn-secondary btn-sm" onclick="openEmailPreview(\'' + rubroEsc + '\')" title="Ver email">👁 Ver email</button>' +
+        (tid ? '<button class="btn btn-secondary btn-sm" onclick="editTemplate(' + tid + ', \'' + rubroEsc + '\', \'' + subjectEsc + '\')">✏️ Editar</button>' : '') +
+        (tid ? '<button class="btn btn-secondary btn-sm" onclick="openPdfUpload(' + tid + ', \'' + rubroEsc + '\')">' + (hasPdf ? '📎✅' : '📎 PDF') + '</button>' : '') +
+        (tid ? '<button class="btn btn-success btn-sm" onclick="openSendCampana(' + tid + ', \'' + rubroEsc + '\')">▶ Enviar</button>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function filterRubroCards() {
+  renderRubroGrid(_campTemplates);
+}
+
+var _previewRubro = '';
+
+function openEmailPreview(rubro) {
+  _previewRubro = rubro;
+  var tplMap = {};
+  _campTemplates.forEach(function(t) { tplMap[(t.rubro||'').toLowerCase().trim()] = t; });
+  var tpl = tplMap[rubro.toLowerCase().trim()] || {};
+  var subject = tpl.subject || '';
+  document.getElementById('preview-modal-title').textContent = 'Vista previa — ' + rubro + (subject ? ' · ' + subject : '');
+  var iframe = document.getElementById('email-preview-iframe');
+  iframe.src = '/api/email-tool/preview-email?rubro=' + encodeURIComponent(rubro);
+  openEmailModal('modal-email-preview');
+}
+
+function sendPreviewTest() {
+  var email = document.getElementById('preview-test-email').value.trim();
+  if (!email) { showAlert('Ingresa un email de destino', 'error'); return; }
+  var btn = event.target;
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  api('/api/email-tool/preview-email/send-test', {method:'POST', body:JSON.stringify({rubro: _previewRubro, email: email})})
+    .then(function(r) {
+      btn.disabled = false; btn.textContent = '✉ Enviar test';
+      if (r && r.ok) showAlert('Test enviado a ' + email, 'success');
+      else showAlert('Error: ' + (r && r.error ? r.error : 'sin respuesta'), 'error');
+    });
+}
+
+function openPdfUpload(id, rubro) {
+  var tplMap = {};
+  _campTemplates.forEach(function(t) { tplMap[t.id] = t; });
+  var tpl = tplMap[id] || {};
+  document.getElementById('template-id').value = id;
+  document.getElementById('modal-template-title').textContent = 'Template: ' + rubro;
+  document.getElementById('template-subject').value = tpl.subject || '';
+  document.getElementById('template-body').value = (window._templateBodies && window._templateBodies[id]) ? window._templateBodies[id] : '';
+  document.getElementById('template-pdf-input').value = '';
+  var hasPdf = window._templatePdfs && window._templatePdfs[id];
+  document.getElementById('template-pdf-name').textContent = hasPdf ? '✅ PDF adjunto activo' : 'Sin PDF subido';
+  document.getElementById('template-pdf-name').style.color = hasPdf ? '#00A650' : '#6B7280';
+  document.getElementById('template-pdf-status').textContent = '';
+  openEmailModal('modal-template');
+}
+
+function openSendCampana(tid, rubro) {
+  var cnt = _countPendingForRubro(rubro);
+  _pendingSendRubroId = tid;
+  document.getElementById('send-campana-title').textContent = 'Enviar campaña — ' + rubro;
+  document.getElementById('send-campana-info').innerHTML = 'Se enviará el email personalizado de <strong>' + rubro + '</strong> a todos los contactos pendientes.';
+  document.getElementById('send-campana-stats').textContent = cnt + ' contactos en este rubro. Solo se envía a los que aún no han recibido el email.';
+  openEmailModal('modal-send-campana');
+}
+
+function confirmSendCampana() {
+  if (!_pendingSendRubroId) return;
+  var btn = document.getElementById('send-campana-confirm-btn');
+  btn.textContent = 'Enviando...'; btn.disabled = true;
+  api('/api/email-tool/campaigns/' + _pendingSendRubroId + '/send', {method:'POST', body:JSON.stringify({})})
+    .then(function(r) {
+      btn.textContent = '▶ Enviar ahora'; btn.disabled = false;
+      closeEmailModal('modal-send-campana');
+      if (r && r.ok) showAlert('Enviados: ' + r.sent + ' | Errores: ' + r.errors, 'success');
+      else showAlert('Error al enviar: ' + (r && r.error ? r.error : ''), 'error');
+    });
+}
+
+function editTemplate(id, rubro, subject) {
+  document.getElementById('template-id').value = id;
+  document.getElementById('modal-template-title').textContent = 'Template: ' + rubro;
+  document.getElementById('template-subject').value = subject;
+  document.getElementById('template-body').value = (window._templateBodies && window._templateBodies[id]) ? window._templateBodies[id] : '';
+  document.getElementById('template-pdf-input').value = '';
+  var hasPdf = window._templatePdfs && window._templatePdfs[id];
+  document.getElementById('template-pdf-name').textContent = hasPdf ? '✅ PDF adjunto activo' : 'Sin PDF subido';
+  document.getElementById('template-pdf-name').style.color = hasPdf ? '#00A650' : '#6B7280';
+  document.getElementById('template-pdf-status').textContent = '';
+  openEmailModal('modal-template');
+}
+
+function onPdfSelected(input) {
+  var file = input.files[0];
+  if (!file) return;
+  document.getElementById('template-pdf-name').textContent = '📎 ' + file.name;
+  document.getElementById('template-pdf-name').style.color = '#009EE3';
+  document.getElementById('template-pdf-status').textContent = '';
+}
+
+async function saveTemplate() {
+  var id = document.getElementById('template-id').value;
+  var subject = document.getElementById('template-subject').value;
+  var body = document.getElementById('template-body').value;
+  await api('/api/email-tool/templates/' + id, {method:'PATCH', body:JSON.stringify({subject: subject, body: body})});
+  var fileInput = document.getElementById('template-pdf-input');
+  if (fileInput.files.length > 0) {
+    var statusEl = document.getElementById('template-pdf-status');
+    statusEl.textContent = 'Subiendo PDF...'; statusEl.style.color = '#009EE3';
+    var formData = new FormData();
+    formData.append('pdf', fileInput.files[0]);
+    try {
+      var resp = await fetch('/api/email-tool/templates/' + id + '/upload-pdf', {method:'POST', body: formData});
+      var r = await resp.json();
+      if (r.ok) {
+        statusEl.textContent = '✅ PDF guardado'; statusEl.style.color = '#00A650';
+        if (!window._templatePdfs) window._templatePdfs = {};
+        window._templatePdfs[id] = true;
+        document.getElementById('template-pdf-name').textContent = '✅ PDF adjunto activo';
+        document.getElementById('template-pdf-name').style.color = '#00A650';
+      } else { statusEl.textContent = '❌ Error: ' + (r.error || ''); statusEl.style.color = '#DC2626'; }
+    } catch(e) { statusEl.textContent = '❌ Error al subir'; statusEl.style.color = '#DC2626'; }
+  }
+  showAlert('Template guardado correctamente', 'success');
+  setTimeout(function() { closeEmailModal('modal-template'); loadEmailCampanas(); }, 800);
+}
+
+function onRubroChange() {
+  var sel = document.getElementById('nc-rubro');
+  var opt = sel.options[sel.selectedIndex];
+  if (opt && opt.dataset.subject) {
+    document.getElementById('nc-asunto').value = opt.dataset.subject;
+    document.getElementById('nc-cuerpo').value = opt.dataset.body || '';
+  } else {
+    document.getElementById('nc-asunto').value = '';
+    document.getElementById('nc-cuerpo').value = '';
+  }
+}
+
+function saveCampana() {
+  var name    = document.getElementById('nc-nombre').value.trim();
+  var rubro   = document.getElementById('nc-rubro').value.trim();
+  var subject = document.getElementById('nc-asunto').value.trim();
+  var body    = document.getElementById('nc-cuerpo').value.trim();
+  var schedule_time = document.getElementById('nc-horario').value.trim();
+  if (!name || !subject || !body) { showAlert('Nombre, asunto y cuerpo son requeridos', 'error'); return; }
+  api('/api/email-tool/campaigns', {method:'POST', body:JSON.stringify({name: name, rubro: rubro, subject: subject, body: body, schedule_time: schedule_time})})
+    .then(function(r) {
+      if (r && r.ok) {
+        showAlert('Campaña creada correctamente', 'success');
+        closeEmailModal('modal-nueva-campana');
+        ['nc-nombre','nc-rubro','nc-asunto','nc-cuerpo','nc-horario'].forEach(function(id){ document.getElementById(id).value=''; });
+        loadEmailCampanas();
+      } else showAlert('Error: ' + (r && r.error ? r.error : 'desconocido'), 'error');
+    });
+}
+
+// ── Email: INTELIGENCIA ───────────────────────────────
+function loadEmailInteligencia() {
+  api('/api/email-tool/intelligence').then(function(d) {
+    if (!d) return;
+    var _st = function(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; };
+    _st('intel-k1', d.rubros_con_leads !== undefined ? d.rubros_con_leads : '—');
+    _st('intel-k1-sub', 'de ' + ((d.rubros_con_leads||0) + (d.rubros_sin_leads||0)) + ' rubros (' + (d.cobertura_rubros_pct || 0) + '%)');
+    _st('intel-k2', d.rubros_sin_leads !== undefined ? d.rubros_sin_leads : '—');
+    _st('intel-k2-sub', 'pendientes de prospección');
+    _st('intel-k3', d.comunas_cubiertas !== undefined ? d.comunas_cubiertas : '—');
+    _st('intel-k3-sub', 'de 40 comunas (' + (d.cobertura_comunas_pct || 0) + '%)');
+    _st('intel-k4', d.acciones_urgentes !== undefined ? d.acciones_urgentes : '—');
+    renderIntelRubrosTable(d.rubros || []);
+    renderEstadosDonut(d.estados || {});
+    renderTasaComunasChart(d.comunas || []);
+    renderCommuneGrid(d.comunas || []);
+    renderProximasBusquedas(d.proximas_busquedas || []);
+    renderRubrosSinLeads(d.rubros_sin_prospectar || []);
+    renderRecomendadas(d.proximas_busquedas || []);
+    renderIntelHistorial(d.historial || []);
+  });
+  // Cargar historial de campañas en paralelo
+  loadCampaignBatchesIntel();
+}
+
+function renderIntelRubrosTable(rubros) {
+  var tbody = document.getElementById('intel-rubros-tbody');
+  if (!tbody) return;
+  if (!rubros || !rubros.length) { tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>Sin datos</p></div></td></tr>'; return; }
+  var PRIOR_COLOR = { alta: '#DC2626', media: '#F59E0B', baja: '#10B981' };
+  tbody.innerHTML = rubros.map(function(r) {
+    var pColor = PRIOR_COLOR[r.prioridad] || '#9CA3AF';
+    var tasa = r.tasa_respuesta || 0;
+    var tasaBar = '<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">' +
+      '<div style="width:50px;height:6px;background:#F3F4F6;border-radius:3px;overflow:hidden">' +
+      '<div style="width:' + Math.min(tasa,100) + '%;height:100%;background:' + (tasa>=5?'#00A650':'#F59E0B') + ';border-radius:3px"></div></div>' +
+      '<span>' + tasa + '%</span></div>';
+    return '<tr><td>' + (r.rubro||'') + '</td><td style="text-align:right">' + (r.count||0) + '</td>' +
+      '<td style="text-align:right">' + (r.enviados||0) + '</td><td style="text-align:right">' + (r.interesados||0) + '</td>' +
+      '<td>' + tasaBar + '</td><td><span style="font-size:11px;font-weight:600;color:' + pColor + ';text-transform:uppercase">' + (r.prioridad||'—') + '</span></td></tr>';
+  }).join('');
+}
+
+function renderTasaComunasChart(comunas) {
+  destroyEmailChart('tasa-comunas');
+  var top = (comunas || []).filter(function(c) { return c.enviados > 0; })
+    .sort(function(a,b) { return b.tasa_respuesta - a.tasa_respuesta; }).slice(0, 10);
+  if (!top.length) return;
+  var ctx = document.getElementById('chart-tasa-comunas');
+  if (!ctx) return;
+  emailCharts['tasa-comunas'] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: top.map(function(c){return c.comuna;}), datasets: [{ data: top.map(function(c){return c.tasa_respuesta;}), backgroundColor: '#009EE3', borderRadius: 4, label: 'Tasa %' }] },
+    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, max: 100 } } }
+  });
+}
+
+var ALL_COMUNAS = ['Santiago Centro','Providencia','Las Condes','Vitacura','La Florida','Maipú',
+  'Pudahuel','Quilicura','Huechuraba','Recoleta','Independencia','Conchalí','Renca',
+  'Cerro Navia','Lo Prado','Quinta Normal','Estación Central','Cerrillos','Peñalolén',
+  'Macul','Ñuñoa','La Reina','Lo Barnechea','Colina','San Bernardo','El Bosque',
+  'La Granja','La Pintana','San Ramón','Pedro Aguirre Cerda','Lo Espejo','Talagante',
+  'Padre Hurtado','Peñaflor','Melipilla','Pirque','Buin','Calera de Tango','Lampa','Til Til'];
+
+function renderCommuneGrid(comunas) {
+  var map = {};
+  (comunas || []).forEach(function(c) { map[(c.comuna||c.nombre||c.name||'').toLowerCase()] = c.count || 0; });
+  var grid = document.getElementById('commune-grid');
+  if (!grid) return;
+  grid.innerHTML = ALL_COMUNAS.map(function(c) {
+    var cnt = map[c.toLowerCase()] || 0;
+    var cls = cnt > 0 ? 'prospected' : 'unprospected';
+    return '<div class="commune-chip ' + cls + '" title="' + cnt + ' leads">' + c + '</div>';
+  }).join('');
+}
+
+function renderProximasBusquedas(lista) {
+  var el = document.getElementById('intel-proximas-list');
+  if (!el) return;
+  if (!lista || !lista.length) { el.innerHTML = '<p style="color:#9CA3AF;font-size:13px">Todas las combinaciones cubiertas 🎉</p>'; return; }
+  el.innerHTML = lista.slice(0, 10).map(function(item, i) {
+    var rubro = item.rubro || '';
+    var comuna = item.comuna || '';
+    return '<div class="followup-item" style="padding:8px 0;border-bottom:1px solid #F3F4F6">' +
+      '<span style="font-size:12px;color:#9CA3AF;min-width:24px">#' + (i+1) + '</span>' +
+      '<div class="followup-info"><div class="biz" style="font-size:13px">' + rubro + ' — ' + comuna + '</div></div>' +
+      '<button class="btn btn-secondary btn-sm" onclick="quickScrapeFromEmail(\'' + rubro.replace(/'/g,"\\'") + '\',\'' + comuna.replace(/'/g,"\\'") + '\')">Buscar</button>' +
+    '</div>';
+  }).join('');
+}
+
+function renderRubrosSinLeads(lista) {
+  var el = document.getElementById('intel-rubros-sin');
+  if (!el) return;
+  if (!lista || !lista.length) { el.innerHTML = '<p style="font-size:13px;color:#10B981">✅ Todos los rubros tienen leads</p>'; return; }
+  el.innerHTML = lista.map(function(r) {
+    return '<span style="font-size:12px;background:#FEF2F2;color:#DC2626;padding:4px 10px;border-radius:12px;cursor:pointer" ' +
+      'onclick="quickScrapeRubroFromEmail(\'' + r.replace(/'/g,"\\'") + '\')">' + r + '</span>';
+  }).join('');
+}
+
+function renderRecomendadas(lista) {
+  var el = document.getElementById('intel-recomendadas');
+  if (!el) return;
+  if (!lista || !lista.length) { el.innerHTML = '<p style="font-size:13px;color:#9CA3AF">Sin sugerencias</p>'; return; }
+  el.innerHTML = lista.slice(0, 5).map(function(item) {
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #F9FAFB">' +
+      '<span style="font-size:11px;background:#EFF6FF;color:#009EE3;padding:2px 8px;border-radius:8px">' + (item.rubro||'') + '</span>' +
+      '<span style="font-size:12px;color:#6B7280">→</span>' +
+      '<span style="font-size:12px;color:#374151">' + (item.comuna||'') + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+function renderIntelHistorial(historial) {
+  var tbody = document.getElementById('intel-historial-tbody');
+  if (!tbody) return;
+  if (!historial || !historial.length) { tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p>Sin historial aún</p></div></td></tr>'; return; }
+  var STATUS_COLOR = { done: '#10B981', error: '#DC2626', running: '#F59E0B' };
+  tbody.innerHTML = historial.map(function(h) {
+    var sc = STATUS_COLOR[h.status] || '#9CA3AF';
+    var fecha = (h.started_at || '').substring(0, 16).replace('T',' ');
+    return '<tr><td style="font-size:12px;color:#9CA3AF">' + fecha + '</td><td>' + (h.tipo||'search') + '</td>' +
+      '<td>' + (h.rubro||'—') + '</td><td>' + (h.comuna||'—') + '</td>' +
+      '<td style="text-align:right">' + (h.leads_found||0) + '</td>' +
+      '<td style="text-align:right">' + (h.leads_inserted||0) + '</td>' +
+      '<td style="text-align:right">' + (h.leads_skipped||0) + '</td>' +
+      '<td><span style="font-size:11px;font-weight:600;color:' + sc + '">' + (h.status||'—').toUpperCase() + '</span></td></tr>';
+  }).join('');
+}
+
+function renderEstadosDonut(estados) {
+  destroyEmailChart('estados-donut');
+  var labels = ['Pendiente','Enviado','Respondido','Interesado','Quiere reunión','Cerrado','No interesado','Opt-out'];
+  var keys   = ['pendiente','enviado','respondido','interesado','quiere_reunion','cerrado','no_interesado','opt_out'];
+  var colors = ['#9CA3AF','#009EE3','#60A5FA','#00A650','#8B5CF6','#1A1A2E','#DC2626','#F87171'];
+  var values = keys.map(function(k) { return (estados && estados[k]) ? estados[k] : 0; });
+  var ctx = document.getElementById('chart-estados-donut');
+  if (!ctx) return;
+  emailCharts['estados-donut'] = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } }
+  });
+}
+
+function quickScrapeFromEmail(rubro, comuna) {
+  showAlert('Función de scraping disponible en la sección Scraping principal', '');
+}
+function quickScrapeRubroFromEmail(rubro) {
+  showAlert('Rubro: ' + rubro + ' — usa la sección Scraping principal para buscar leads', '');
+}
+
+function runDailyProspecting() {
+  api('/api/email-tool/scheduler/run-daily', {method:'POST', body:JSON.stringify({})}).then(function() {
+    showAlert('Prospección diaria iniciada en segundo plano', 'success');
+  });
+}
+
+// ── Campaña inteligente: scraping + envío inmediato ───────────────
+var _ciPollTimer = null;
+
+function runCampaignIntel() {
+  var target = parseInt(document.getElementById('campaign-intel-target').value) || 50;
+  var btn    = document.getElementById('btn-campaign-intel');
+
+  // Reset UI
+  var prog = document.getElementById('campaign-intel-progress');
+  prog.style.display = 'block';
+  document.getElementById('campaign-intel-bar').style.width      = '0%';
+  document.getElementById('campaign-intel-bar').style.background = '#009EE3';
+  document.getElementById('campaign-intel-pct').textContent  = '0%';
+  document.getElementById('campaign-intel-msg').textContent  = 'Iniciando campaña...';
+  document.getElementById('ci-scraped').textContent  = '0';
+  document.getElementById('ci-sent').textContent     = '0';
+  document.getElementById('ci-errors').textContent   = '0';
+  document.getElementById('campaign-intel-detalle').innerHTML = '';
+  btn.disabled    = true;
+  btn.innerHTML   = '&#8987; Ejecutando...';
+
+  api('/api/email-tool/run-campaign-intel', {
+    method: 'POST',
+    body: JSON.stringify({ target: target })
+  }).then(function(res) {
+    if (!res || !res.ok) {
+      showAlert('Error al iniciar campaña', 'error');
+      btn.disabled  = false;
+      btn.innerHTML = '&#9654; Ejecutar campa&#241;a';
+      return;
+    }
+    _pollCampaignIntel(res.job_id);
+  }).catch(function() {
+    showAlert('Error de conexión', 'error');
+    btn.disabled  = false;
+    btn.innerHTML = '&#9654; Ejecutar campa&#241;a';
+  });
+}
+
+function _pollCampaignIntel(jobId) {
+  if (_ciPollTimer) clearTimeout(_ciPollTimer);
+
+  api('/api/email-tool/search/status/' + jobId).then(function(d) {
+    if (!d) return;
+
+    var pct = d.progress || 0;
+    document.getElementById('campaign-intel-bar').style.width = pct + '%';
+    document.getElementById('campaign-intel-pct').textContent = pct + '%';
+    document.getElementById('campaign-intel-msg').textContent = d.message || '';
+    document.getElementById('ci-scraped').textContent = d.scraped || 0;
+    document.getElementById('ci-sent').textContent    = d.sent    || 0;
+    document.getElementById('ci-errors').textContent  = d.errors  || 0;
+
+    // Detalle por rubro en tiempo real
+    if (d.detalle && d.detalle.length) {
+      var detalleEl = document.getElementById('campaign-intel-detalle');
+      detalleEl.innerHTML = d.detalle.map(function(r) {
+        var ok     = r.ok !== false;
+        var bg     = ok ? '#D1FAE5' : '#FEE2E2';
+        var tcolor = ok ? '#065F46' : '#991B1B';
+        var icono  = ok ? '&#10003; ' + r.enviados + ' enviados' : '&#10007; Error';
+        return '<div style="display:flex;gap:8px;align-items:center;padding:3px 8px;border-radius:6px;background:' + bg + '">' +
+          '<span style="font-size:11px;font-weight:600;color:' + tcolor + '">' + (r.rubro||'') + ' / ' + (r.comuna||'') + '</span>' +
+          '<span style="font-size:11px;color:' + tcolor + ';margin-left:auto">' + icono + '</span>' +
+        '</div>';
+      }).join('');
+    }
+
+    if (d.status === 'running') {
+      _ciPollTimer = setTimeout(function(){ _pollCampaignIntel(jobId); }, 3000);
+      return;
+    }
+
+    // Finalizado
+    var btn = document.getElementById('btn-campaign-intel');
+    btn.disabled  = false;
+    btn.innerHTML = '&#9654; Ejecutar campa&#241;a';
+
+    if (d.status === 'done') {
+      document.getElementById('campaign-intel-bar').style.background = '#10B981';
+      showAlert('Campa&#241;a completada: ' + (d.sent||0) + ' emails enviados', 'success');
+      loadCampaignBatchesIntel();
+    } else if (d.status === 'error') {
+      document.getElementById('campaign-intel-bar').style.background = '#DC2626';
+      showAlert('Error en campa&#241;a: ' + (d.message || 'Error desconocido'), 'error');
+    }
+  });
+}
+
+function loadCampaignBatchesIntel() {
+  api('/api/email-tool/campaign-batches').then(function(rows) {
+    var tbody = document.getElementById('campaign-batches-intel-tbody');
+    if (!tbody) return;
+    if (!rows || !rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>Sin campa&#241;as a&#250;n</p></div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(function(b) {
+      var fecha   = (b.created_at || b.fecha || '').slice(0,16).replace('T',' ');
+      var rubros  = (b.rubro   || '').slice(0,55) + ((b.rubro  ||'').length>55?'&#8230;':'');
+      var comunas = (b.comunas || '').slice(0,55) + ((b.comunas||'').length>55?'&#8230;':'');
+      var sent    = b.total_sent || 0;
+      var err     = b.total_err  || 0;
+      var dlLink  = '<a href="/api/email-tool/campaign-batches/' + b.id + '/excel" ' +
+                    'style="color:#009EE3;font-size:12px;text-decoration:none" target="_blank">&#8659; Excel</a>';
+      return '<tr>' +
+        '<td style="white-space:nowrap;font-size:12px">' + fecha + '</td>' +
+        '<td style="font-size:12px">' + rubros  + '</td>' +
+        '<td style="font-size:12px">' + comunas + '</td>' +
+        '<td style="text-align:right;font-weight:600;color:#10B981">' + sent + '</td>' +
+        '<td style="text-align:right;color:' + (err>0?'#DC2626':'#9CA3AF') + '">' + err + '</td>' +
+        '<td>' + dlLink + '</td>' +
+      '</tr>';
+    }).join('');
+  });
+}
+
+// ── Email: KPIs ───────────────────────────────────────
+function loadEmailKpis() {
+  Promise.all([
+    api('/api/email-tool/kpis'),
+    api('/api/email-tool/tracking/stats')
+  ]).then(function(results) {
+    var d = results[0] || {};
+    var t = results[1] || {};
+    var _st = function(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; };
+    _st('kpi-total',    d.total_contacts   || '0');
+    _st('kpi-enviados', d.total_sent        || '0');
+    _st('kpi-seg48',    d.seguimientos_48h  || '0');
+    _st('kpi-seg96',    d.seguimientos_96h  || '0');
+    _st('kpi-opened',   d.opened   || '0');
+    _st('kpi-replied',  d.replied  || '0');
+    _st('kpi-clicks',   d.clicks_cta || '0');
+    _st('kpi-bounced',  d.bounced  || '0');
+    var sent = d.total_sent || 0;
+    _st('kpi-open-rate',   sent ? (d.open_rate   || 0) + '% tasa apertura'   : '');
+    _st('kpi-reply-rate',  sent ? (d.reply_rate  || 0) + '% tasa respuesta'  : '');
+    _st('kpi-click-rate',  sent ? (d.click_rate  || 0) + '% tasa click'      : '');
+    _st('kpi-bounce-rate', sent ? (d.bounce_rate || 0) + '% tasa rebote'     : '');
+    _st('kpi-email-interesados', d.interesados         || '0');
+    _st('kpi-reunion',           d.quiere_reunion       || '0');
+    _st('kpi-negociacion',       d.reuniones_pendientes || '0');
+    _st('kpi-email-cerrados',    d.cerrados             || '0');
+    renderLineChart(d.daily || []);
+    renderKpiRubrosChart(d.rubros || []);
+    renderKpiEstadosChart(d.estados || {});
+    _renderActivityFeed(t.activity || []);
+    var statusEl = document.getElementById('gmail-api-status');
+    if (statusEl && (d.replied > 0 || d.bounced > 0)) {
+      statusEl.innerHTML = '✅ Sincronización activa. Se detectan respuestas y rebotes automáticamente cada 30 minutos.';
+      var panel = document.getElementById('gmail-api-panel');
+      if (panel) { panel.style.background = '#F0FDF4'; panel.style.borderColor = '#86EFAC'; }
+    }
+  });
+}
+
+function _setText(id, val) {
+  var el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function _renderActivityFeed(activity) {
+  var tbody = document.getElementById('kpi-activity-tbody');
+  if (!tbody) return;
+  if (!activity || !activity.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>Sin actividad reciente. Haz clic en "Sincronizar bandeja" para detectar respuestas.</p></div></td></tr>';
+    return;
+  }
+  var TIPO_LABEL = {
+    'open':       {icon:'👁',  label:'Apertura',   cls:'green'},
+    'reply':      {icon:'💬', label:'Respuesta',  cls:'blue'},
+    'click_cta':  {icon:'🔗', label:'Click CTA',  cls:'purple'},
+    'bounce':     {icon:'⚠️', label:'Rebote',     cls:'red'},
+    'email_48h':  {icon:'⏰', label:'Seguim. 48h', cls:'orange'},
+    'email_96h':  {icon:'🔔', label:'Seguim. 96h', cls:'orange'},
+    'respondido': {icon:'💬', label:'Respondió',  cls:'blue'},
+    'rebotado':   {icon:'⚠️', label:'Rebotado',   cls:'red'},
+  };
+  var CLR = {green:'#00A650', blue:'#009EE3', purple:'#8B5CF6', red:'#DC2626', orange:'#F59E0B'};
+  tbody.innerHTML = activity.slice(0, 30).map(function(a) {
+    var m = TIPO_LABEL[a.tipo] || {icon:'📧', label: a.tipo, cls:'navy'};
+    var color = CLR[m.cls] || '#1A1A2E';
+    var fecha = (a.fecha||'').replace('T',' ').substring(0,16);
+    return '<tr>' +
+      '<td><span style="background:' + color + '20;color:' + color + ';padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600">' + m.icon + ' ' + m.label + '</span></td>' +
+      '<td style="font-size:13px;font-weight:500">' + (a.business_name||'—') + '</td>' +
+      '<td style="font-size:12px;color:#6B7280">' + (a.email||'—') + '</td>' +
+      '<td style="font-size:12px">' + (a.rubro||'—') + '</td>' +
+      '<td style="font-size:12px;color:#9CA3AF">' + fecha + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function syncInbox() {
+  var btn = document.getElementById('btn-sync-inbox');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sincronizando...'; }
+  var statusEl = document.getElementById('gmail-api-status');
+  if (statusEl) statusEl.textContent = 'Sincronizando bandeja...';
+  api('/api/email-tool/scheduler/check-inbox', {method:'POST', body:JSON.stringify({})}).then(function(r) {
+    if (btn) { btn.disabled = false; btn.textContent = '↻ Sincronizar bandeja'; }
+    var now = new Date().toLocaleTimeString('es-CL', {hour:'2-digit', minute:'2-digit'});
+    _setText('last-sync-time', now);
+    if (r && r.ok) {
+      var msg = '✅ Sync completada: ' + (r.replies||0) + ' respuesta(s), ' + (r.bounces||0) + ' rebote(s) detectados.';
+      if (statusEl) statusEl.textContent = msg;
+      showAlert(msg, 'success');
+      setTimeout(loadEmailKpis, 800);
+    } else {
+      if (statusEl) statusEl.textContent = '⚠ Revisa configuración de Gmail';
+    }
+  }).catch(function() {
+    if (btn) { btn.disabled = false; btn.textContent = '↻ Sincronizar bandeja'; }
+    if (statusEl) statusEl.textContent = '❌ Error de conexión al sincronizar bandeja.';
+  });
+}
+
+function renderLineChart(daily) {
+  destroyEmailChart('kpi-linea');
+  var labels = (daily||[]).map(function(d) { return d.date||d.fecha||''; });
+  var values = (daily||[]).map(function(d) { return d.count||d.enviados||0; });
+  var ctx = document.getElementById('chart-emails-linea');
+  if (!ctx) return;
+  emailCharts['kpi-linea'] = new Chart(ctx, {
+    type: 'line',
+    data: { labels: labels, datasets: [{ label: 'Emails enviados', data: values, borderColor: '#009EE3', backgroundColor: 'rgba(0,158,227,0.08)', tension: 0.3, fill: true, pointRadius: 4, pointBackgroundColor: '#009EE3' }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+}
+
+function renderKpiRubrosChart(rubros) {
+  destroyEmailChart('kpi-rubros');
+  var labels = (rubros||[]).map(function(r) { return r.rubro||r.name||r; });
+  var values = (rubros||[]).map(function(r) { return r.count||0; });
+  var ctx = document.getElementById('chart-kpi-rubros');
+  if (!ctx || !labels.length) return;
+  emailCharts['kpi-rubros'] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: labels, datasets: [{ data: values, backgroundColor: '#2D3277', borderRadius: 6, label: 'Contactos' }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+}
+
+function renderKpiEstadosChart(estados) {
+  destroyEmailChart('kpi-estados');
+  var labels = ['Pendiente','Interesado','En negociación','Cerrado','No interesado'];
+  var keys = ['pendiente','interesado','en_negociacion','cerrado','no_interesado'];
+  var colors = ['#9CA3AF','#00A650','#009EE3','#1A1A2E','#DC2626'];
+  var values = keys.map(function(k) { return (estados && estados[k]) ? estados[k] : 0; });
+  var ctx = document.getElementById('chart-kpi-estados');
+  if (!ctx) return;
+  emailCharts['kpi-estados'] = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+  });
+}
+
+// ── Email: SCHEDULER ──────────────────────────────────
+var JOB_META = {
+  'auto_scraping':  { ico:'\u25CB', title:'Scraping Automático 08:00 AM', desc:'Busca nuevos contactos de email según Inteligencia · L-V', badge:'badge-scraping',   tipo:'Scraping',    group:'scraping'   },
+  'email_daily':    { ico:'\u2709',  title:'Email Prospección 11:00 AM',   desc:'Envía a contactos pendientes + scraping complementario',   badge:'badge-email',      tipo:'Email',       group:'email'      },
+  'email_followup': { ico:'\u21BA', title:'Seguimiento Email',            desc:'Seguimientos 48h y 96h · cada 2 horas',                   badge:'badge-seguimiento',tipo:'Seguimiento', group:'seguimiento'},
+  'inbox_monitor':  { ico:'\u21BB', title:'Monitor de Bandeja',           desc:'Detecta respuestas y rebotes · cada 30 min',              badge:'badge-monitor',    tipo:'Monitor',     group:'seguimiento'},
+};
+
+function fmtNextRun(isoStr) {
+  if (!isoStr || isoStr === 'None') return 'Sin programar';
+  var d = new Date(isoStr);
+  if (isNaN(d)) return isoStr;
+  var dias = ['dom','lun','mar','mié','jue','vie','sáb'];
+  var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return dias[d.getDay()] + ' ' + d.getDate() + ' ' + meses[d.getMonth()] +
+         ' · ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+
+function ctBadge(run) {
+  if (!run) return '<span class="ct-badge ct-pending">&#9711; Pendiente</span>';
+  if (run.status === 'running') return '<span class="ct-badge ct-running">&#8635; Corriendo</span>';
+  if (run.status === 'error')   return '<span class="ct-badge ct-error" title="' + (run.error||'') + '">\u2717 Error</span>';
+  var hora = run.finished_at ? run.finished_at.substring(11,16) : '';
+  var label = run.count > 0 ? run.count + (run.count === 1 ? ' ítem' : ' ítems') : 'OK';
+  return '<span class="ct-badge ct-done" title="Completado a las ' + hora + '">✓ ' + label + ' · ' + hora + '</span>';
+}
+
+function renderSchedItem(job, run) {
+  var m = JOB_META[job.id] || { ico:'\u2699', title:job.id, desc:'', badge:'badge-monitor', tipo:'Job', group:'seguimiento' };
+  var next = fmtNextRun(job.next_run);
+  return '<div class="sched-item">' +
+    '<span class="sched-ico">' + m.ico + '</span>' +
+    '<div class="sched-info">' +
+      '<div class="sched-title">' + m.title + '</div>' +
+      '<div class="sched-meta"><strong>Próxima: ' + next + '</strong>' + (m.desc ? ' · ' + m.desc : '') + '</div>' +
+    '</div>' +
+    ctBadge(run) +
+    '<span class="badge ' + m.badge + '" style="flex-shrink:0;margin-left:4px">' + m.tipo + '</span>' +
+    '<button class="sched-run-btn" onclick="triggerSchedJob(\'' + job.id + '\',\'' + m.title + '\')">▶ Ahora</button>' +
+  '</div>';
+}
+
+function triggerSchedJob(jobId, name) {
+  if (!confirm('¿Ejecutar "' + name + '" ahora?')) return;
+  showAlert('Iniciando ' + name + '...', '');
+  api('/api/scheduler/trigger/' + jobId, {method:'POST', body:JSON.stringify({})}).then(function(r) {
+    if (r && r.ok) showAlert(name + ' ejecutado correctamente', 'success');
+    else showAlert('Error ejecutando job', 'error');
+  });
+}
+
+function loadEmailScheduler() {
+  Promise.all([
+    api('/api/scheduler/status'),
+    api('/api/email-tool/scheduler/job-runs'),
+    api('/api/email-tool/scheduler/upcoming'),
+    api('/api/email-tool/reuniones'),
+    api('/api/email-tool/campaign-batches')
+  ]).then(function(results) {
+    var status   = results[0] || {};
+    var jobRuns  = results[1] || {};
+    var upcoming = results[2] || {};
+    var reunData = results[3] || {};
+    var batches  = Array.isArray(results[4]) ? results[4] : [];
+    var badgeEl = document.getElementById('sched-status-badge');
+    if (badgeEl) {
+      badgeEl.textContent      = status.running ? 'Activo' : 'Detenido';
+      badgeEl.style.background = status.running ? '#D1FAE5' : '#FEE2E2';
+      badgeEl.style.color      = status.running ? '#059669' : '#DC2626';
+    }
+    var groups = { scraping:[], email:[], seguimiento:[] };
+    var jobs = (status.jobs || []).sort(function(a,b){ return new Date(a.next_run)-new Date(b.next_run); });
+    jobs.forEach(function(j) {
+      var m = JOB_META[j.id];
+      if (m && groups[m.group]) groups[m.group].push(j);
+    });
+    Object.keys(groups).forEach(function(g) {
+      var el = document.getElementById('sched-' + g);
+      if (!el) return;
+      el.innerHTML = groups[g].length
+        ? groups[g].map(function(j){ return renderSchedItem(j, jobRuns[j.id]); }).join('')
+        : '<div style="color:#9CA3AF;font-size:12px;padding:4px 0">Sin jobs en este grupo</div>';
+    });
+    renderFollowupList(upcoming.followups || upcoming || []);
+    renderSchedulerReuniones(reunData.reuniones || reunData || []);
+    renderCampaignBatches(batches);
+  });
+}
+
+function renderCampaignBatches(batches) {
+  var tbody = document.getElementById('campaign-batches-tbody');
+  if (!tbody) return;
+  if (!batches || !batches.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>Sin historial de campañas aún</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = batches.map(function(b) {
+    var fecha = b.fecha || b.created_at || '—';
+    var badge = b.total_sent > 0
+      ? '<span class="badge badge-email" style="font-size:12px;padding:3px 9px">' + b.total_sent + ' msgs</span>'
+      : '<span style="color:#9CA3AF">0</span>';
+    var errBadge = b.total_err > 0
+      ? ' <span class="badge" style="background:#FEE2E2;color:#DC2626;font-size:11px">' + b.total_err + ' err</span>'
+      : '';
+    return '<tr>' +
+      '<td style="font-weight:600;white-space:nowrap">' + fecha + '</td>' +
+      '<td>' + (b.rubro || '—') + '</td>' +
+      '<td style="font-size:12px;color:#6B7280">' + (b.comunas || '—') + '</td>' +
+      '<td>' + badge + errBadge + '</td>' +
+      '<td style="color:' + (b.total_err > 0 ? '#DC2626' : '#9CA3AF') + '">' + b.total_err + '</td>' +
+      '<td><a href="/api/email-tool/campaign-batches/' + b.id + '/excel" class="btn btn-ghost btn-sm" style="font-size:11px;padding:3px 9px" download>&#8595; Excel</a></td>' +
+    '</tr>';
+  }).join('');
+}
+
+function renderFollowupList(followups) {
+  var el = document.getElementById('followups-list');
+  if (!el) return;
+  if (!followups || !Array.isArray(followups) || !followups.length) {
+    el.innerHTML = '<p style="color:#9CA3AF;font-size:13px">No hay seguimientos de email pendientes</p>';
+    return;
+  }
+  // Agrupar por rubro
+  var grupos = {};
+  followups.forEach(function(f) {
+    var r = f.rubro || 'Sin rubro';
+    if (!grupos[r]) grupos[r] = { items: [], proxima: null };
+    grupos[r].items.push(f);
+    var proxima = f.proximo_seguimiento || f.fecha_envio || f.fecha;
+    if (proxima && (!grupos[r].proxima || proxima < grupos[r].proxima)) {
+      grupos[r].proxima = proxima;
+    }
+  });
+  var html = '';
+  Object.keys(grupos).sort().forEach(function(rubro) {
+    var g      = grupos[rubro];
+    var count  = g.items.length;
+    var prox   = g.proxima ? g.proxima.substring(11,16) : '—';
+    var seg    = g.items[0].seguimiento_count || 1;
+    var horas  = seg <= 1 ? '48h' : '96h';
+    var ids    = g.items.map(function(f){ return f.id; }).join(',');
+    html += '<div class="sched-item" style="flex-wrap:nowrap">' +
+      '<span class="sched-ico">\u2709</span>' +
+      '<div class="sched-info">' +
+        '<div class="sched-title" style="font-size:13px">' + rubro + '</div>' +
+        '<div class="sched-meta">' + count + ' contacto' + (count>1?'s':'') +
+          ' · Seg. ' + horas +
+          ' · Próxima ejecución: <strong>' + prox + '</strong>' +
+        '</div>' +
+      '</div>' +
+      '<span class="badge badge-seguimiento" style="flex-shrink:0">' + count + ' pend.</span>' +
+      '<button class="sched-run-btn" onclick="sendFollowupGroup([' + ids + '])">Enviar</button>' +
+    '</div>';
+  });
+  el.innerHTML = '<div class="sched-list">' + html + '</div>';
+}
+
+function sendFollowupGroup(ids) {
+  var total = ids.length;
+  if (!confirm('¿Enviar seguimiento a ' + total + ' contacto(s) de este rubro ahora?')) return;
+  var sent = 0;
+  ids.forEach(function(id) {
+    api('/api/email-tool/scheduler/run-followup', {method:'POST', body:JSON.stringify({followup_id: id})}).then(function() {
+      sent++;
+      if (sent === total) { showAlert('Seguimientos enviados: ' + total, 'success'); loadEmailScheduler(); }
+    });
+  });
+}
+
+function sendFollowupNow(id) {
+  api('/api/email-tool/scheduler/run-followup', {method:'POST', body:JSON.stringify({followup_id: id})}).then(function() {
+    showAlert('Seguimiento enviado', 'success');
+    loadEmailScheduler();
+  });
+}
+
+function renderSchedulerReuniones(reuniones) {
+  var tbody = document.getElementById('scheduler-reuniones-body');
+  if (!tbody) return;
+  if (!reuniones || !Array.isArray(reuniones) || !reuniones.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>Sin reuniones</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = reuniones.map(function(r) {
+    var estados = ['pendiente','confirmada','completada','cancelada'];
+    var opts = estados.map(function(s) {
+      return '<option value="' + s + '"' + (r.estado===s?' selected':'') + '>' + s + '</option>';
+    }).join('');
+    return '<tr>' +
+      '<td>' + emailFormatDate(r.fecha) + '</td>' +
+      '<td>' + (r.hora||'—') + '</td>' +
+      '<td><strong>' + (r.business_name||r.contact_name||'—') + '</strong></td>' +
+      '<td>' + (r.rubro||'—') + '</td>' +
+      '<td>' + (r.lugar||'—') + '</td>' +
+      '<td><select class="inline-select" onchange="updateReunionStatus(' + r.id + ', this.value)">' + opts + '</select></td>' +
+    '</tr>';
+  }).join('');
+}
+
+function updateReunionStatus(id, estado) {
+  api('/api/email-tool/reuniones/' + id, {method:'PATCH', body:JSON.stringify({estado: estado})}).then(function() {
+    showAlert('Estado actualizado', 'success');
+  });
+}
+
+// ── Email: NUEVO RUBRO ────────────────────────────────
+function openNuevoRubro() {
+  document.getElementById('nr-rubro').value = '';
+  document.getElementById('nr-icon').value = '📧';
+  document.getElementById('nr-header-bg').value = '#1A1A2E';
+  document.getElementById('nr-subject').value = '';
+  document.getElementById('nr-h1').value = '';
+  document.getElementById('nr-body').value = '';
+  document.getElementById('nr-error').style.display = 'none';
+  var btn = document.getElementById('nr-save-btn');
+  if (btn) { btn.disabled = false; btn.textContent = 'Crear rubro'; }
+  openEmailModal('modal-nuevo-rubro');
+  setTimeout(function() { var e = document.getElementById('nr-rubro'); if (e) e.focus(); }, 120);
+}
+
+function nrUpdatePreview() {
+  var rubro = document.getElementById('nr-rubro').value.trim().toLowerCase();
+  var subj  = document.getElementById('nr-subject');
+  if (rubro && !subj.value) {
+    subj.placeholder = 'Ej: Cobra sin complicaciones en tu ' + rubro + ' — MercadoPago';
+  }
+}
+
+function saveNuevoRubro() {
+  var rubro    = (document.getElementById('nr-rubro').value || '').trim().toLowerCase();
+  var icon     = (document.getElementById('nr-icon').value || '📧').trim();
+  var headerBg = document.getElementById('nr-header-bg').value || '#1A1A2E';
+  var subject  = (document.getElementById('nr-subject').value || '').trim();
+  var h1       = (document.getElementById('nr-h1').value || '').trim();
+  var body     = (document.getElementById('nr-body').value || '').trim();
+  var errEl    = document.getElementById('nr-error');
+  var btn      = document.getElementById('nr-save-btn');
+  if (!rubro) { errEl.textContent = 'El nombre del rubro es obligatorio.'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  api('/api/email-tool/templates', {method:'POST', body:JSON.stringify({rubro: rubro, icon: icon, header_bg: headerBg, subject: subject, h1: h1, body: body})})
+    .then(function(r) {
+      btn.disabled = false; btn.textContent = 'Crear rubro';
+      if (r && r.ok) {
+        RUBRO_META[rubro] = { icon: icon, header_bg: headerBg, pain_bg: '#FFF8E1' };
+        closeEmailModal('modal-nuevo-rubro');
+        showAlert('Rubro "' + rubro + '" creado ✓', 'success');
+        _populateScrapingRubros();
+        loadEmailCampanas();
+      } else {
+        errEl.textContent = (r && r.error) ? r.error : 'Error al crear el rubro.';
+        errEl.style.display = 'block';
+      }
+    });
+}
+
+function _populateScrapingRubros() {
+  api('/api/email-tool/rubros').then(function(rubros) {
+    if (!Array.isArray(rubros)) return;
+    var opts = '<option value="">— Selecciona rubro —</option>' +
+      rubros.map(function(r) {
+        var label = r.charAt(0).toUpperCase() + r.slice(1);
+        return '<option value="' + r + '">' + label + '</option>';
+      }).join('');
+    var s1 = document.getElementById('scraRubro');
+    var s2 = document.getElementById('scraEmailUrlRubro');
+    if (s1) s1.innerHTML = opts;
+    if (s2) s2.innerHTML = opts;
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// END EMAIL TOOL FUNCTIONS
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// WHATSAPP FUNCTIONS
+// ══════════════════════════════════════════════════════
+
+let _waPage = 1;
+let _waStatusInterval = null;
+
+// ── Estado de conexión ────────────────────────────────
+async function waRefreshStatus() {
+  try {
+    const r = await fetch('/api/whatsapp/status');
+    const d = await r.json();
+    const state = d.state || 'unknown';
+    const icon  = document.getElementById('waStatusIcon');
+    const text  = document.getElementById('waStatusText');
+    const sub   = document.getElementById('waStatusSub');
+    const dot   = document.getElementById('badgeWaStatus');
+    const btn   = document.getElementById('btnWaConnect');
+
+    if (state === 'open') {
+      icon.textContent = '✅';
+      text.textContent = 'Conectado';
+      sub.textContent  = 'WhatsApp listo para enviar';
+      dot.style.background = '#10B981';
+      dot.title = 'Conectado';
+      btn.textContent = '✅ Conectado';
+      btn.disabled = true;
+      clearInterval(_waStatusInterval);
+    } else if (state === 'connecting') {
+      icon.textContent = '🔄';
+      text.textContent = 'Conectando...';
+      sub.textContent  = 'Esperando escaneo del QR';
+      dot.style.background = '#F59E0B';
+    } else {
+      icon.textContent = '🔴';
+      text.textContent = 'Desconectado';
+      sub.textContent  = 'Escanea el QR para conectar';
+      dot.style.background = '#EF4444';
+      dot.title = 'Desconectado';
+      btn.textContent = '📱 Conectar';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    document.getElementById('waStatusIcon').textContent = '⚠️';
+    document.getElementById('waStatusText').textContent = 'Evolution API no disponible';
+    document.getElementById('waStatusSub').textContent  = 'Verifica que Evolution API esté corriendo';
+  }
+}
+
+async function waConnect() {
+  document.getElementById('btnWaConnect').textContent = '⏳ Conectando...';
+  document.getElementById('btnWaConnect').disabled = true;
+  await fetch('/api/whatsapp/connect', {method:'POST'});
+  await waGetQR();
+  // Polling hasta conectar
+  _waStatusInterval = setInterval(waRefreshStatus, 3000);
+}
+
+async function waGetQR() {
+  const container = document.getElementById('waQRContainer');
+  container.innerHTML = '<div class="spinner"></div>';
+  try {
+    const r = await fetch('/api/whatsapp/qr');
+    const d = await r.json();
+    if (d.qr) {
+      const src = d.qr.startsWith('data:') ? d.qr : 'data:image/png;base64,' + d.qr;
+      container.innerHTML = `<img src="${src}" style="width:220px;height:220px;border-radius:8px;border:1px solid #E5E7EB">`;
+    } else {
+      container.innerHTML = '<div style="color:#6B7280;font-size:13px">No hay QR disponible.<br>Haz clic en "Nuevo QR" para intentar de nuevo.</div>';
+    }
+  } catch(e) {
+    container.innerHTML = '<div style="color:#EF4444;font-size:12px">Error obteniendo QR. Evolution API no disponible.</div>';
+  }
+}
+
+async function waDisconnect() {
+  if (!confirm('¿Desconectar WhatsApp? El número quedará libre.')) return;
+  await fetch('/api/whatsapp/disconnect', {method:'POST'});
+  clearInterval(_waStatusInterval);
+  await waRefreshStatus();
+}
+
+// ── Estadísticas ─────────────────────────────────────
+async function waLoadStats() {
+  try {
+    const r = await fetch('/api/whatsapp/stats');
+    const d = await r.json();
+    const s = d.last_30_days || {};
+    document.getElementById('waStatSent').textContent    = s.total_sent || 0;
+    document.getElementById('waStatReplied').textContent = s.replied    || 0;
+  } catch(e) {}
+}
+
+// ── Mensajes enviados ─────────────────────────────────
+async function waLoadMessages() {
+  const phone = document.getElementById('waSearchPhone').value.trim();
+  const tbody = document.getElementById('waMessagesBody');
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px"><div class="spinner"></div></td></tr>';
+
+  try {
+    const url = `/api/whatsapp/messages?page=${_waPage}&per_page=50${phone ? '&phone='+encodeURIComponent(phone) : ''}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    const msgs = d.messages || [];
+
+    if (!msgs.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#6B7280">Sin mensajes</td></tr>';
+      return;
+    }
+
+    const statusBadge = s => {
+      const m = {sent:'📤 Enviado', failed:'❌ Error', delivered:'📬 Entregado', read:'👁 Leído', replied:'💬 Respondido'};
+      return m[s] || s;
+    };
+    const fmt = v => v ? v.substr(0,16).replace('T',' ') : '—';
+
+    tbody.innerHTML = msgs.map(m => `
+      <tr>
+        <td style="font-size:12px">${m.phone}</td>
+        <td><span style="font-size:11px;background:#EFF6FF;color:#2563EB;padding:2px 6px;border-radius:4px">${m.message_type||'—'}</span></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${(m.message_text||'').replace(/"/g,'&quot;')}">${(m.message_text||'').substr(0,60)}</td>
+        <td style="font-size:12px">${statusBadge(m.status)}</td>
+        <td style="font-size:11px;color:#6B7280">${fmt(m.sent_at)}</td>
+        <td style="font-size:11px;color:#6B7280">${fmt(m.read_at)}</td>
+        <td style="font-size:11px;color:${m.replied_at?'#10B981':'#9CA3AF'}">${fmt(m.replied_at)}</td>
+      </tr>
+    `).join('');
+
+    const total = d.total || 0;
+    document.getElementById('waPageInfo').textContent = `Pág ${_waPage} · ${total} total`;
+    document.getElementById('btnWaPrev').disabled = _waPage <= 1;
+    document.getElementById('btnWaNext').disabled = (_waPage * 50) >= total;
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px;color:#EF4444">Error cargando mensajes</td></tr>';
+  }
+}
+
+function waPageChange(dir) {
+  _waPage = Math.max(1, _waPage + dir);
+  waLoadMessages();
+}
+
+// ── Follow-up config ──────────────────────────────────
+async function waLoadConfig() {
+  try {
+    const r = await fetch('/api/email-tool/scheduler-config');
+    const d = await r.json();
+    // Intentamos obtener config WA desde config table
+    const r2 = await fetch('/api/whatsapp/status');  // solo para verificar conexión
+    // La config WA viene del backend via defaults ya cargados
+  } catch(e) {}
+}
+
+async function waToggleFollowup(enabled) {
+  const toggle = document.getElementById('waFollowupToggle');
+  toggle.style.background = enabled ? '#3B82F6' : '#D1D5DB';
+  await waSaveFollowupConfig();
+}
+
+async function waSaveFollowupConfig() {
+  const days  = document.getElementById('waFollowupDays').value;
+  const limit = document.getElementById('waDailyLimit').value;
+  const enabled = document.getElementById('waFollowupEnabled').checked ? '1' : '0';
+  // Guardamos via config endpoint genérico
+  try {
+    await fetch('/api/email-tool/scheduler-config', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        wa_followup_days:    days,
+        wa_daily_limit:      limit,
+        wa_followup_enabled: enabled,
+      })
+    });
+  } catch(e) {}
+}
+
+async function waRunFollowup() {
+  const el = document.getElementById('waFollowupResult');
+  el.textContent = '⏳ Ejecutando...';
+  el.style.color = '#6B7280';
+  try {
+    const r = await fetch('/api/whatsapp/followup/send', {method:'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      el.textContent = `✅ Enviados: ${d.sent} · Errores: ${d.errors} · Candidatos: ${d.total_candidates}`;
+      el.style.color = '#10B981';
+    } else {
+      el.textContent = `⚠️ ${d.reason || d.error || 'Error desconocido'}`;
+      el.style.color = '#F59E0B';
+    }
+    waLoadStats();
+    waLoadMessages();
+  } catch(e) {
+    el.textContent = '❌ Error ejecutando follow-up';
+    el.style.color = '#EF4444';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// END WHATSAPP FUNCTIONS
+// ══════════════════════════════════════════════════════
 
 </script>
 <div id="toast" class="toast"></div>
