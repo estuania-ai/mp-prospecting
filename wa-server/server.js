@@ -46,6 +46,9 @@ function checkApiKey(req, res, next) {
 app.use(checkApiKey);
 
 // ── Iniciar WhatsApp ─────────────────────────────────────────────
+// Contador de reconexiones para backoff progresivo
+let reconnectCount = 0;
+
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   const { version } = await fetchLatestBaileysVersion();
@@ -59,24 +62,27 @@ async function startSock() {
     logger,
     printQRInTerminal: false,
     browser: ['Chrome (Linux)', '', ''],
-    connectTimeoutMs: 60000,
+    connectTimeoutMs: 120000,       // 2 min para dar tiempo a escanear QR
     defaultQueryTimeoutMs: 60000,
-    keepAliveIntervalMs: 10000,
+    keepAliveIntervalMs: 25000,
+    qrTimeout: 120000,              // QR válido por 2 minutos
   });
 
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      qrBase64   = await QRCode.toDataURL(qr);
-      connState  = 'connecting';
-      console.log('[WA] QR listo para escanear');
+      qrBase64      = await QRCode.toDataURL(qr);
+      connState     = 'connecting';
+      reconnectCount = 0;           // reset al recibir QR nuevo
+      console.log('[WA] QR listo para escanear — tienes 2 minutos');
       sendWebhook({ event: 'CONNECTION_UPDATE', data: { state: 'connecting' } });
     }
 
     if (connection === 'open') {
-      connState = 'open';
-      qrBase64  = null;
+      connState      = 'open';
+      qrBase64       = null;
+      reconnectCount = 0;
       console.log('[WA] ✅ Conectado!');
       sendWebhook({ event: 'CONNECTION_UPDATE', data: { state: 'open' } });
     }
@@ -88,7 +94,11 @@ async function startSock() {
       console.log(`[WA] Desconectado (code=${code}). Reconectar: ${shouldReconnect}`);
       sendWebhook({ event: 'CONNECTION_UPDATE', data: { state: 'close' } });
       if (shouldReconnect) {
-        setTimeout(startSock, 3000);
+        // Backoff progresivo: 5s, 15s, 30s, 60s, 60s... para no saturar Railway
+        reconnectCount++;
+        const delay = Math.min(5000 * reconnectCount, 60000);
+        console.log(`[WA] Reintento ${reconnectCount} en ${delay/1000}s`);
+        setTimeout(startSock, delay);
       }
     }
   });
