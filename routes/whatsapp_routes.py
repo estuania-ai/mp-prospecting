@@ -213,6 +213,27 @@ def wa_followup_manual():
     return jsonify(result)
 
 
+@bp.post('/retry-failed')
+def wa_retry_failed():
+    """Elimina mensajes fallidos de números móviles (569) para que sean
+    reintentados por el follow-up, y luego ejecuta el follow-up."""
+    from jobs.wa_followup import run_wa_followup
+    conn = get_db()
+    # Eliminar registros fallidos de números móviles válidos (569XXXXXXXX)
+    deleted = conn.execute("""
+        DELETE FROM wa_messages
+        WHERE status = 'failed'
+          AND (phone LIKE '569%' OR phone LIKE '+569%')
+    """).rowcount
+    conn.commit()
+    conn.close()
+    logger.info(f"[Retry] Eliminados {deleted} mensajes fallidos para reintento")
+    # Ejecutar follow-up inmediatamente
+    result = run_wa_followup()
+    result['retried'] = deleted
+    return jsonify(result)
+
+
 # ── HELPERS INTERNOS ─────────────────────────────────────────────
 
 def _save_wa_message(phone, message_text, status='sent', wa_message_id=None,
