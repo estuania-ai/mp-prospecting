@@ -213,6 +213,82 @@ def wa_followup_manual():
     return jsonify(result)
 
 
+@bp.get('/diagnostics')
+def wa_diagnostics():
+    """Diagnóstico del estado de wa_messages y et_contacts para entender por qué no hay candidatos."""
+    from datetime import datetime, timedelta
+    conn = get_db()
+
+    # 1. Mensajes fallidos: muestra los primeros 10 con su phone exacto
+    failed = conn.execute("""
+        SELECT id, phone, status, message_type, sent_at,
+               REPLACE(REPLACE(phone, ' ', ''), '+', '') AS phone_clean
+        FROM wa_messages
+        WHERE status = 'failed'
+        LIMIT 20
+    """).fetchall()
+
+    # 2. Conteo de wa_messages por status
+    by_status = conn.execute("""
+        SELECT status, COUNT(*) as cnt FROM wa_messages GROUP BY status
+    """).fetchall()
+
+    # 3. et_contacts: cuántos hay, cuántos tienen fecha_envio, cuántos tienen phone 569
+    etc_summary = conn.execute("""
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN fecha_envio IS NOT NULL THEN 1 ELSE 0 END) AS con_fecha_envio,
+            SUM(CASE WHEN phone IS NOT NULL AND phone != '' THEN 1 ELSE 0 END) AS con_phone,
+            SUM(CASE WHEN REPLACE(REPLACE(phone,'  ',' '),' ','') LIKE '569%' THEN 1 ELSE 0 END) AS phone_569,
+            SUM(CASE WHEN opt_out = 1 THEN 1 ELSE 0 END) AS opt_out,
+            SUM(CASE WHEN estado_interes = 'pendiente' OR estado_interes IS NULL THEN 1 ELSE 0 END) AS pendientes
+        FROM et_contacts
+    """).fetchone()
+
+    # 4. Candidatos reales con la consulta exacta del follow-up
+    cutoff = (datetime.now() - timedelta(days=3)).strftime('%Y-%m-%d')
+    candidates = conn.execute("""
+        SELECT ec.id, ec.business_name, ec.phone, ec.estado_interes, ec.fecha_envio,
+               ec.opt_out
+        FROM et_contacts ec
+        WHERE ec.phone IS NOT NULL
+          AND ec.phone != ''
+          AND ec.opt_out = 0
+          AND (ec.estado_interes = 'pendiente' OR ec.estado_interes IS NULL)
+          AND ec.fecha_envio IS NOT NULL
+          AND date(ec.fecha_envio) <= ?
+          AND ec.id NOT IN (
+              SELECT et_contact_id FROM wa_messages
+              WHERE et_contact_id IS NOT NULL
+                AND message_type = 'followup_email'
+          )
+        LIMIT 10
+    """, (cutoff,)).fetchall()
+
+    # 5. Estado de et_contacts por estado_interes
+    by_estado = conn.execute("""
+        SELECT estado_interes, COUNT(*) as cnt FROM et_contacts GROUP BY estado_interes ORDER BY cnt DESC
+    """).fetchall()
+
+    # 6. Fechas de envio: min, max, cuántos son <= cutoff
+    fecha_stats = conn.execute("""
+        SELECT MIN(date(fecha_envio)) as min_fecha, MAX(date(fecha_envio)) as max_fecha,
+               SUM(CASE WHEN date(fecha_envio) <= ? THEN 1 ELSE 0 END) as lte_cutoff
+        FROM et_contacts WHERE fecha_envio IS NOT NULL
+    """, (cutoff,)).fetchone()
+
+    conn.close()
+    return jsonify({
+        "cutoff_date": cutoff,
+        "wa_messages_by_status": [dict(r) for r in by_status],
+        "failed_sample": [dict(r) for r in failed],
+        "et_contacts_summary": dict(etc_summary),
+        "et_contacts_by_estado": [dict(r) for r in by_estado],
+        "fecha_envio_stats": dict(fecha_stats) if fecha_stats else None,
+        "candidates_preview": [dict(r) for r in candidates],
+    })
+
+
 @bp.post('/retry-failed')
 def wa_retry_failed():
     """Elimina mensajes fallidos de números móviles (569) para que sean
