@@ -1801,6 +1801,8 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
       </div>
       <button class="btn btn-primary" style="width:100%;margin-top:16px" onclick="waRunFollowup()">▶ Ejecutar follow-up ahora</button>
       <div id="waFollowupResult" style="margin-top:8px;font-size:12px;color:#6B7280;text-align:center"></div>
+      <button class="btn" style="width:100%;margin-top:8px;background:#F0FDF4;color:#166534;border:1px solid #BBF7D0;font-size:13px" onclick="waSyncToLeads()">↗ Registrar contactos WA en Leads</button>
+      <div id="waSyncResult" style="margin-top:6px;font-size:12px;color:#6B7280;text-align:center"></div>
     </div>
   </div>
 
@@ -7694,13 +7696,15 @@ async function waSaveFollowupConfig() {
 
 async function waRunFollowup() {
   const el = document.getElementById('waFollowupResult');
-  el.textContent = '⏳ Ejecutando...';
+  el.textContent = '⏳ Iniciando...';
   el.style.color = '#6B7280';
   try {
     const r = await fetch('/api/whatsapp/followup/send', {method:'POST'});
     const d = await r.json();
     if (d.ok) {
-      el.textContent = `✅ Enviados: ${d.sent} · Errores: ${d.errors} · Candidatos: ${d.total_candidates}`;
+      el.textContent = d.started
+        ? '✅ Follow-up iniciado en segundo plano'
+        : `✅ Enviados: ${d.sent} · Errores: ${d.errors}`;
       el.style.color = '#10B981';
     } else {
       el.textContent = `⚠️ ${d.reason || d.error || 'Error desconocido'}`;
@@ -7710,6 +7714,26 @@ async function waRunFollowup() {
     waLoadMessages();
   } catch(e) {
     el.textContent = '❌ Error ejecutando follow-up';
+    el.style.color = '#EF4444';
+  }
+}
+
+async function waSyncToLeads() {
+  const el = document.getElementById('waSyncResult');
+  el.textContent = '⏳ Sincronizando...';
+  el.style.color = '#6B7280';
+  try {
+    const r = await fetch('/api/whatsapp/sync-to-leads', {method:'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      el.textContent = `✅ ${d.inserted} registrados · ${d.skipped_existing} ya existían`;
+      el.style.color = '#166534';
+    } else {
+      el.textContent = `⚠️ ${d.error || 'Error desconocido'}`;
+      el.style.color = '#F59E0B';
+    }
+  } catch(e) {
+    el.textContent = '❌ Error al sincronizar';
     el.style.color = '#EF4444';
   }
 }

@@ -201,6 +201,88 @@ def wa_webhook():
     return jsonify({"ok": True}), 200
 
 
+# ── SINCRONIZACIÓN ET_CONTACTS → LEADS ───────────────────────────
+
+@bp.post('/sync-to-leads')
+def wa_sync_to_leads():
+    """
+    Crea registros en 'leads' para los et_contacts que recibieron un
+    mensaje WhatsApp pero todavía no existen en la tabla de leads.
+    Normaliza el teléfono al formato 569XXXXXXXX antes de insertar.
+    """
+    conn = get_db()
+
+    # Todos los et_contacts que aparecen en wa_messages (con et_contact_id)
+    # y tienen número móvil chileno (569)
+    contacts = conn.execute("""
+        SELECT DISTINCT
+            ec.id        AS ec_id,
+            ec.business_name,
+            ec.phone,
+            ec.rubro,
+            ec.comuna,
+            ec.ciudad
+        FROM et_contacts ec
+        INNER JOIN wa_messages wm ON wm.et_contact_id = ec.id
+        WHERE ec.phone IS NOT NULL
+          AND ec.phone != ''
+          AND REPLACE(REPLACE(ec.phone, ' ', ''), '+', '') LIKE '569%'
+    """).fetchall()
+
+    inserted  = 0
+    skipped   = 0
+    errors    = 0
+    now       = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    for c in contacts:
+        # Normalizar teléfono → 569XXXXXXXX (sin +, sin espacios)
+        digits = ''.join(filter(str.isdigit, c['phone']))
+        if not digits.startswith('56'):
+            digits = '56' + digits
+
+        # Saltar si ya existe (por teléfono normalizado o con prefijo +)
+        existing = conn.execute(
+            "SELECT id FROM leads WHERE REPLACE(REPLACE(phone,' ',''),'+','') = ?",
+            (digits,)
+        ).fetchone()
+        if existing:
+            skipped += 1
+            continue
+
+        name   = (c['business_name'] or '').strip() or 'Sin nombre'
+        rubro  = (c['rubro']  or '').strip() or 'Sin rubro'
+        comuna = (c['comuna'] or c['ciudad'] or '').strip() or 'Sin comuna'
+
+        try:
+            cur = conn.execute("""
+                INSERT INTO leads (name, phone, comuna, rubro, source, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'email_campaign', ?, ?)
+            """, (name, digits, comuna, rubro, now, now))
+            lead_id = cur.lastrowid
+
+            # Estado inicial en lead_status
+            conn.execute("""
+                INSERT OR IGNORE INTO lead_status (lead_id, status, stage, updated_at)
+                VALUES (?, 'enviado', 'prospecting', ?)
+            """, (lead_id, now))
+
+            inserted += 1
+        except Exception as e:
+            logger.warning(f"[SyncLeads] Error insertando {digits}: {e}")
+            errors += 1
+
+    conn.commit()
+    conn.close()
+    logger.info(f"[SyncLeads] {inserted} leads creados, {skipped} ya existían, {errors} errores")
+    return jsonify({
+        "ok": True,
+        "inserted": inserted,
+        "skipped_existing": skipped,
+        "errors": errors,
+        "message": f"{inserted} leads nuevos registrados desde contactos WA."
+    })
+
+
 # ── FOLLOW-UP MANUAL ─────────────────────────────────────────────
 
 @bp.post('/followup/send')
