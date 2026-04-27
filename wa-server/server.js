@@ -25,8 +25,9 @@ app.use(express.json());
 
 const PORT       = process.env.PORT || 8080;
 const API_KEY    = process.env.WA_API_KEY || 'mp_secret_key';
-const AUTH_DIR   = path.join(__dirname, 'auth_info');
-const WEBHOOK_FILE = path.join(__dirname, 'webhook_url.txt');
+const AUTH_DIR   = process.env.WA_AUTH_DIR || path.join(__dirname, 'auth_info');
+const WEBHOOK_FILE = process.env.WA_WEBHOOK_FILE || path.join(__dirname, 'webhook_url.txt');
+process.stdout.write('[WA] AUTH_DIR=' + AUTH_DIR + '\n');
 
 let sock         = null;
 let qrBase64     = null;
