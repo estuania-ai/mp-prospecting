@@ -62,10 +62,9 @@ async function startSock() {
     logger,
     printQRInTerminal: false,
     browser: ['Chrome (Linux)', '', ''],
-    connectTimeoutMs: 120000,       // 2 min para dar tiempo a escanear QR
+    connectTimeoutMs: 120000,
     defaultQueryTimeoutMs: 60000,
     keepAliveIntervalMs: 25000,
-    qrTimeout: 120000,              // QR válido por 2 minutos
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -245,6 +244,16 @@ app.post('/webhook/set/:instance', (req, res) => {
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', state: connState, version: '1.0.0' });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// MANEJO DE ERRORES GLOBALES — evita que el proceso muera silenciosamente
+// ══════════════════════════════════════════════════════════════════
+process.on('uncaughtException', (err) => {
+  console.error('[WA] uncaughtException:', err.message, err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[WA] unhandledRejection:', reason);
 });
 
 // ══════════════════════════════════════════════════════════════════
