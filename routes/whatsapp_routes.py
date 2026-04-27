@@ -6,6 +6,7 @@ Gestión de Evolution API: estado, QR, envío manual, historial, webhook entrant
 from flask import Blueprint, jsonify, request
 from datetime import datetime
 import logging
+import threading
 
 from database import get_db
 from whatsapp import evolution_client as ev
@@ -205,12 +206,13 @@ def wa_webhook():
 @bp.post('/followup/send')
 def wa_followup_manual():
     """
-    Dispara follow-up WhatsApp manualmente para contactos de email
-    sin respuesta hace más de N días.
+    Dispara follow-up WhatsApp en segundo plano (responde de inmediato
+    para no hacer timeout). Retorna {"ok": true, "started": true}.
     """
     from jobs.wa_followup import run_wa_followup
-    result = run_wa_followup()
-    return jsonify(result)
+    threading.Thread(target=run_wa_followup, daemon=True).start()
+    return jsonify({"ok": True, "started": True,
+                    "message": "Follow-up iniciado en segundo plano"})
 
 
 @bp.get('/diagnostics')
@@ -291,12 +293,10 @@ def wa_diagnostics():
 
 @bp.post('/retry-failed')
 def wa_retry_failed():
-    """Elimina mensajes fallidos de números móviles (569) para que sean
-    reintentados por el follow-up, y luego ejecuta el follow-up."""
+    """Elimina mensajes fallidos de números móviles (569) y lanza el follow-up
+    en segundo plano. Responde de inmediato para no hacer timeout."""
     from jobs.wa_followup import run_wa_followup
     conn = get_db()
-    # Eliminar registros fallidos de números móviles válidos (569XXXXXXXX)
-    # Los teléfonos pueden tener espacios: "+56 9 1234 5678" → comparar sin espacios
     deleted = conn.execute("""
         DELETE FROM wa_messages
         WHERE status = 'failed'
@@ -305,10 +305,9 @@ def wa_retry_failed():
     conn.commit()
     conn.close()
     logger.info(f"[Retry] Eliminados {deleted} mensajes fallidos para reintento")
-    # Ejecutar follow-up inmediatamente
-    result = run_wa_followup()
-    result['retried'] = deleted
-    return jsonify(result)
+    threading.Thread(target=run_wa_followup, daemon=True).start()
+    return jsonify({"ok": True, "retried": deleted, "started": True,
+                    "message": f"Eliminados {deleted} fallidos. Follow-up iniciado en segundo plano."})
 
 
 # ── HELPERS INTERNOS ─────────────────────────────────────────────
