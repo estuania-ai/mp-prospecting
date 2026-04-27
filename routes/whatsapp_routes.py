@@ -297,17 +297,25 @@ def wa_retry_failed():
     en segundo plano. Responde de inmediato para no hacer timeout."""
     from jobs.wa_followup import run_wa_followup
     conn = get_db()
-    deleted = conn.execute("""
+    # Borrar fallidos 569 (serán reintentados por el follow-up)
+    deleted_mobile = conn.execute("""
         DELETE FROM wa_messages
         WHERE status = 'failed'
           AND REPLACE(REPLACE(phone, ' ', ''), '+', '') LIKE '569%'
     """).rowcount
+    # Borrar fallidos de fijos/otros (562, 600, etc.) — no tienen WhatsApp
+    deleted_landline = conn.execute("""
+        DELETE FROM wa_messages
+        WHERE status = 'failed'
+          AND REPLACE(REPLACE(phone, ' ', ''), '+', '') NOT LIKE '569%'
+    """).rowcount
     conn.commit()
     conn.close()
-    logger.info(f"[Retry] Eliminados {deleted} mensajes fallidos para reintento")
+    logger.info(f"[Retry] Eliminados {deleted_mobile} móviles + {deleted_landline} fijos fallidos")
     threading.Thread(target=run_wa_followup, daemon=True).start()
-    return jsonify({"ok": True, "retried": deleted, "started": True,
-                    "message": f"Eliminados {deleted} fallidos. Follow-up iniciado en segundo plano."})
+    return jsonify({"ok": True, "retried_mobile": deleted_mobile,
+                    "cleaned_landlines": deleted_landline, "started": True,
+                    "message": f"Limpiados {deleted_landline} fijos + {deleted_mobile} móviles. Follow-up iniciado."})
 
 
 # ── HELPERS INTERNOS ─────────────────────────────────────────────
