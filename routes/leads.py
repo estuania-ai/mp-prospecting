@@ -100,7 +100,6 @@ def update_status(lead_id):
     if (status in ('opt_out', 'no_interesado')) and optout_motivo == 'Tiene MP':
         import threading
         def _send_tiene_mp():
-            from whatsapp.sender_desktop import get_sender
             from database import get_db as _db
             msg = (
                 "Qué excelente noticia que ya seas parte de Mercado Pago. "
@@ -110,16 +109,33 @@ def update_status(lead_id):
                 "con tus equipos o tu cuenta, no dudes en escribirme. "
                 "¡Mucho éxito y excelentes ventas!"
             )
-            sender = get_sender()
-            if not sender._is_logged_in:
-                sender.start()
-            result = sender.send_message(lead['phone'], msg, None)
+            # ── Usar Evolution API si está conectada, sino fallback a sender_desktop ──
+            ok = False
+            try:
+                from whatsapp import evolution_client as ev
+                if ev.is_connected():
+                    result = ev.send_message(lead['phone'], msg, None)
+                    ok = result.get('ok', False)
+                else:
+                    raise Exception("Evolution no conectada")
+            except Exception:
+                try:
+                    from whatsapp.sender_desktop import get_sender
+                    sender = get_sender()
+                    if not sender._is_logged_in:
+                        sender.start()
+                    result = sender.send_message(lead['phone'], msg, None)
+                    ok = result.get('success', False)
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).error(f"[TIENE_MP] Error enviando a {lead['phone']}: {e}")
+
             conn2 = _db()
             conn2.execute('''
                 INSERT INTO messages (lead_id, phone, message_type, status, sent_at, rubro, comuna)
                 VALUES (?, ?, 'tiene_mp', ?, datetime('now','localtime'), ?, ?)
             ''', (lead_id, lead['phone'],
-                  'sent' if result['success'] else 'failed',
+                  'sent' if ok else 'failed',
                   lead.get('rubro',''), lead.get('comuna','')))
             conn2.commit()
             conn2.close()
