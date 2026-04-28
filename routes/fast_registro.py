@@ -118,19 +118,30 @@ async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict
     )
     logger.info(f"[Fast] Chromium ejecutable: {_chromium_path or 'playwright default'}")
 
+    # Si FAST_HEADLESS=false, abre Chrome con ventana visible (modo local).
+    # MercadoPago detecta y rechaza sesiones en headless, así que en local
+    # conviene visible (igual que fast_login_manual.py).
+    _headless = os.getenv("FAST_HEADLESS", "true").lower() != "false"
+    logger.info(f"[Fast] Modo headless: {_headless}")
+
     async with async_playwright() as p:
         launch_kwargs = dict(
-            headless=True,
-            slow_mo=200,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-            ],
+            headless=_headless,
+            slow_mo=200 if _headless else 100,
+            args=(
+                ["--disable-blink-features=AutomationControlled"]
+                if not _headless else
+                [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                ]
+            ),
         )
-        if _chromium_path:
+        if _chromium_path and _headless:
+            # Solo usar el chromium de nix en modo headless (Railway)
             launch_kwargs["executable_path"] = _chromium_path
         browser = await p.chromium.launch(**launch_kwargs)
         context = await browser.new_context(

@@ -10,6 +10,10 @@ Por defecto escucha en http://localhost:5050
 import asyncio
 import logging
 import os
+
+# Forzar modo visible — MP rechaza sesiones cargadas en headless
+os.environ["FAST_HEADLESS"] = "false"
+
 from flask import Flask, request, jsonify
 
 # Importamos la función playwright existente
