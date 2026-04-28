@@ -3166,8 +3166,8 @@ def _do_send_campaign(campaign_id, test_address='', contact_ids_filter=None):
             smtp_conn.login(smtp_user, smtp_pass)
             logger.info('[EmailTool] Conexión SMTP abierta para campaña masiva')
         except Exception as e:
-            logger.error(f'[EmailTool] No se pudo conectar SMTP: {e}')
-            return {'ok': False, 'error': f'Error SMTP: {e}'}
+            logger.warning(f'[EmailTool] SMTP no disponible ({e}) — usando SendGrid API')
+            smtp_conn = None  # continuar sin SMTP; _send_smtp usará SendGrid
 
     rubro_data = RUBRO_EMAIL_CONTENT.get(camp_rubro.lower().strip())
 
