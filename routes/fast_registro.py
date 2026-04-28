@@ -145,14 +145,36 @@ async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict
                 }
 
             # Clic en "Registrar comercio"
-            await page.click('text=Registrar comercio', timeout=10_000)
-            await page.wait_for_load_state("networkidle", timeout=10_000)
+            await page.click('text=Registrar comercio', timeout=20_000)
+            await page.wait_for_load_state("networkidle", timeout=20_000)
+            await asyncio.sleep(2)  # espera extra para render completo
             await page.screenshot(path="logs/fast_02_form.png")
             logger.info(f"[Fast] URL tras Registrar comercio: {page.url}")
 
             # ── Sección Contacto ──────────────────────────────────────────────
-            # "Nombre y apellido" — usa el nombre del negocio completo
-            await page.get_by_label("Nombre y apellido").fill(nombre, timeout=8_000)
+            # "Nombre y apellido" — intenta varios selectores
+            nombre_filled = False
+            for nombre_sel in [
+                lambda: page.get_by_label("Nombre y apellido"),
+                lambda: page.locator('input[name*="name" i]').first,
+                lambda: page.locator('input[placeholder*="nombre" i]').first,
+                lambda: page.locator('input[id*="name" i]').first,
+                lambda: page.locator('input[type="text"]').first,
+            ]:
+                try:
+                    loc = nombre_sel()
+                    await loc.wait_for(state="visible", timeout=15_000)
+                    await loc.fill(nombre, timeout=10_000)
+                    nombre_filled = True
+                    logger.info(f"[Fast] Campo nombre completado")
+                    break
+                except Exception as _e:
+                    logger.debug(f"[Fast] Selector nombre fallido: {_e}")
+            if not nombre_filled:
+                await page.screenshot(path="logs/fast_error_nombre.png")
+                body_preview = (await page.evaluate("document.body.innerText"))[:300]
+                await browser.close()
+                return {"ok": False, "mensaje": f"No se encontró campo Nombre en el formulario. URL: {page.url}. Contenido: {body_preview}"}
 
             # Teléfono — dígitos completos (9XXXXXXXXX), escritura dígito a dígito
             phone_input = page.locator('input[type="tel"]').first
