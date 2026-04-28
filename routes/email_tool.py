@@ -5048,6 +5048,37 @@ def outscraper_import_leads(query_id):
 
 # ── Test batch manual ─────────────────────────────────────────────────────────
 
+@email_bp.route('/smtp-check', methods=['GET'])
+def smtp_check():
+    """Verifica si las variables SMTP están configuradas (sin exponer valores)."""
+    import os, smtplib, ssl
+    host  = os.getenv('SMTP_HOST', '')
+    port  = os.getenv('SMTP_PORT', '')
+    user  = os.getenv('SMTP_USER', '')
+    pwd   = os.getenv('SMTP_PASS', '')
+    frm   = os.getenv('EMAIL_FROM', '')
+    configured = bool(user and pwd)
+    result = {
+        'SMTP_HOST':  bool(host),
+        'SMTP_PORT':  bool(port),
+        'SMTP_USER':  bool(user),
+        'SMTP_PASS':  bool(pwd),
+        'EMAIL_FROM': bool(frm),
+        'configured': configured,
+    }
+    if configured:
+        try:
+            ctx = ssl.create_default_context()
+            with smtplib.SMTP(host or 'smtp.gmail.com', int(port or 587), timeout=10) as s:
+                s.ehlo(); s.starttls(context=ctx); s.login(user, pwd)
+            result['smtp_login'] = 'OK'
+        except Exception as e:
+            result['smtp_login'] = str(e)
+    else:
+        result['smtp_login'] = 'Skipped — credenciales vacías'
+    return jsonify(result)
+
+
 @email_bp.route('/run-batch', methods=['POST'])
 def run_batch_manual():
     """
