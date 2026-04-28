@@ -24,7 +24,6 @@ RUN apt-get update && apt-get install -y \
     libgbm1 \
     libpango-1.0-0 \
     libcairo2 \
-    libasound2 \
     libatspi2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -40,4 +39,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:$PORT", "--workers", "1", "--threads", "4", "--timeout", "120"]
+CMD gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
