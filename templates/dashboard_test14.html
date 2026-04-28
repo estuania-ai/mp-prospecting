@@ -660,7 +660,28 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     <span class="nav-icon">🗺️</span> Scraping
   </div>
   <div class="nav-item" onclick="showPage('interesados',this,'Interesados')" style="position:relative"><span class="nav-icon">⭐</span> Interesados<span id="badgeInteresados" style="position:absolute;top:6px;right:8px;background:var(--mp-warn);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;display:none">0</span></div>
-  <div class="nav-item" onclick="showPage('intel',this,'Inteligencia')"><span class="nav-icon">*</span> Inteligencia</div>
+  <div class="nav-item" onclick="showPage('intel',this,'Inteligencia')"><span class="nav-icon">🧠</span> Inteligencia</div>
+
+  <div class="nav-section">📧 Email</div>
+  <div class="nav-item" onclick="showPage('email-contactos',this,'Email · Leads')">
+    <span class="nav-icon">📋</span> Leads email
+    <span class="nav-badge" id="badgeEmailPend" style="background:#6b7280">—</span>
+  </div>
+  <div class="nav-item" onclick="showPage('email-interesados',this,'Email · Interesados')" style="position:relative">
+    <span class="nav-icon">⭐</span> Interesados email
+    <span id="badgeEmailInt" style="position:absolute;top:6px;right:8px;background:#856404;color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;display:none">0</span>
+  </div>
+  <div class="nav-item" onclick="showPage('email-campanas',this,'Email · Campañas')">
+    <span class="nav-icon">📤</span> Campañas
+  </div>
+  <div class="nav-item" onclick="showPage('email-scheduler',this,'Email · Automatización')">
+    <span class="nav-icon">⏰</span> Automatización
+  </div>
+  <div class="nav-item" onclick="showPage('email-inteligencia',this,'Email · Inteligencia')">
+    <span class="nav-icon">📊</span> Analítica email
+  </div>
+
+  <div class="nav-section">💬 WhatsApp</div>
   <div class="nav-item" onclick="showPage('whatsapp',this,'WhatsApp')" style="position:relative">
     <span class="nav-icon">💬</span> WhatsApp
     <span id="badgeWaStatus" style="position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:#9CA3AF;display:inline-block" title="Desconectado"></span>
@@ -703,24 +724,67 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     <button class="btn btn-primary" onclick="loadOverview()">↻ Actualizar</button>
   </div>
 
-  <div class="kpi-grid" id="kpiGrid">
+  <!-- KPI: Canal Email -->
+  <div style="font-size:10px;font-weight:700;color:var(--mp-text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+    <span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:10px">📧 Canal Email</span>
+  </div>
+  <div class="kpi-grid" id="kpiGrid" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">
     <div class="kpi" style="--kpi-color:var(--mp-blue)">
-      <div class="kpi-label">Total leads</div>
-      <div class="kpi-val" id="kpi-leads">—</div>
-      <div class="kpi-sub kpi-neutral">en base de datos</div>
+      <div class="kpi-label">Emails enviados</div>
+      <div class="kpi-val" id="kpi-email-enviados">—</div>
+      <div class="kpi-sub kpi-neutral" id="kpi-email-enviados-sub">campaña activa</div>
     </div>
+    <div class="kpi" style="--kpi-color:#059669">
+      <div class="kpi-label">Respondidos</div>
+      <div class="kpi-val" id="kpi-email-respondidos">—</div>
+      <div class="kpi-sub" id="kpi-email-resp-pct"></div>
+    </div>
+    <div class="kpi" style="--kpi-color:#856404">
+      <div class="kpi-label">Interesados email</div>
+      <div class="kpi-val" id="kpi-email-interesados">—</div>
+      <div class="kpi-sub kpi-neutral">respuesta positiva</div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--mp-text-3)">
+      <div class="kpi-label">No responde</div>
+      <div class="kpi-val" id="kpi-email-noresponde">—</div>
+      <div class="kpi-sub kpi-neutral">seguimiento agotado</div>
+    </div>
+  </div>
+
+  <!-- KPI: Canal WhatsApp -->
+  <div style="font-size:10px;font-weight:700;color:var(--mp-text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+    <span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:10px">💬 Canal WhatsApp</span>
+  </div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">
     <div class="kpi" style="--kpi-color:#3d5a99">
-      <div class="kpi-label">Enviados</div>
+      <div class="kpi-label">WA enviados</div>
       <div class="kpi-val" id="kpi-sent">—</div>
-      <div class="kpi-sub kpi-neutral">mensajes WA</div>
+      <div class="kpi-sub kpi-neutral">mensajes totales</div>
     </div>
     <div class="kpi" style="--kpi-color:var(--mp-blue)">
-      <div class="kpi-label">Apertura</div>
+      <div class="kpi-label">WA abiertos</div>
       <div class="kpi-val" id="kpi-apertura">—</div>
       <div class="kpi-sub" id="kpi-apertura-sub"></div>
     </div>
     <div class="kpi" style="--kpi-color:#856404">
-      <div class="kpi-label">Interesados</div>
+      <div class="kpi-label">Interesados WA</div>
+      <div class="kpi-val" id="kpi-wa-interesados">—</div>
+      <div class="kpi-sub kpi-neutral">respondieron positivo</div>
+    </div>
+    <div class="kpi" style="--kpi-color:var(--mp-green)">
+      <div class="kpi-label">Sellers activos</div>
+      <div class="kpi-val" id="kpi-sellers">—</div>
+      <div class="kpi-sub kpi-neutral">en fidelización</div>
+    </div>
+  </div>
+
+  <!-- KPI: Totales combinados -->
+  <div style="font-size:10px;font-weight:700;color:var(--mp-text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+    <span style="background:#ede9fe;color:#5b21b6;padding:2px 8px;border-radius:10px">🎯 Pipeline total (Email + WA)</span>
+  </div>
+  <div class="kpi-grid" id="kpiGridTotal" style="grid-template-columns:repeat(4,1fr);margin-bottom:22px">
+    <div class="kpi" style="--kpi-color:#856404">
+      <div class="kpi-label">Interesados total</div>
       <div class="kpi-val" id="kpi-interesados">—</div>
       <div class="kpi-sub kpi-neutral" id="kpi-interes-pct"></div>
     </div>
@@ -730,7 +794,7 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
       <div class="kpi-sub kpi-neutral">agendadas</div>
     </div>
     <div class="kpi" style="--kpi-color:var(--mp-green)">
-      <div class="kpi-label">Cierres</div>
+      <div class="kpi-label">Cierres totales</div>
       <div class="kpi-val" id="kpi-cerrados">—</div>
       <div class="kpi-sub" id="kpi-cierre-pct"></div>
     </div>
@@ -739,12 +803,9 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
       <div class="kpi-val" id="kpi-no">—</div>
       <div class="kpi-sub kpi-neutral">opt-out incluidos</div>
     </div>
-    <div class="kpi" style="--kpi-color:var(--mp-green)">
-      <div class="kpi-label">Sellers activos</div>
-      <div class="kpi-val" id="kpi-sellers">—</div>
-      <div class="kpi-sub kpi-neutral">en fidelización</div>
-    </div>
   </div>
+  <!-- IDs legacy ocultos para compatibilidad JS -->
+  <div style="display:none"><div id="kpi-leads">0</div></div>
 
   <!-- Fila 1: Funnel + Donut estados -->
   <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:16px;margin-bottom:16px">
@@ -2903,18 +2964,38 @@ async function loadOverview(){
   const d = await api('/api/dashboard/kpis');
   if(!d) return;
 
-  document.getElementById('kpi-leads').textContent   = fmt(d.total_leads);
-  document.getElementById('kpi-sent').textContent    = fmt(d.total_sent);
-  document.getElementById('kpi-apertura').textContent = d.tasa_apertura + '%';
-  document.getElementById('kpi-apertura-sub').innerHTML = `<span class="kpi-up">+${d.total_opened} abiertos</span>`;
+  // ── Canal Email KPIs ──────────────────────────────────────
+  document.getElementById('kpi-email-enviados').textContent     = fmt(d.email_enviados||0);
+  document.getElementById('kpi-email-enviados-sub').textContent = (d.email_pendientes||0)+' pendientes';
+  document.getElementById('kpi-email-respondidos').textContent  = fmt(d.email_respondidos||0);
+  document.getElementById('kpi-email-resp-pct').innerHTML       = `<span class="kpi-up">${d.email_tasa_resp||0}% tasa resp.</span>`;
+  document.getElementById('kpi-email-interesados').textContent  = fmt(d.email_interesados||0);
+  document.getElementById('kpi-email-noresponde').textContent   = fmt(d.email_no_responde||0);
+
+  // ── Canal WA KPIs ──────────────────────────────────────────
+  document.getElementById('kpi-sent').textContent              = fmt(d.total_sent);
+  document.getElementById('kpi-apertura').textContent          = fmt(d.total_opened);
+  document.getElementById('kpi-apertura-sub').innerHTML        = `<span class="kpi-neutral">${d.tasa_apertura}% tasa apertura</span>`;
+  document.getElementById('kpi-wa-interesados').textContent    = fmt(d.wa_interesados||d.by_status?.interesado||0);
+  document.getElementById('kpi-sellers').textContent           = fmt(d.sellers_activos);
+  document.getElementById('badgeSellers').textContent          = d.sellers_activos || 0;
+
+  // ── Totales combinados ─────────────────────────────────────
+  document.getElementById('kpi-leads').textContent    = fmt(d.total_leads);
   document.getElementById('kpi-interesados').textContent = fmt(d.interesados);
-  document.getElementById('kpi-interes-pct').textContent = d.tasa_interes + '% del total';
-  document.getElementById('kpi-reuniones').textContent = fmt(d.reuniones);
-  document.getElementById('kpi-cerrados').textContent = fmt(d.cerrados);
-  document.getElementById('kpi-cierre-pct').innerHTML = `<span class="kpi-up">Tasa ${d.tasa_cierre}%</span>`;
-  document.getElementById('kpi-no').textContent = fmt((d.by_status.no_interesado||0) + d.opt_out);
-  document.getElementById('kpi-sellers').textContent = fmt(d.sellers_activos);
-  document.getElementById('badgeSellers').textContent = d.sellers_activos || 0;
+  document.getElementById('kpi-interes-pct').innerHTML   = `<span class="kpi-up">WA: ${d.wa_interesados||0} · Email: ${d.email_interesados||0}</span>`;
+  document.getElementById('kpi-reuniones').textContent   = fmt(d.reuniones);
+  document.getElementById('kpi-cerrados').textContent    = fmt(d.cerrados);
+  document.getElementById('kpi-cierre-pct').innerHTML    = `<span class="kpi-up">Tasa ${d.tasa_cierre}%</span>`;
+  document.getElementById('kpi-no').textContent          = fmt((d.by_status?.no_interesado||0) + d.opt_out);
+
+  // badges nav
+  var badgeInt = document.getElementById('badgeInteresados');
+  if(badgeInt && d.interesados > 0){ badgeInt.textContent = d.interesados; badgeInt.style.display='inline'; }
+  var badgeEmailInt = document.getElementById('badgeEmailInt');
+  if(badgeEmailInt && (d.email_interesados||0) > 0){ badgeEmailInt.textContent = d.email_interesados; badgeEmailInt.style.display='inline'; }
+  var badgeEmailPend = document.getElementById('badgeEmailPend');
+  if(badgeEmailPend){ badgeEmailPend.textContent = d.email_pendientes||0; }
 
   // Funnel
   const total = d.total_sent || 1;
@@ -3425,15 +3506,11 @@ function renderLeads(leads){
       <td style="max-width:180px">
         ${(function(){
           var addr = l.address||l.direccion||'';
-          var display = addr || 'Sin dirección Registrada';
-          var isInteresado = (l.status==='interesado');
-          if(isInteresado){
-            return '<div style="display:flex;align-items:center;gap:4px">'
-              +'<span class="addr-text" style="font-size:11px;color:'+(addr?'#2d3748':'#a0aec0')+';flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+display+'">'+display+'</span>'
-              +'<button onclick="editarDireccion('+l.id+',this)" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0 2px;color:var(--mp-blue)" title="Editar dirección">✏️</button>'
-              +'</div>';
-          }
-          return '<span style="font-size:11px;color:'+(addr?'#2d3748':'#a0aec0')+'" title="'+display+'">'+display+'</span>';
+          var display = addr || 'Sin dirección';
+          return '<div style="display:flex;align-items:center;gap:4px">'
+            +'<span class="addr-text" style="font-size:11px;color:'+(addr?'#2d3748':'#a0aec0')+';flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+display+'">'+display+'</span>'
+            +'<button onclick="editarDireccion('+l.id+',this)" style="background:none;border:none;cursor:pointer;font-size:11px;padding:0 2px;color:var(--mp-blue);opacity:.6" title="Editar dirección">✏️</button>'
+            +'</div>';
         })()}
       </td>
       <td>${badge(l.status||'enviado')}</td>

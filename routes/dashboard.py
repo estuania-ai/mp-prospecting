@@ -70,6 +70,39 @@ def kpis():
     opt_out  = conn.execute('SELECT COUNT(*) FROM opt_out').fetchone()[0]
     sellers  = conn.execute('SELECT COUNT(*) FROM sellers WHERE active=1').fetchone()[0]
 
+    # ── Métricas canal Email (et_contacts) ──────────────────────────
+    try:
+        email_enviados    = conn.execute(
+            "SELECT COUNT(*) FROM et_contacts WHERE campaign_status IN ('enviado','seguimiento_48h','no_responde')"
+        ).fetchone()[0]
+        email_interesados = conn.execute(
+            "SELECT COUNT(*) FROM et_contacts WHERE estado_interes IN ('interesado','quiere_reunion','en_negociacion','followup_wa_enviado')"
+        ).fetchone()[0]
+        email_respondidos = conn.execute(
+            "SELECT COUNT(*) FROM et_contacts WHERE estado_interes IN ('respondido','interesado','quiere_reunion','en_negociacion','cerrado')"
+        ).fetchone()[0]
+        email_cerrados    = conn.execute(
+            "SELECT COUNT(*) FROM et_contacts WHERE estado_interes='cerrado'"
+        ).fetchone()[0]
+        email_reuniones   = conn.execute(
+            "SELECT COUNT(*) FROM et_contacts WHERE estado_interes='quiere_reunion'"
+        ).fetchone()[0]
+        email_no_responde = conn.execute(
+            "SELECT COUNT(*) FROM et_contacts WHERE campaign_status='no_responde'"
+        ).fetchone()[0]
+        email_pendientes  = conn.execute(
+            "SELECT COUNT(*) FROM et_contacts WHERE campaign_status IN ('pendiente','no_enviado')"
+        ).fetchone()[0]
+        email_total       = conn.execute(
+            "SELECT COUNT(*) FROM et_contacts"
+        ).fetchone()[0]
+        email_tasa_resp   = round(email_respondidos / email_enviados * 100, 1) if email_enviados else 0
+    except Exception:
+        email_enviados = email_interesados = email_respondidos = 0
+        email_cerrados = email_reuniones = email_no_responde = 0
+        email_pendientes = email_total = 0
+        email_tasa_resp = 0
+
     conn.close()
 
     interesados = by_status.get('interesado', 0)
@@ -77,9 +110,14 @@ def kpis():
     cerrados    = by_status.get('cerrado', 0)
     enviados    = by_status.get('enviado', 0)
 
+    # Totales combinados (WA + Email)
+    total_interesados = interesados + email_interesados
+    total_cerrados    = cerrados    + email_cerrados
+    total_reuniones   = reuniones   + email_reuniones
+
     tasa_apertura = round(total_opened / total_sent * 100, 1) if total_sent else 0
-    tasa_interes  = round(interesados / enviados * 100, 1) if enviados else 0
-    tasa_cierre   = round(cerrados / interesados * 100, 1) if interesados else 0
+    tasa_interes  = round(total_interesados / (enviados + email_enviados) * 100, 1) if (enviados + email_enviados) else 0
+    tasa_cierre   = round(total_cerrados / total_interesados * 100, 1) if total_interesados else 0
 
     return jsonify({
         'total_leads':    total_leads,
@@ -90,9 +128,24 @@ def kpis():
         'tasa_interes':   tasa_interes,
         'tasa_cierre':    tasa_cierre,
         'by_status':      by_status,
-        'interesados':    interesados,
-        'reuniones':      reuniones,
-        'cerrados':        cerrados,
+        # WA leads
+        'wa_interesados': interesados,
+        'wa_reuniones':   reuniones,
+        'wa_cerrados':    cerrados,
+        # Email leads
+        'email_enviados':    email_enviados,
+        'email_interesados': email_interesados,
+        'email_respondidos': email_respondidos,
+        'email_cerrados':    email_cerrados,
+        'email_reuniones':   email_reuniones,
+        'email_no_responde': email_no_responde,
+        'email_pendientes':  email_pendientes,
+        'email_total':       email_total,
+        'email_tasa_resp':   email_tasa_resp,
+        # Combinados
+        'interesados':    total_interesados,
+        'reuniones':      total_reuniones,
+        'cerrados':       total_cerrados,
         'opt_out':        opt_out,
         'sellers_activos': sellers,
         'weekly_sends':   [dict(r) for r in weekly],
