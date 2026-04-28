@@ -69,9 +69,15 @@ async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
-            headless=False,
+            headless=True,
             slow_mo=200,
-            args=["--disable-blink-features=AutomationControlled", "--start-minimized"],
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
         )
         context = await browser.new_context(
             storage_state=SESSION_FILE,
