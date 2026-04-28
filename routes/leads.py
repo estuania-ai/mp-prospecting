@@ -469,6 +469,26 @@ def get_seguimientos_pendientes():
     })
 
 
+@leads_bp.route('/wa-actividad', methods=['GET'])
+def get_wa_actividad():
+    """Actividad WA por día — últimos 7 días (prospección + seguimientos)"""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            date(sent_at) as fecha,
+            SUM(CASE WHEN message_type IN ('prospecting','manual') THEN 1 ELSE 0 END) as prospec,
+            SUM(CASE WHEN message_type = 'seguimiento_24h'          THEN 1 ELSE 0 END) as seg_24h,
+            SUM(CASE WHEN message_type = 'seguimiento_72h'          THEN 1 ELSE 0 END) as seg_72h
+        FROM messages
+        WHERE status = 'sent'
+          AND date(sent_at) >= date('now','localtime','-6 days')
+        GROUP BY date(sent_at)
+        ORDER BY fecha DESC
+    """).fetchall()
+    conn.close()
+    return jsonify({'dias': [dict(r) for r in rows]})
+
+
 @leads_bp.route('/<int:lead_id>/seguimiento-tipo', methods=['POST'])
 def send_seguimiento_tipo(lead_id):
     """Envia mensaje de seguimiento especifico 24h o 72h"""
