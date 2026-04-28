@@ -64,7 +64,8 @@ def kpis():
     _wk_inter = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
         SELECT strftime('%W', created_at) as week, strftime('%Y', created_at) as year,
                COUNT(*) as cnt
-        FROM prospects {_date_clause('created_at', from_date, to_date)}
+        FROM prospects
+        WHERE 1=1 {_date_clause('created_at', from_date, to_date)}
         GROUP BY week, year
     ''').fetchall()}
 
