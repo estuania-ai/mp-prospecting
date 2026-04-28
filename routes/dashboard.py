@@ -181,8 +181,17 @@ def kpis():
         prospects_seguimiento = conn.execute(
             "SELECT COUNT(*) FROM prospects WHERE estado NOT IN ('cerrado','no_logrado')"
         ).fetchone()[0]
+        # Interesados: prospects en estado 'en_seguimiento' (fuente de verdad desde Gestión)
+        prospects_interesados = conn.execute(
+            "SELECT COUNT(*) FROM prospects WHERE estado='en_seguimiento'"
+        ).fetchone()[0]
+        # Quiere reunión: prospects en estado 'reunion_agendada'
+        prospects_reunion = conn.execute(
+            "SELECT COUNT(*) FROM prospects WHERE estado='reunion_agendada'"
+        ).fetchone()[0]
     except Exception:
         prospects_total = prospects_cerrados = prospects_no_logrado = prospects_seguimiento = 0
+        prospects_interesados = prospects_reunion = 0
 
     # ── Métricas canal Email (et_contacts) ──────────────────────────
     try:
@@ -222,9 +231,11 @@ def kpis():
 
     conn.close()
 
-    interesados = by_status.get('interesado', 0)
-    reuniones   = by_status.get('quiere_reunion', 0)
-    enviados    = by_status.get('enviado', 0)
+    # ── Interesados y reuniones desde Gestión (prospects) ─────────────
+    # Evita desincronización entre Gestión y Leads
+    interesados = prospects_interesados  # prospects con estado='en_seguimiento'
+    reuniones   = prospects_reunion      # prospects con estado='reunion_agendada'
+    enviados    = by_status.get('enviado', 0)  # Enviados de lead_status (impulse WA)
 
     # ── Cerrados WA: Gestión es fuente de verdad (evita duplicados)
     # Prospects cerrados en el periodo + lead_status cerrados sin prospect asociado
