@@ -58,7 +58,6 @@ def has_message_today(lead_id: int, message_type: str = 'manual') -> bool:
 def _send_manual_batch(lead_ids: list, batch_name: str = "Manual"):
     """Ejecuta envio manual en hilo separado con validaciones anti-spam"""
     from rubros_config import get_mensaje, get_imagen_url
-    from whatsapp.sender_desktop import get_sender
     from database import get_db
 
     # ── PROTECCIÓN: Verificar horario permitido
@@ -106,13 +105,19 @@ def _send_manual_batch(lead_ids: list, batch_name: str = "Manual"):
     from whatsapp import evolution_client as ev
     use_evolution = ev.is_connected()
 
+    sender = None
     if use_evolution:
         logger.info(f"[{batch_name}] Usando Evolution API")
     else:
         logger.info(f"[{batch_name}] Evolution API no disponible — usando sender de escritorio")
-        sender = get_sender()
-        if not sender._is_logged_in:
-            sender.start()
+        try:
+            from whatsapp.sender_desktop import get_sender
+            sender = get_sender()
+            if not sender._is_logged_in:
+                sender.start()
+        except Exception as e:
+            logger.error(f"[{batch_name}] No se pudo iniciar sender de escritorio: {e}")
+            return
 
     conn_cfg = get_db()
     delay_min = int(conn_cfg.execute("SELECT value FROM config WHERE key='wa_delay_min_sec'").fetchone()[0] or 15)
@@ -186,14 +191,12 @@ def manual_send():
     if len(lead_ids) > 50:
         return jsonify({'error': 'Maximo 50 leads por envio manual'}), 400
 
-    # Verificar que WhatsApp esta disponible
-    try:
-        from whatsapp.sender_desktop import get_sender
-        sender = get_sender()
-    except Exception as e:
-        return jsonify({'error': f'Error iniciando WhatsApp: {e}'}), 500
+    # Verificar horario permitido antes de lanzar
+    if not is_allowed_send_hour():
+        hora = datetime.now().strftime('%H:%M')
+        return jsonify({'error': f'⏰ Envíos bloqueados fuera de horario. Permitido: 07:00-20:00. Hora actual: {hora}'}), 403
 
-    # Lanzar en hilo para no bloquear Flask
+    # Lanzar en hilo — usa Evolution API automáticamente
     t = threading.Thread(target=_send_manual_batch, args=(lead_ids, "Manual"))
     t.daemon = True
     t.start()
@@ -253,14 +256,7 @@ def send_by_rubro():
             'skipped': skipped_invalid
         }), 400
 
-    # Verificar que WhatsApp está disponible
-    try:
-        from whatsapp.sender_desktop import get_sender
-        sender = get_sender()
-    except Exception as e:
-        return jsonify({'error': f'Error iniciando WhatsApp: {e}'}), 500
-
-    # Lanzar en hilo para no bloquear Flask
+    # Lanzar en hilo — usa Evolution API automáticamente
     batch_name = f"ByRubro_{rubro}"
     t = threading.Thread(target=_send_manual_batch, args=(
         [lead['id'] for lead in valid_leads],
