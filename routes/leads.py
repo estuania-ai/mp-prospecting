@@ -492,28 +492,32 @@ def get_wa_actividad():
 @leads_bp.route('/wa-actividad/export', methods=['GET'])
 def export_wa_actividad():
     """Exporta detalle WA de una fecha (o últimos 7 días) como Excel."""
-    from flask import Response
-    import io, openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment
-    from openpyxl.utils import get_column_letter
+    try:
+        from flask import Response
+        import io, openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
 
-    fecha = request.args.get('fecha')   # YYYY-MM-DD opcional
-    conn  = get_db()
+        fecha = request.args.get('fecha')   # YYYY-MM-DD opcional
+        conn  = get_db()
 
-    base_q = """
-        SELECT m.sent_at, m.message_type, m.status, m.rubro, m.phone,
-               m.error_detail, l.name as negocio, l.comuna
-        FROM messages m
-        LEFT JOIN leads l ON m.lead_id = l.id
-        WHERE m.message_type IN ('prospecting','manual','seguimiento_24h','seguimiento_72h')
-    """
-    if fecha:
-        rows = conn.execute(base_q + " AND date(m.sent_at) = ? ORDER BY m.sent_at", (fecha,)).fetchall()
-        fname = f'wa_{fecha}.xlsx'
-    else:
-        rows = conn.execute(base_q + " AND date(m.sent_at) >= date('now','localtime','-6 days') ORDER BY m.sent_at DESC", ()).fetchall()
-        fname = 'wa_actividad_7dias.xlsx'
-    conn.close()
+        base_q = """
+            SELECT m.sent_at, m.message_type, m.status, m.rubro, m.phone,
+                   m.error_detail, l.name as negocio, l.comuna
+            FROM messages m
+            LEFT JOIN leads l ON m.lead_id = l.id
+            WHERE m.message_type IN ('prospecting','manual','seguimiento_24h','seguimiento_72h')
+        """
+        if fecha:
+            rows = conn.execute(base_q + " AND date(m.sent_at) = ? ORDER BY m.sent_at", (fecha,)).fetchall()
+            fname = f'wa_{fecha}.xlsx'
+        else:
+            rows = conn.execute(base_q + " AND date(m.sent_at) >= date('now','localtime','-6 days') ORDER BY m.sent_at DESC", ()).fetchall()
+            fname = 'wa_actividad_7dias.xlsx'
+        conn.close()
+    except Exception as e:
+        conn.close()
+        return jsonify({'error': f'Error en consulta: {str(e)}'}), 500
 
     TIPO_MAP = {
         'prospecting':    'Prospección',
@@ -547,45 +551,50 @@ def export_wa_actividad():
         cell.font = hdr_font
         cell.alignment = Alignment(horizontal='center')
 
-    # Colores por estado
-    fill_ok  = PatternFill('solid', fgColor='E8F5E9')
-    fill_err = PatternFill('solid', fgColor='FFEBEE')
+    try:
+        # Colores por estado
+        fill_ok  = PatternFill('solid', fgColor='E8F5E9')
+        fill_err = PatternFill('solid', fgColor='FFEBEE')
 
-    # Datos
-    for row_idx, r in enumerate(rows, 2):
-        estado = STATUS_MAP.get(r['status'], r['status'] or 'Enviado')
-        error  = r['error_detail'] or ''
-        ws.append([
-            r['sent_at'],
-            TIPO_MAP.get(r['message_type'], r['message_type']),
-            CAT_MAP.get(r['message_type'], ''),
-            r['rubro'] or '',
-            r['negocio'] or '',
-            r['phone'] or '',
-            r['comuna'] or '',
-            estado,
-            error,
-        ])
-        # Color verde/rojo en columna Estado
-        fill = fill_ok if r['status'] == 'sent' else fill_err
-        ws.cell(row=row_idx, column=8).fill = fill
-        ws.cell(row=row_idx, column=8).font = Font(
-            color='1B5E20' if r['status'] == 'sent' else 'B71C1C', bold=True
+        # Datos
+        for row_idx, r in enumerate(rows, 2):
+            estado = STATUS_MAP.get(r['status'], r['status'] or 'Enviado')
+            error  = r['error_detail'] or ''
+            # Convertir sent_at a string si no lo es (por si acaso es datetime)
+            sent_at_str = str(r['sent_at']) if r['sent_at'] else ''
+            ws.append([
+                sent_at_str,
+                TIPO_MAP.get(r['message_type'], r['message_type']),
+                CAT_MAP.get(r['message_type'], ''),
+                r['rubro'] or '',
+                r['negocio'] or '',
+                r['phone'] or '',
+                r['comuna'] or '',
+                estado,
+                error,
+            ])
+            # Color verde/rojo en columna Estado
+            fill = fill_ok if r['status'] == 'sent' else fill_err
+            ws.cell(row=row_idx, column=8).fill = fill
+            ws.cell(row=row_idx, column=8).font = Font(
+                color='1B5E20' if r['status'] == 'sent' else 'B71C1C', bold=True
+            )
+
+        # Ancho columnas
+        col_widths = [20, 20, 14, 18, 30, 16, 18, 14, 40]
+        for i, w in enumerate(col_widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={'Content-Disposition': f'attachment; filename="{fname}"'}
         )
-
-    # Ancho columnas
-    col_widths = [20, 20, 14, 18, 30, 16, 18, 14, 40]
-    for i, w in enumerate(col_widths, 1):
-        ws.column_dimensions[get_column_letter(i)].width = w
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return Response(
-        buf.getvalue(),
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        headers={'Content-Disposition': f'attachment; filename="{fname}"'}
-    )
+    except Exception as e:
+        return jsonify({'error': f'Error generando Excel: {str(e)}'}), 500
 
 
 @leads_bp.route('/<int:lead_id>/seguimiento-tipo', methods=['POST'])
