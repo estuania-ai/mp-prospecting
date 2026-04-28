@@ -5044,3 +5044,28 @@ def outscraper_import_leads(query_id):
         'skipped':  skipped,
         'errors':   errors,
     })
+
+
+# ── Test batch manual ─────────────────────────────────────────────────────────
+
+@email_bp.route('/run-batch', methods=['POST'])
+def run_batch_manual():
+    """
+    Disparo manual de un lote de emails del pool no_enviado.
+    Body JSON: { "size": 30 }  (default 30, máx 100)
+    """
+    import threading
+    from jobs.email_automation import run_email_batch
+
+    data = request.get_json() or {}
+    size = min(int(data.get('size', 30)), 100)
+
+    def _run():
+        run_email_batch(size, f'Manual-{size}')
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({
+        'ok':      True,
+        'message': f'Lote de {size} emails iniciado en background. Revisa logs para resultado.',
+        'size':    size,
+    })
