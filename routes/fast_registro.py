@@ -19,6 +19,28 @@ FAST_URL    = "https://www.mercadopago.cl/point-fast/home"
 SESSION_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'fast_session.json')
 
 
+def _ensure_session_from_env() -> bool:
+    """
+    Si no existe fast_session.json en disco pero hay FAST_SESSION_JSON en el entorno,
+    escribe el archivo para que playwright pueda usarlo.
+    Retorna True si la sesión quedó disponible.
+    """
+    if os.path.isfile(SESSION_FILE) and os.path.getsize(SESSION_FILE) > 100:
+        return True
+    session_json = os.getenv("FAST_SESSION_JSON", "").strip()
+    if not session_json:
+        return False
+    try:
+        os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
+        with open(SESSION_FILE, "w", encoding="utf-8") as f:
+            f.write(session_json)
+        logger.info("[Fast] Sesión restaurada desde variable de entorno FAST_SESSION_JSON")
+        return True
+    except Exception as e:
+        logger.error(f"[Fast] No se pudo escribir sesión desde env: {e}")
+        return False
+
+
 def _formatear_telefono(raw: str) -> str:
     """Antepone 9 al teléfono de la BD después de eliminar el prefijo 56."""
     digits = "".join(c for c in raw if c.isdigit())
@@ -50,7 +72,7 @@ def _limpiar_direccion(raw: str) -> str:
 
 
 def _session_exists() -> bool:
-    return os.path.isfile(SESSION_FILE) and os.path.getsize(SESSION_FILE) > 100
+    return _ensure_session_from_env()
 
 
 async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict:
@@ -554,4 +576,32 @@ def registrar_en_fast(lead_id):
 
 @fast_bp.route('/fast-session-status', methods=['GET'])
 def fast_session_status():
-    return jsonify({"session_activa": _session_exists()})
+    activa = _session_exists()
+    tiene_env = bool(os.getenv("FAST_SESSION_JSON", "").strip())
+    return jsonify({
+        "session_activa": activa,
+        "tiene_env_var": tiene_env,
+        "instrucciones": (
+            "Sesion lista." if activa
+            else "Ejecuta: python fast_login_manual.py  — luego copia el contenido de data/fast_session.json como variable FAST_SESSION_JSON en Railway"
+        )
+    })
+
+
+@fast_bp.route('/fast-upload-session', methods=['POST'])
+def fast_upload_session():
+    """Sube el contenido de fast_session.json directamente (para Railway)."""
+    data = request.get_json() or {}
+    session_json = data.get("session_json", "").strip()
+    if not session_json:
+        return jsonify({"ok": False, "error": "session_json requerido"}), 400
+    try:
+        import json as _json
+        _json.loads(session_json)  # validar que sea JSON válido
+        os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
+        with open(SESSION_FILE, "w", encoding="utf-8") as f:
+            f.write(session_json)
+        logger.info("[Fast] Sesión subida manualmente vía API")
+        return jsonify({"ok": True, "mensaje": "Sesión guardada. Ya puedes usar el botón Fast."})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
