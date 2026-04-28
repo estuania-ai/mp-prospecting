@@ -4,14 +4,39 @@ Lote 1: 15 mensajes a las 09:30
 Lote 2: 10 mensajes a las 15:00
 Lote 3: 15 mensajes a las 17:30
 Total: 40 mensajes diarios
+
+PROTECCIONES CONTRA DUPLICADOS Y ENVÍOS INAPROPIADOS:
+- Validación de teléfono antes de enviar (formato +56 o 56)
+- Bloqueo de envíos fuera de horario permitido (07:00-20:00)
+- Deduplicación de mensajes en la BD
 """
 
 import logging
+import re
 from datetime import datetime
 from database import get_db, get_config
 from rubros_config import get_mensaje, get_imagen_url
 
 logger = logging.getLogger(__name__)
+
+# Horarios permitidos para envío (Santiago, Chile)
+ALLOWED_SEND_HOURS = (7, 20)  # 07:00 a 20:00
+
+
+def is_valid_phone(phone: str) -> bool:
+    """Valida que el número esté en formato correcto (56XXXXXXXXX o +56XXXXXXXXX)"""
+    if not phone:
+        return False
+    # Limpia espacios y guiones
+    phone = phone.strip().replace(' ', '').replace('-', '')
+    # Debe ser +56 o 56 seguido de 9 dígitos (9 dígitos para celular chileno)
+    return bool(re.match(r'^(\+?56)?9\d{8}$', phone))
+
+
+def is_allowed_send_hour() -> bool:
+    """Verifica que la hora actual esté en el rango permitido"""
+    current_hour = datetime.now().hour
+    return ALLOWED_SEND_HOURS[0] <= current_hour < ALLOWED_SEND_HOURS[1]
 
 
 def get_pending_leads(limit: int, offset: int = 0) -> list:
@@ -28,7 +53,9 @@ def get_pending_leads(limit: int, offset: int = 0) -> list:
         LIMIT ? OFFSET ?
     ''', (limit, offset)).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+
+    # Filtrar solo números válidos
+    return [dict(r) for r in rows if is_valid_phone(r['phone'])]
 
 
 def build_message(contact: dict) -> str:
@@ -44,6 +71,22 @@ def build_image_url(contact: dict) -> str | None:
 
 def register_send(contact: dict, success: bool, error: str = None):
     conn = get_db()
+    lead_id = contact.get('id')
+    phone = contact.get('phone')
+
+    # ── DEDUPLICACIÓN: Verifica si ya existe un mensaje hoy para este lead ──
+    today = datetime.now().strftime('%Y-%m-%d')
+    existing = conn.execute('''
+        SELECT COUNT(*) as cnt FROM messages
+        WHERE lead_id = ? AND message_type = 'prospecting'
+          AND date(sent_at) = ?
+    ''', (lead_id, today)).fetchone()
+
+    if existing and existing['cnt'] > 0:
+        logger.warning(f"[DEDUP] Ya existe mensaje hoy para lead {lead_id} ({phone}) - evitando duplicado")
+        conn.close()
+        return
+
     status = 'sent' if success else 'failed'
     if error == 'phone_not_exists':
         status = 'phone_not_exists'
@@ -52,7 +95,7 @@ def register_send(contact: dict, success: bool, error: str = None):
         INSERT INTO messages (lead_id, phone, message_type, status, sent_at, rubro, comuna)
         VALUES (?, ?, 'prospecting', ?, datetime('now','localtime'), ?, ?)
     ''', (
-        contact.get('id'), contact.get('phone'), status,
+        lead_id, phone, status,
         contact.get('rubro'), contact.get('comuna')
     ))
 
@@ -63,7 +106,7 @@ def register_send(contact: dict, success: bool, error: str = None):
         ON CONFLICT(lead_id) DO UPDATE SET
             status = excluded.status,
             updated_at = excluded.updated_at
-    ''', (contact.get('id'), lead_status))
+    ''', (lead_id, lead_status))
 
     conn.commit()
     conn.close()
@@ -71,14 +114,20 @@ def register_send(contact: dict, success: bool, error: str = None):
 
 def run_prospecting_batch(limit: int, batch_name: str = ""):
     import time, random
-    logger.info(f"[PROSPECCION {batch_name}] Iniciando - {limit} mensajes - {datetime.now().strftime('%H:%M')}")
+    current_time = datetime.now().strftime('%H:%M')
+    logger.info(f"[PROSPECCION {batch_name}] Iniciando - {limit} mensajes - {current_time}")
+
+    # ── PROTECCIÓN: Bloquear envíos fuera de horario permitido ──
+    if not is_allowed_send_hour():
+        logger.warning(f"[{batch_name}] ❌ BLOQUEADO: Intento de envío a las {current_time} (solo permitido 07:00-20:00)")
+        return
 
     leads = get_pending_leads(limit)
     if not leads:
         logger.info(f"[{batch_name}] Sin leads pendientes")
         return
 
-    logger.info(f"[{batch_name}] {len(leads)} leads encontrados")
+    logger.info(f"[{batch_name}] {len(leads)} leads encontrados (validados)")
 
     # ── Usar Evolution API (servidor) si está conectado,
     #    si no, intentar sender de escritorio como fallback ──────────
