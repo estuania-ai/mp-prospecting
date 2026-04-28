@@ -43,6 +43,7 @@ def get_leads():
             GROUP BY lead_id
         ) seg72 ON l.id = seg72.lead_id
         WHERE 1=1
+          AND NOT (l.phone LIKE '562%' OR l.phone LIKE '+562%')
     '''
     params = []
 
