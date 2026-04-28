@@ -25,10 +25,22 @@ def _ensure_session_from_env() -> bool:
     escribe el archivo para que playwright pueda usarlo.
     Retorna True si la sesión quedó disponible.
     """
+    # Validar archivo existente — si tiene BOM o JSON inválido, eliminarlo y reescribir
     if os.path.isfile(SESSION_FILE) and os.path.getsize(SESSION_FILE) > 100:
-        return True
+        try:
+            import json as _json
+            with open(SESSION_FILE, encoding="utf-8-sig") as _f:
+                _json.load(_f)
+            return True  # archivo válido
+        except Exception:
+            logger.warning("[Fast] Session file inválido (BOM o JSON corrupto), reescribiendo desde env var")
+            try:
+                os.remove(SESSION_FILE)
+            except Exception:
+                pass
+
     session_json = os.getenv("FAST_SESSION_JSON", "").strip()
-    # Eliminar BOM (﻿) que Windows/Notepad agrega al inicio del texto
+    # Eliminar BOM que Windows/Notepad agrega al inicio
     session_json = session_json.lstrip('﻿').strip()
     if not session_json:
         return False
