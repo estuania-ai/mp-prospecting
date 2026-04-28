@@ -105,16 +105,17 @@ def _get_leads_seguimiento(horas_min: int, horas_max: int | None, tipo: str) -> 
     return [dict(r) for r in rows]
 
 
-def _registrar_seguimiento(lead: dict, tipo: str, success: bool):
+def _registrar_seguimiento(lead: dict, tipo: str, success: bool, error_detail: str = None):
     conn = get_db()
     conn.execute("""
-        INSERT INTO messages (lead_id, phone, message_type, status, sent_at, rubro, comuna)
-        VALUES (?, ?, ?, ?, datetime('now','localtime'), ?, ?)
+        INSERT INTO messages (lead_id, phone, message_type, status, sent_at, rubro, comuna, error_detail)
+        VALUES (?, ?, ?, ?, datetime('now','localtime'), ?, ?, ?)
     """, (
         lead['id'], lead['phone'],
         f'seguimiento_{tipo}',
         'sent' if success else 'failed',
-        lead.get('rubro', ''), lead.get('comuna', '')
+        lead.get('rubro', ''), lead.get('comuna', ''),
+        None if success else error_detail
     ))
     if success:
         col = 'seguimiento_24h' if tipo == '24h' else 'seguimiento_72h'
@@ -164,7 +165,7 @@ def run_wa_seguimiento() -> dict:
         mensaje = MSG_24H.format(nombre=nombre)
         result  = ev.send_message(lead['phone'], mensaje)
         ok      = result.get('ok', False)
-        _registrar_seguimiento(lead, '24h', ok)
+        _registrar_seguimiento(lead, '24h', ok, error_detail=result.get('error') if not ok else None)
         if ok:
             sent_24h += 1
             logger.info(f"[WA Seguimiento 24h] OK — {lead['name']} ({lead['horas']}h)")
@@ -182,7 +183,7 @@ def run_wa_seguimiento() -> dict:
         mensaje = MSG_72H.format(nombre=nombre)
         result  = ev.send_message(lead['phone'], mensaje)
         ok      = result.get('ok', False)
-        _registrar_seguimiento(lead, '72h', ok)
+        _registrar_seguimiento(lead, '72h', ok, error_detail=result.get('error') if not ok else None)
         if ok:
             sent_72h += 1
             logger.info(f"[WA Seguimiento 72h] OK — {lead['name']} ({lead['horas']}h)")

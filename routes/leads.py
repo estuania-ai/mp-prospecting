@@ -501,12 +501,11 @@ def export_wa_actividad():
     conn  = get_db()
 
     base_q = """
-        SELECT m.sent_at, m.message_type, m.rubro, m.phone,
-               l.name as negocio, l.comuna
+        SELECT m.sent_at, m.message_type, m.status, m.rubro, m.phone,
+               m.error_detail, l.name as negocio, l.comuna
         FROM messages m
         LEFT JOIN leads l ON m.lead_id = l.id
-        WHERE m.status = 'sent'
-          AND m.message_type IN ('prospecting','manual','seguimiento_24h','seguimiento_72h')
+        WHERE m.message_type IN ('prospecting','manual','seguimiento_24h','seguimiento_72h')
     """
     if fecha:
         rows = conn.execute(base_q + " AND date(m.sent_at) = ? ORDER BY m.sent_at", (fecha,)).fetchall()
@@ -528,13 +527,18 @@ def export_wa_actividad():
         'seguimiento_24h':'Seguimiento',
         'seguimiento_72h':'Seguimiento',
     }
+    STATUS_MAP = {
+        'sent':             'Enviado',
+        'failed':           'No enviado',
+        'phone_not_exists': 'Número no existe',
+    }
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'Actividad WA'
 
     # Encabezado
-    headers = ['Fecha Envío', 'Tipo', 'Categoría', 'Rubro', 'Negocio', 'Teléfono', 'Comuna']
+    headers = ['Fecha Envío', 'Tipo', 'Categoría', 'Rubro', 'Negocio', 'Teléfono', 'Comuna', 'Estado', 'Error']
     hdr_fill = PatternFill('solid', fgColor='009EE3')
     hdr_font = Font(bold=True, color='FFFFFF')
     for col, h in enumerate(headers, 1):
@@ -543,8 +547,14 @@ def export_wa_actividad():
         cell.font = hdr_font
         cell.alignment = Alignment(horizontal='center')
 
+    # Colores por estado
+    fill_ok  = PatternFill('solid', fgColor='E8F5E9')
+    fill_err = PatternFill('solid', fgColor='FFEBEE')
+
     # Datos
-    for r in rows:
+    for row_idx, r in enumerate(rows, 2):
+        estado = STATUS_MAP.get(r['status'], r['status'] or 'Enviado')
+        error  = r['error_detail'] or ''
         ws.append([
             r['sent_at'],
             TIPO_MAP.get(r['message_type'], r['message_type']),
@@ -553,10 +563,18 @@ def export_wa_actividad():
             r['negocio'] or '',
             r['phone'] or '',
             r['comuna'] or '',
+            estado,
+            error,
         ])
+        # Color verde/rojo en columna Estado
+        fill = fill_ok if r['status'] == 'sent' else fill_err
+        ws.cell(row=row_idx, column=8).fill = fill
+        ws.cell(row=row_idx, column=8).font = Font(
+            color='1B5E20' if r['status'] == 'sent' else 'B71C1C', bold=True
+        )
 
     # Ancho columnas
-    col_widths = [20, 20, 14, 18, 30, 16, 18]
+    col_widths = [20, 20, 14, 18, 30, 16, 18, 14, 40]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 

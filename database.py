@@ -50,7 +50,8 @@ def init_db():
             campaign_id     INTEGER,
             rubro           TEXT,
             comuna          TEXT,
-            image_path      TEXT
+            image_path      TEXT,
+            error_detail    TEXT
         )
     ''')
 
@@ -341,6 +342,9 @@ def init_db():
     _add_col(c, 'wa_messages', 'et_contact_id', 'INTEGER')
     _add_col(c, 'wa_messages', 'reply_text',    'TEXT')
     _add_col(c, 'wa_messages', 'source',        "TEXT DEFAULT 'evolution'")
+
+    # Migración: detalle de error en mensajes WA
+    _add_col(c, 'messages', 'error_detail', 'TEXT')
 
     conn.commit()
     conn.close()
