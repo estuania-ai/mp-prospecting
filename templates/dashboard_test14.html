@@ -1345,6 +1345,7 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
       <div class="page-sub">Todos los prospectos captados vía Google Maps</div>
     </div>
     <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" onclick="openManualSendPanel()" style="background:#7b3fe4;border:none;color:white">📤 Envío Manual por Rubro</button>
       <button class="btn btn-ghost btn-sm" onclick="exportLeads()">⬇ Exportar</button>
           <button class="btn btn-ghost btn-sm" onclick="document.getElementById('importFile').click()">⬆ Importar</button>
           <button class="btn btn-ghost btn-sm" onclick="abrirArchivosImportados()">📁 Archivos Importados</button>
@@ -8324,5 +8325,155 @@ async function waSyncToLeads() {
 
 </script>
 <div id="toast" class="toast"></div>
+
+<!-- MODAL: ENVIO MANUAL POR RUBRO -->
+<div id="manual-send-panel" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1000">
+  <div style="background:#fff;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.2);width:90%;max-width:600px;max-height:85vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-bottom:1px solid #dde5ef;background:#f8fafc">
+      <h2 style="font-size:17px;color:#1a2332;margin:0">📤 Envío Manual por Rubro</h2>
+      <button onclick="closeManualSendPanel()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#8896a8;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px">✕</button>
+    </div>
+    <div style="padding:24px">
+      <!-- Estado -->
+      <div style="background:#f8fafc;border:1px solid #dde5ef;border-radius:8px;padding:14px;margin-bottom:20px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div><div style="font-size:11px;color:#8896a8;font-weight:600;text-transform:uppercase;margin-bottom:4px">WhatsApp</div><span id="wa-status-manual" style="font-size:13px;font-weight:600;background:rgba(242,61,79,.1);color:#f23d4f;padding:3px 8px;border-radius:4px">Desconectado</span></div>
+        <div><div style="font-size:11px;color:#8896a8;font-weight:600;text-transform:uppercase;margin-bottom:4px">Horario Permitido</div><span style="font-size:13px;font-weight:500;color:#1a2332">07:00 - 20:00</span></div>
+        <div><div style="font-size:11px;color:#8896a8;font-weight:600;text-transform:uppercase;margin-bottom:4px">Hora Actual</div><span id="current-time-manual" style="font-size:13px;font-weight:500;color:#1a2332">--:--</span></div>
+      </div>
+      <!-- Selector Rubro -->
+      <div style="margin-bottom:20px">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:8px;color:#1a2332">Selecciona un Rubro:</label>
+        <select id="rubro-select" onchange="onRubroSelected()" style="width:100%;padding:10px 12px;border:1px solid #dde5ef;border-radius:6px;font-size:13px;background:#fff;cursor:pointer;color:#1a2332">
+          <option value="">-- Selecciona un rubro --</option>
+        </select>
+      </div>
+      <!-- Detalles rubro -->
+      <div id="rubro-details" style="display:none;background:#f8fafc;border:1px solid #dde5ef;border-radius:8px;padding:14px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span style="color:#8896a8">Leads Válidos:</span><span id="valid-leads-count" style="font-weight:700;color:#009ee3">0</span></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span style="color:#8896a8">Leads Inválidos (landline/sin tel):</span><span id="invalid-leads-count" style="font-weight:700;color:#f23d4f">0</span></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1px solid #dde5ef;margin-top:4px"><span style="color:#8896a8">Total:</span><span id="total-leads-count" style="font-weight:700;color:#1a2332">0</span></div>
+        <div id="leads-preview-container" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #dde5ef">
+          <div style="font-size:11px;font-weight:600;color:#1a2332;text-transform:uppercase;margin-bottom:8px">Preview (primeros 10):</div>
+          <div id="leads-preview" style="max-height:200px;overflow-y:auto;display:grid;gap:6px"></div>
+        </div>
+      </div>
+      <!-- Warnings -->
+      <div id="warnings-box" style="display:none;margin-bottom:16px">
+        <div id="hour-warning" style="display:none;background:rgba(255,119,51,.1);border-left:3px solid #ff7733;padding:10px 12px;border-radius:4px;font-size:12px;color:#8b4513;margin-bottom:6px">⏰ <strong>Fuera de horario:</strong> Solo se puede enviar entre 07:00 y 20:00</div>
+        <div id="no-leads-warning" style="display:none;background:rgba(255,119,51,.1);border-left:3px solid #ff7733;padding:10px 12px;border-radius:4px;font-size:12px;color:#8b4513;margin-bottom:6px">⚠️ <strong>Sin leads válidos</strong> para este rubro</div>
+        <div id="wa-offline-warning" style="display:none;background:rgba(255,119,51,.1);border-left:3px solid #ff7733;padding:10px 12px;border-radius:4px;font-size:12px;color:#8b4513;margin-bottom:6px">📱 <strong>WhatsApp Desconectado</strong> — conéctalo antes de enviar</div>
+      </div>
+      <!-- Botones -->
+      <div style="display:flex;gap:10px;margin-bottom:20px">
+        <button id="send-btn" onclick="confirmManualSendByRubro()" disabled style="flex:1;padding:12px 20px;background:#7b3fe4;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Enviar a todos los leads del rubro</button>
+        <button onclick="closeManualSendPanel()" style="flex:1;padding:12px 20px;background:#f0f4f8;color:#4a5568;border:1px solid #dde5ef;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Cancelar</button>
+      </div>
+      <!-- Info anti-spam -->
+      <div style="background:#e6f6fd;border:1px solid #b3e5fc;border-radius:8px;padding:14px;font-size:12px">
+        <div style="font-weight:600;color:#007cba;margin-bottom:8px">🔒 Protecciones Anti-Spam Activas:</div>
+        <div style="color:#007cba;line-height:1.8">✓ Validación teléfono móvil chileno (569XXXXXXX)<br>✓ Exclusión números fijos (562XXXXXXX)<br>✓ Bloqueo envíos fuera de horario (07:00-20:00)<br>✓ Deduplicación: máximo 1 mensaje por lead/día<br>✓ Exclusión automática de opt-out</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let rubrosCache=null;let leadsCache={};let timeInterval=null;
+function openManualSendPanel(){
+  const panel=document.getElementById('manual-send-panel');
+  panel.style.display='flex';
+  if(document.getElementById('rubro-select').options.length<=1) loadRubros();
+  updateTimeDisplay();
+  updateWAStatus();
+  if(timeInterval) clearInterval(timeInterval);
+  timeInterval=setInterval(updateTimeDisplay,1000);
+}
+function closeManualSendPanel(){
+  document.getElementById('manual-send-panel').style.display='none';
+  if(timeInterval){clearInterval(timeInterval);timeInterval=null;}
+  resetManualForm();
+}
+async function loadRubros(){
+  try{
+    const res=await fetch('/api/manual/rubros');
+    const data=await res.json();
+    rubrosCache=data.rubros;
+    const select=document.getElementById('rubro-select');
+    // Limpiar opciones excepto la primera
+    while(select.options.length>1) select.remove(1);
+    data.rubros.forEach(r=>{
+      const o=document.createElement('option');
+      o.value=r.key;
+      o.textContent=r.emoji+' '+r.label;
+      select.appendChild(o);
+    });
+  }catch(e){console.error('Error rubros:',e);}
+}
+async function onRubroSelected(){
+  const rubro=document.getElementById('rubro-select').value;
+  if(!rubro){document.getElementById('rubro-details').style.display='none';document.getElementById('warnings-box').style.display='none';return;}
+  try{
+    const res=await fetch('/api/manual/leads-by-rubro/'+rubro);
+    const data=await res.json();
+    leadsCache[rubro]=data;
+    document.getElementById('valid-leads-count').textContent=data.valid||0;
+    document.getElementById('invalid-leads-count').textContent=data.invalid||0;
+    document.getElementById('total-leads-count').textContent=data.total||0;
+    document.getElementById('rubro-details').style.display='block';
+    if(data.valid>0){
+      document.getElementById('leads-preview').innerHTML=data.leads.slice(0,10).map(l=>'<div style="background:#fff;border:1px solid #dde5ef;border-radius:5px;padding:8px 12px;font-size:12px;display:flex;justify-content:space-between"><span style="font-weight:500">'+l.name+'</span><span style="color:#8896a8;font-family:monospace">'+l.phone+'</span></div>').join('');
+      document.getElementById('leads-preview-container').style.display='block';
+    }else{
+      document.getElementById('leads-preview-container').style.display='none';
+    }
+    updateManualWarnings(data.valid);
+  }catch(e){console.error('Error leads:',e);}
+}
+function updateManualWarnings(validLeads){
+  const now=new Date().getHours();
+  const okHour=now>=7&&now<20;
+  const waOk=document.getElementById('wa-status-manual').textContent==='Conectado';
+  document.getElementById('warnings-box').style.display='block';
+  document.getElementById('hour-warning').style.display=okHour?'none':'block';
+  document.getElementById('no-leads-warning').style.display=validLeads>0?'none':'block';
+  document.getElementById('wa-offline-warning').style.display=waOk?'none':'block';
+  document.getElementById('send-btn').disabled=!okHour||validLeads===0||!waOk;
+}
+async function confirmManualSendByRubro(){
+  const rubro=document.getElementById('rubro-select').value;
+  const data=leadsCache[rubro];
+  if(!confirm('¿Enviar '+data.valid+' mensajes a leads del rubro "'+rubro+'"?\n\nSe respetarán todas las reglas anti-spam.')) return;
+  try{
+    document.getElementById('send-btn').disabled=true;
+    const res=await fetch('/api/manual/send-by-rubro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rubro})});
+    const resp=await res.json();
+    if(res.ok){alert('✓ Envío iniciado:\n'+resp.message);closeManualSendPanel();}
+    else{alert('✗ Error: '+resp.error);}
+  }catch(e){alert('Error iniciando envío');}
+  finally{document.getElementById('send-btn').disabled=false;}
+}
+function updateTimeDisplay(){
+  const now=new Date();
+  const t=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const el=document.getElementById('current-time-manual');
+  if(el) el.textContent=t;
+}
+async function updateWAStatus(){
+  try{
+    const res=await fetch('/api/manual/status');
+    const data=await res.json();
+    const badge=document.getElementById('wa-status-manual');
+    if(data.logged_in){badge.textContent='Conectado';badge.style.background='rgba(0,166,80,.1)';badge.style.color='#00a650';}
+    else{badge.textContent='Desconectado';badge.style.background='rgba(242,61,79,.1)';badge.style.color='#f23d4f';}
+  }catch(e){}
+}
+function resetManualForm(){
+  document.getElementById('rubro-select').value='';
+  document.getElementById('rubro-details').style.display='none';
+  document.getElementById('warnings-box').style.display='none';
+  leadsCache={};
+}
+</script>
+
 </body>
 </html>
