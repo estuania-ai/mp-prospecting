@@ -51,13 +51,51 @@ def kpis():
         "SELECT COUNT(*) FROM lead_status WHERE status='no_enviado'"
     ).fetchone()[0]
 
-    weekly = conn.execute(f'''
+    weekly_raw = conn.execute(f'''
         SELECT strftime('%W', sent_at) as week,
                strftime('%Y', sent_at) as year,
                COUNT(*) as sent
         FROM messages WHERE status='sent' {df_msg}
         GROUP BY week, year ORDER BY year DESC, week DESC LIMIT 8
     ''').fetchall()
+
+    # Interesados por semana (lead_status.updated_at)
+    _wk_inter = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
+        SELECT strftime('%W', updated_at) as week, strftime('%Y', updated_at) as year,
+               COUNT(*) as cnt
+        FROM lead_status WHERE status='interesado' {df_ls}
+        GROUP BY week, year
+    ''').fetchall()}
+
+    # Cerrados por semana — prospects es fuente de verdad
+    _wk_cerr = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
+        SELECT strftime('%W', updated_at) as week, strftime('%Y', updated_at) as year,
+               COUNT(*) as cnt
+        FROM prospects WHERE estado='cerrado' {df_pro}
+        GROUP BY week, year
+    ''').fetchall()}
+
+    # Opt-out por semana
+    _wk_opto = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
+        SELECT strftime('%W', updated_at) as week, strftime('%Y', updated_at) as year,
+               COUNT(*) as cnt
+        FROM lead_status WHERE status='opt_out' {df_ls}
+        GROUP BY week, year
+    ''').fetchall()}
+
+    # Combinar en lista final
+    weekly = []
+    for r in weekly_raw:
+        w, y = r['week'], r['year']
+        s = r['sent']
+        i = _wk_inter.get((w, y), 0)
+        c = _wk_cerr.get((w, y), 0)
+        o = _wk_opto.get((w, y), 0)
+        weekly.append({
+            'week': w, 'year': y, 'sent': s,
+            'interesados': i, 'cerrados': c, 'optout': o,
+            'tasa_cierre': round(c / s * 100, 1) if s else 0,
+        })
 
     top_comunas = conn.execute(f'''
         SELECT comuna, COUNT(*) as total,
@@ -207,7 +245,7 @@ def kpis():
         'cerrados':       total_cerrados,
         'opt_out':        opt_out,
         'sellers_activos': sellers,
-        'weekly_sends':   [dict(r) for r in weekly],
+        'weekly_sends':   weekly,
         'top_comunas':    [dict(r) for r in top_comunas],
         'top_rubros':     [dict(r) for r in top_rubros],
         'categoria_stats':[dict(r) for r in categoria_stats],

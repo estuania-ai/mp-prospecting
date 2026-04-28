@@ -866,7 +866,7 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     <div class="card" style="margin:0">
       <div class="card-title"><span class="card-icon">📈</span>Mensajes enviados por semana</div>
       <div style="font-size:11px;color:var(--mp-text-3);margin-bottom:12px">Actividad de prospección semanal</div>
-      <div class="chart-wrap chart-h240">
+      <div class="chart-wrap" style="height:280px">
         <canvas id="chartWeekly"></canvas>
       </div>
     </div>
@@ -3364,31 +3364,113 @@ var _chartCategorias = null;
 var _chartFunnel = null;
 
 function buildWeeklyChart(weekly){
-  const labels = weekly.map(w => 'Sem '+w.week+(w.year?' '+w.year:'')).reverse();
-  const data   = weekly.map(w => w.sent).reverse();
+  // weekly viene ordenado desc → revertir para mostrar cronológico
+  const wk      = [...weekly].reverse();
+  const isLast  = (i) => i === wk.length - 1;
+  const labels  = wk.map(w => 'Sem '+w.week+(w.year?' '+w.year:''));
+
   if(weeklyChart) weeklyChart.destroy();
   const ctx = document.getElementById('chartWeekly').getContext('2d');
+
   weeklyChart = new Chart(ctx, {
-    type:'bar',
-    data:{
+    type: 'bar',
+    data: {
       labels,
-      datasets:[{
-        label:'Enviados',
-        data,
-        backgroundColor: data.map((_,i) => i === data.length-1 ? '#ffe600' : '#009ee3'),
-        borderRadius: 6,
-        borderSkipped: false,
-      }]
+      datasets: [
+        {
+          label: 'Enviados',
+          data: wk.map(w => w.sent),
+          backgroundColor: wk.map((_,i) => isLast(i) ? '#ffe600' : '#009ee3'),
+          borderRadius: 6,
+          borderSkipped: false,
+          order: 2,
+        },
+        {
+          label: 'Interesados',
+          data: wk.map(w => w.interesados || 0),
+          type: 'line',
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245,158,11,0.15)',
+          pointBackgroundColor: '#f59e0b',
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          tension: 0.3,
+          fill: false,
+          order: 1,
+          yAxisID: 'y2',
+        },
+        {
+          label: 'Cerrados',
+          data: wk.map(w => w.cerrados || 0),
+          type: 'line',
+          borderColor: '#00a650',
+          backgroundColor: 'rgba(0,166,80,0.12)',
+          pointBackgroundColor: '#00a650',
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          tension: 0.3,
+          fill: false,
+          order: 0,
+          yAxisID: 'y2',
+        }
+      ]
     },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:c=>' '+c.raw+' mensajes'}}
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: { font: { size: 11 }, color: '#4a5568', boxWidth: 12, padding: 16 }
+        },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const i = items[0].dataIndex;
+              return `${wk[i] ? 'Sem ' + wk[i].week + ' ' + wk[i].year : items[0].label}`;
+            },
+            afterBody: (items) => {
+              const i = items[0].dataIndex;
+              const w = wk[i] || {};
+              const sent   = w.sent   || 0;
+              const cerr   = w.cerrados || 0;
+              const opt    = w.optout  || 0;
+              const tasa   = sent > 0 ? (cerr / sent * 100).toFixed(1) : 0;
+              return [
+                '',
+                `🔵 Enviados:     ${sent}`,
+                `🟡 Interesados:  ${w.interesados || 0}`,
+                `🟢 Cerrados:     ${cerr}`,
+                `🔴 Opt-out:      ${opt}`,
+                `📊 Tasa cierre:  ${tasa}%`,
+              ];
+            },
+            label: () => null,   // ocultar labels individuales (los muestra afterBody)
+          },
+          backgroundColor: 'rgba(26,35,50,0.92)',
+          titleFont: { size: 12, weight: 'bold' },
+          bodyFont: { size: 11 },
+          padding: 12,
+          cornerRadius: 8,
+        }
       },
-      scales:{
-        x:{grid:{display:false}, ticks:{font:{size:11}, color:'#8896a8'}},
-        y:{grid:{color:'#eef2f7'}, ticks:{font:{size:11}, color:'#8896a8'}, beginAtZero:true}
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#8896a8' } },
+        y: {
+          grid: { color: '#eef2f7' },
+          ticks: { font: { size: 11 }, color: '#8896a8' },
+          beginAtZero: true,
+          title: { display: true, text: 'Enviados', font: { size: 10 }, color: '#8896a8' }
+        },
+        y2: {
+          position: 'right',
+          grid: { display: false },
+          ticks: { font: { size: 11 }, color: '#8896a8' },
+          beginAtZero: true,
+          title: { display: true, text: 'Interesados / Cerrados', font: { size: 10 }, color: '#8896a8' }
+        }
       }
     }
   });
