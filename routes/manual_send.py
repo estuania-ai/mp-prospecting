@@ -101,38 +101,56 @@ def _send_manual_batch(lead_ids: list, batch_name: str = "Manual"):
 
     logger.info(f"[{batch_name}] Iniciando envio de {len(valid_leads)}/{len(leads)} mensajes válidos")
 
-    sender = get_sender()
-    if not sender._is_logged_in:
-        sender.start()
+    # ── Usar Evolution API si está conectada, sino fallback a sender_desktop ──
+    import time, random
+    from whatsapp import evolution_client as ev
+    use_evolution = ev.is_connected()
+
+    if use_evolution:
+        logger.info(f"[{batch_name}] Usando Evolution API")
+    else:
+        logger.info(f"[{batch_name}] Evolution API no disponible — usando sender de escritorio")
+        sender = get_sender()
+        if not sender._is_logged_in:
+            sender.start()
+
+    conn_cfg = get_db()
+    delay_min = int(conn_cfg.execute("SELECT value FROM config WHERE key='wa_delay_min_sec'").fetchone()[0] or 15)
+    delay_max = int(conn_cfg.execute("SELECT value FROM config WHERE key='wa_delay_max_sec'").fetchone()[0] or 35)
+    conn_cfg.close()
 
     sent = failed = no_phone = 0
     for i, lead in enumerate(valid_leads):
         try:
-            msg = get_mensaje(lead['rubro'], lead['name'])
+            msg = get_mensaje(lead['rubro'], lead['name'], lead.get('comuna', ''))
             img = get_imagen_url(lead['rubro'])
-            result = sender.send_message(lead['phone'], msg, img)
+
+            if use_evolution:
+                result = ev.send_message(lead['phone'], msg, img)
+                ok = result.get('ok', False)
+                error_msg = result.get('error', '')
+            else:
+                result = sender.send_message(lead['phone'], msg, img)
+                ok = result.get('success', False)
+                error_msg = result.get('error', '')
 
             conn2 = get_db()
-
-            # ── Registrar envío en BD
-            if result.get('success'):
+            if ok:
                 status = 'sent'
                 sent += 1
+            elif 'phone' in str(error_msg).lower():
+                status = 'phone_not_exists'
+                no_phone += 1
             else:
-                error_msg = result.get('error', '')
-                if 'phone' in str(error_msg).lower():
-                    status = 'phone_not_exists'
-                    no_phone += 1
-                else:
-                    status = 'failed'
-                    failed += 1
+                status = 'failed'
+                failed += 1
 
             conn2.execute('''
                 INSERT INTO messages (lead_id, phone, message_type, status, sent_at, rubro, comuna)
                 VALUES (?, ?, 'manual', ?, datetime('now','localtime'), ?, ?)
             ''', (lead['id'], lead['phone'], status, lead['rubro'], lead.get('comuna', '')))
 
-            if result.get('success'):
+            if ok:
                 conn2.execute('''
                     INSERT INTO lead_status (lead_id, status, updated_at)
                     VALUES (?, 'enviado', datetime('now','localtime'))
@@ -144,7 +162,11 @@ def _send_manual_batch(lead_ids: list, batch_name: str = "Manual"):
             conn2.commit()
             conn2.close()
 
-            logger.info(f"[{batch_name}] [{i+1}/{len(valid_leads)}] {lead['name']} ({lead['phone']}) → {'✓ OK' if result.get('success') else '✗ FAIL'}")
+            logger.info(f"[{batch_name}] [{i+1}/{len(valid_leads)}] {lead['name']} ({lead['phone']}) rubro={lead['rubro']} → {'✓ OK' if ok else '✗ FAIL'}")
+
+            # Delay anti-bloqueo entre mensajes
+            if i < len(valid_leads) - 1:
+                time.sleep(random.uniform(delay_min, delay_max))
 
         except Exception as e:
             failed += 1
@@ -318,17 +340,18 @@ def get_leads_by_rubro(rubro: str):
 
 @manual_bp.route('/status', methods=['GET'])
 def send_status():
-    """Retorna el estado actual del sender para el dashboard"""
+    """Retorna el estado actual del sender — prioriza Evolution API"""
     try:
-        from whatsapp.sender_desktop import get_sender
-        sender = get_sender()
-        status_info = sender.get_status()
-        status_info['allowed_hours'] = f"{ALLOWED_SEND_HOURS[0]:02d}:00 - {ALLOWED_SEND_HOURS[1]:02d}:00"
-        return jsonify(status_info)
+        from whatsapp import evolution_client as ev
+        connected = ev.is_connected()
+        return jsonify({
+            'logged_in': connected,
+            'source': 'evolution',
+            'allowed_hours': f"{ALLOWED_SEND_HOURS[0]:02d}:00 - {ALLOWED_SEND_HOURS[1]:02d}:00"
+        })
     except Exception:
         return jsonify({
             'logged_in': False,
-            'sent_today': 0,
-            'remaining': 50,
+            'source': 'evolution',
             'allowed_hours': f"{ALLOWED_SEND_HOURS[0]:02d}:00 - {ALLOWED_SEND_HOURS[1]:02d}:00"
         })
