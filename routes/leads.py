@@ -489,6 +489,87 @@ def get_wa_actividad():
     return jsonify({'dias': [dict(r) for r in rows]})
 
 
+@leads_bp.route('/wa-actividad/export', methods=['GET'])
+def export_wa_actividad():
+    """Exporta detalle WA de una fecha (o últimos 7 días) como Excel."""
+    from flask import Response
+    import io, openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    fecha = request.args.get('fecha')   # YYYY-MM-DD opcional
+    conn  = get_db()
+
+    base_q = """
+        SELECT m.sent_at, m.message_type, m.rubro, m.phone,
+               l.name as negocio, l.comuna
+        FROM messages m
+        LEFT JOIN leads l ON m.lead_id = l.id
+        WHERE m.status = 'sent'
+          AND m.message_type IN ('prospecting','manual','seguimiento_24h','seguimiento_72h')
+    """
+    if fecha:
+        rows = conn.execute(base_q + " AND date(m.sent_at) = ? ORDER BY m.sent_at", (fecha,)).fetchall()
+        fname = f'wa_{fecha}.xlsx'
+    else:
+        rows = conn.execute(base_q + " AND date(m.sent_at) >= date('now','localtime','-6 days') ORDER BY m.sent_at DESC", ()).fetchall()
+        fname = 'wa_actividad_7dias.xlsx'
+    conn.close()
+
+    TIPO_MAP = {
+        'prospecting':    'Prospección',
+        'manual':         'Prospección manual',
+        'seguimiento_24h':'Seguimiento 24h',
+        'seguimiento_72h':'Seguimiento 72h',
+    }
+    CAT_MAP = {
+        'prospecting':    'Prospección',
+        'manual':         'Prospección',
+        'seguimiento_24h':'Seguimiento',
+        'seguimiento_72h':'Seguimiento',
+    }
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Actividad WA'
+
+    # Encabezado
+    headers = ['Fecha Envío', 'Tipo', 'Categoría', 'Rubro', 'Negocio', 'Teléfono', 'Comuna']
+    hdr_fill = PatternFill('solid', fgColor='009EE3')
+    hdr_font = Font(bold=True, color='FFFFFF')
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.fill = hdr_fill
+        cell.font = hdr_font
+        cell.alignment = Alignment(horizontal='center')
+
+    # Datos
+    for r in rows:
+        ws.append([
+            r['sent_at'],
+            TIPO_MAP.get(r['message_type'], r['message_type']),
+            CAT_MAP.get(r['message_type'], ''),
+            r['rubro'] or '',
+            r['negocio'] or '',
+            r['phone'] or '',
+            r['comuna'] or '',
+        ])
+
+    # Ancho columnas
+    col_widths = [20, 20, 14, 18, 30, 16, 18]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return Response(
+        buf.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename="{fname}"'}
+    )
+
+
 @leads_bp.route('/<int:lead_id>/seguimiento-tipo', methods=['POST'])
 def send_seguimiento_tipo(lead_id):
     """Envia mensaje de seguimiento especifico 24h o 72h"""

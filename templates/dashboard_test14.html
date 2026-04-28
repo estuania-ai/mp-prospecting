@@ -3764,36 +3764,55 @@ async function loadEnvios(){
       </div>`).join('');
   }
 
-  // Actividad WA últimos 7 días
+  // Actividad WA últimos 4 días
   if(document.getElementById('waActividadTabla')){
+    var _DIAS_ES  = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    var _MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    function _fmtFechaWA(fechaStr){
+      var hoy  = new Date(); hoy.setHours(0,0,0,0);
+      var ayer = new Date(hoy); ayer.setDate(ayer.getDate()-1);
+      var d = new Date(fechaStr+'T12:00:00');
+      if(d.toDateString()===hoy.toDateString())  return 'Hoy';
+      if(d.toDateString()===ayer.toDateString()) return 'Ayer';
+      return _DIAS_ES[d.getDay()]+' '+d.getDate()+' '+_MESES_ES[d.getMonth()];
+    }
+    function _isoDate(offsetDays){
+      var d = new Date(); d.setDate(d.getDate()-offsetDays);
+      return d.toISOString().slice(0,10);
+    }
     api('/api/leads/wa-actividad').then(function(d){
-      var dias = (d && d.dias) || [];
-      if(!dias.length){
-        document.getElementById('waActividadTabla').innerHTML =
-          '<div style="font-size:11px;color:var(--mp-text-3);text-align:center;padding:10px">Sin registros aún</div>';
-        return;
-      }
-      var hoy = new Date().toISOString().slice(0,10);
-      var ayer = new Date(Date.now()-86400000).toISOString().slice(0,10);
+      var rawMap = {};
+      ((d && d.dias)||[]).forEach(function(r){ rawMap[r.fecha]=r; });
+      // Siempre mostrar los últimos 4 días, rellenando con 0 si no hay datos
+      var last4 = [0,1,2,3].map(function(i){ return _isoDate(i); });
       var thead = '<table style="width:100%;border-collapse:collapse;font-size:11px">'
-        + '<thead><tr style="border-bottom:1px solid var(--mp-border)">'
-        + '<th style="text-align:left;padding:4px 6px;color:var(--mp-text-2);font-weight:600">Fecha</th>'
-        + '<th style="text-align:center;padding:4px 6px;color:var(--mp-text-2);font-weight:600">Prospec.</th>'
-        + '<th style="text-align:center;padding:4px 6px;color:var(--mp-text-2);font-weight:600">Seg. 24h</th>'
-        + '<th style="text-align:center;padding:4px 6px;color:var(--mp-text-2);font-weight:600">Seg. 72h</th>'
+        + '<thead><tr style="background:var(--mp-bg-2,#f5f7fa);border-bottom:2px solid var(--mp-border)">'
+        + '<th style="text-align:left;padding:7px 8px;color:var(--mp-text-2);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.4px">Fecha</th>'
+        + '<th style="text-align:center;padding:7px 8px;color:var(--mp-blue);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.4px">Prospec.</th>'
+        + '<th style="text-align:center;padding:7px 8px;color:#856404;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.4px">Seg. 24h</th>'
+        + '<th style="text-align:center;padding:7px 8px;color:var(--mp-red);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.4px">Seg. 72h</th>'
+        + '<th style="text-align:center;padding:7px 8px;color:var(--mp-text-2);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.4px">Excel</th>'
         + '</tr></thead><tbody>';
-      var rows = dias.map(function(r){
-        var label = r.fecha === hoy ? 'Hoy' : r.fecha === ayer ? 'Ayer' : r.fecha;
+      var rows = last4.map(function(fecha){
+        var r = rawMap[fecha] || {prospec:0,seg_24h:0,seg_72h:0};
         var total = (r.prospec||0)+(r.seg_24h||0)+(r.seg_72h||0);
-        var bg = total > 0 ? '' : 'opacity:0.5';
-        return '<tr style="border-bottom:1px solid var(--mp-border);'+bg+'">'
-          + '<td style="padding:5px 6px;font-weight:600;color:var(--mp-text-1)">'+label+'</td>'
-          + '<td style="text-align:center;padding:5px 6px;color:var(--mp-blue)">'+( r.prospec||0)+'</td>'
-          + '<td style="text-align:center;padding:5px 6px;color:#856404">'+(r.seg_24h||0)+'</td>'
-          + '<td style="text-align:center;padding:5px 6px;color:var(--mp-red)">'+(r.seg_72h||0)+'</td>'
+        var esHoy = fecha===_isoDate(0);
+        var rowBg = esHoy ? 'background:rgba(0,158,227,.04);' : '';
+        var dim   = total===0 ? 'opacity:0.45;' : '';
+        var dlBtn = '<a href="/api/leads/wa-actividad/export?fecha='+fecha+'" '
+          + 'style="display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:5px;'
+          + 'background:#e8f5e9;color:#2e7d32;font-size:10px;font-weight:600;text-decoration:none;'
+          + (total===0?'pointer-events:none;opacity:.35;':'')+'" '
+          + 'title="Descargar Excel '+fecha+'">⬇ XLS</a>';
+        return '<tr style="border-bottom:1px solid var(--mp-border);'+rowBg+dim+'">'
+          + '<td style="padding:7px 8px;font-weight:'+(esHoy?'700':'500')+';color:var(--mp-text-1);font-size:12px">'+_fmtFechaWA(fecha)+'</td>'
+          + '<td style="text-align:center;padding:7px 8px;color:var(--mp-blue);font-weight:600;font-size:12px">'+(r.prospec||0)+'</td>'
+          + '<td style="text-align:center;padding:7px 8px;color:#856404;font-weight:600;font-size:12px">'+(r.seg_24h||0)+'</td>'
+          + '<td style="text-align:center;padding:7px 8px;color:var(--mp-red);font-weight:600;font-size:12px">'+(r.seg_72h||0)+'</td>'
+          + '<td style="text-align:center;padding:7px 8px">'+dlBtn+'</td>'
           + '</tr>';
       }).join('');
-      document.getElementById('waActividadTabla').innerHTML = thead + rows + '</tbody></table>';
+      document.getElementById('waActividadTabla').innerHTML = thead+rows+'</tbody></table>';
     });
   }
 
@@ -5642,39 +5661,7 @@ async function loadLeadsMetrics(){
       return '<div style="margin-bottom:4px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span style="font-weight:600">'+r.rubro+'</span><span style="color:var(--mp-text-3)">'+r.total+'</span></div><div style="background:#eef2f7;border-radius:4px;height:5px"><div style="height:100%;border-radius:4px;background:var(--mp-green);width:'+pct+'%"></div></div></div>';
     }).join('');
   }
-  // Actividad WA últimos 7 días (segunda instancia)
-  if(document.getElementById('waActividadTabla') && !document.getElementById('waActividadTabla')._loaded){
-    document.getElementById('waActividadTabla')._loaded = true;
-    api('/api/leads/wa-actividad').then(function(d){
-      var dias = (d && d.dias) || [];
-      if(!dias.length){
-        document.getElementById('waActividadTabla').innerHTML =
-          '<div style="font-size:11px;color:var(--mp-text-3);text-align:center;padding:10px">Sin registros aún</div>';
-        return;
-      }
-      var hoy = new Date().toISOString().slice(0,10);
-      var ayer = new Date(Date.now()-86400000).toISOString().slice(0,10);
-      var thead = '<table style="width:100%;border-collapse:collapse;font-size:11px">'
-        + '<thead><tr style="border-bottom:1px solid var(--mp-border)">'
-        + '<th style="text-align:left;padding:4px 6px;color:var(--mp-text-2);font-weight:600">Fecha</th>'
-        + '<th style="text-align:center;padding:4px 6px;color:var(--mp-text-2);font-weight:600">Prospec.</th>'
-        + '<th style="text-align:center;padding:4px 6px;color:var(--mp-text-2);font-weight:600">Seg. 24h</th>'
-        + '<th style="text-align:center;padding:4px 6px;color:var(--mp-text-2);font-weight:600">Seg. 72h</th>'
-        + '</tr></thead><tbody>';
-      var rows = dias.map(function(r){
-        var label = r.fecha === hoy ? 'Hoy' : r.fecha === ayer ? 'Ayer' : r.fecha;
-        var total = (r.prospec||0)+(r.seg_24h||0)+(r.seg_72h||0);
-        var bg = total > 0 ? '' : 'opacity:0.5';
-        return '<tr style="border-bottom:1px solid var(--mp-border);'+bg+'">'
-          + '<td style="padding:5px 6px;font-weight:600;color:var(--mp-text-1)">'+label+'</td>'
-          + '<td style="text-align:center;padding:5px 6px;color:var(--mp-blue)">'+( r.prospec||0)+'</td>'
-          + '<td style="text-align:center;padding:5px 6px;color:#856404">'+(r.seg_24h||0)+'</td>'
-          + '<td style="text-align:center;padding:5px 6px;color:var(--mp-red)">'+(r.seg_72h||0)+'</td>'
-          + '</tr>';
-      }).join('');
-      document.getElementById('waActividadTabla').innerHTML = thead + rows + '</tbody></table>';
-    });
-  }
+  // Actividad WA — segunda instancia (no-op si ya se renderizó)
 
   // Seguimientos pendientes
   if(document.getElementById('seguimientosPendientes')){
