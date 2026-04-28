@@ -246,6 +246,51 @@ def trigger_job(job_id):
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
+@app.route('/api/cleanup/landline-numbers', methods=['POST'])
+def cleanup_landline_numbers():
+    """Marca todos los números fijos (562XXXXXXX) como teléfono no existe"""
+    try:
+        conn = get_db()
+
+        # Encontrar todos los leads con números fijos
+        landlines = conn.execute('''
+            SELECT l.id, l.name, l.phone FROM leads l
+            WHERE (l.phone LIKE '562%' OR l.phone LIKE '+562%')
+              AND l.id NOT IN (
+                SELECT DISTINCT lead_id FROM lead_status
+                WHERE status = 'telefono_no_existe'
+              )
+        ''').fetchall()
+
+        if not landlines:
+            conn.close()
+            return jsonify({'ok': True, 'message': 'No hay números fijos para procesar', 'cleaned': 0})
+
+        landlines = [dict(r) for r in landlines]
+
+        # Marcar como teléfono no existe
+        for lead in landlines:
+            conn.execute('''
+                INSERT INTO lead_status (lead_id, status, updated_at, notes)
+                VALUES (?, 'telefono_no_existe', datetime('now','localtime'), 'Número fijo 562 - no soporta WhatsApp')
+                ON CONFLICT(lead_id) DO UPDATE SET
+                    status = 'telefono_no_existe',
+                    notes = 'Número fijo 562 - no soporta WhatsApp',
+                    updated_at = datetime('now','localtime')
+            ''', (lead['id'],))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'ok': True,
+            'message': f'{len(landlines)} números fijos marcados como "Sin teléfono"',
+            'cleaned': len(landlines),
+            'leads': [{'id': l['id'], 'name': l['name'], 'phone': l['phone']} for l in landlines]
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
 
 @app.route('/email-tool')
 def email_tool():
