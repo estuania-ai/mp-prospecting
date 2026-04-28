@@ -70,6 +70,17 @@ def kpis():
     opt_out  = conn.execute('SELECT COUNT(*) FROM opt_out').fetchone()[0]
     sellers  = conn.execute('SELECT COUNT(*) FROM sellers WHERE active=1').fetchone()[0]
 
+    # ── Métricas prospects (Gestión > Interesados) ───────────────────
+    try:
+        prospects_total     = conn.execute("SELECT COUNT(*) FROM prospects").fetchone()[0]
+        prospects_cerrados  = conn.execute("SELECT COUNT(*) FROM prospects WHERE estado='cerrado'").fetchone()[0]
+        prospects_no_logrado= conn.execute("SELECT COUNT(*) FROM prospects WHERE estado='no_logrado'").fetchone()[0]
+        prospects_seguimiento = conn.execute(
+            "SELECT COUNT(*) FROM prospects WHERE estado NOT IN ('cerrado','no_logrado')"
+        ).fetchone()[0]
+    except Exception:
+        prospects_total = prospects_cerrados = prospects_no_logrado = prospects_seguimiento = 0
+
     # ── Métricas canal Email (et_contacts) ──────────────────────────
     try:
         email_enviados    = conn.execute(
@@ -107,7 +118,8 @@ def kpis():
 
     interesados = by_status.get('interesado', 0)
     reuniones   = by_status.get('quiere_reunion', 0)
-    cerrados    = by_status.get('cerrado', 0)
+    # Cerrados WA = lead_status cerrados + prospects cerrados (Gestión)
+    cerrados    = by_status.get('cerrado', 0) + prospects_cerrados
     enviados    = by_status.get('enviado', 0)
 
     # Totales combinados (WA + Email)
@@ -153,6 +165,11 @@ def kpis():
         'top_rubros':     [dict(r) for r in top_rubros],
         'categoria_stats':[dict(r) for r in categoria_stats],
         'optout_motivos':[dict(r) for r in optout_motivos],
+        # Gestión > Interesados desglose
+        'prospects_total':       prospects_total,
+        'prospects_cerrados':    prospects_cerrados,
+        'prospects_seguimiento': prospects_seguimiento,
+        'prospects_no_logrado':  prospects_no_logrado,
     })
 
 

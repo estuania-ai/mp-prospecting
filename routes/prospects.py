@@ -401,3 +401,51 @@ def get_prospects_kpis():
         'motivos_perdida': [dict(r) for r in motivos],
         'competencia': [dict(r) for r in competencia]
     })
+
+
+@prospects_bp.route('/reciclables', methods=['GET'])
+def get_reciclables():
+    """
+    Busca prospects no_logrado cuyo motivo_perdida coincide con palabras clave.
+    GET /api/prospects/reciclables?q=precio,comision
+    Returns lista de prospects con info de contacto + motivo original.
+    """
+    q = request.args.get('q', '').strip()
+    conn = get_db()
+
+    if not q:
+        # Sin filtro: devolver todos los no_logrado con motivo
+        rows = conn.execute("""
+            SELECT p.id, p.name, p.phone, p.negocio, p.rubro, p.categoria, p.comuna,
+                   p.competencia, p.notas, p.updated_at,
+                   ap.motivo_perdida, ap.notas as notas_actividad, ap.created_at as fecha_perdida
+            FROM prospects p
+            JOIN actividad_prospects ap ON p.id = ap.prospect_id
+            WHERE p.estado = 'no_logrado'
+              AND ap.motivo_perdida IS NOT NULL AND ap.motivo_perdida != ''
+            ORDER BY ap.created_at DESC
+            LIMIT 100
+        """).fetchall()
+    else:
+        # Construir cláusula LIKE para cada término (separados por coma o espacio)
+        terms = [t.strip() for t in q.replace(',', ' ').split() if t.strip()]
+        if not terms:
+            conn.close()
+            return jsonify([])
+        like_clauses = ' OR '.join(['ap.motivo_perdida LIKE ?' for _ in terms])
+        params = [f'%{t}%' for t in terms]
+        rows = conn.execute(f"""
+            SELECT p.id, p.name, p.phone, p.negocio, p.rubro, p.categoria, p.comuna,
+                   p.competencia, p.notas, p.updated_at,
+                   ap.motivo_perdida, ap.notas as notas_actividad, ap.created_at as fecha_perdida
+            FROM prospects p
+            JOIN actividad_prospects ap ON p.id = ap.prospect_id
+            WHERE p.estado = 'no_logrado'
+              AND ap.motivo_perdida IS NOT NULL AND ap.motivo_perdida != ''
+              AND ({like_clauses})
+            ORDER BY ap.created_at DESC
+            LIMIT 100
+        """, params).fetchall()
+
+    conn.close()
+    return jsonify([dict(r) for r in rows])

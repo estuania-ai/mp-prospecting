@@ -778,6 +778,25 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     </div>
   </div>
 
+  <!-- Desglose dinámico Gestión Interesados -->
+  <div id="wa-prospects-breakdown" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:0">
+    <span style="font-size:12px;font-weight:700;color:#065f46;margin-right:14px;white-space:nowrap">📋 Gestión Interesados:</span>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;flex:1">
+      <span style="background:#dcfce7;color:#166534;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;white-space:nowrap">
+        Total: <span id="bd-total">—</span>
+      </span>
+      <span style="background:#fef9c3;color:#854d0e;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;white-space:nowrap">
+        En seguimiento: <span id="bd-seguimiento">—</span>
+      </span>
+      <span style="background:#d1fae5;color:#065f46;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;white-space:nowrap">
+        Cerrados: <span id="bd-cerrados">—</span>
+      </span>
+      <span style="background:#fee2e2;color:#991b1b;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;white-space:nowrap">
+        No logrado: <span id="bd-no-logrado">—</span>
+      </span>
+    </div>
+  </div>
+
   <!-- KPI: Totales combinados -->
   <div style="font-size:10px;font-weight:700;color:var(--mp-text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
     <span style="background:#ede9fe;color:#5b21b6;padding:2px 8px;border-radius:10px">🎯 Pipeline total (Email + WA)</span>
@@ -1590,6 +1609,61 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     <div class="card-title">Rubros sin ningun lead todavia</div>
     <div id="intelRubrosSin" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 0">
       <div style="text-align:center;padding:20px;width:100%"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- ── Leads Reciclables ──────────────────────────────────────── -->
+  <div class="card" style="margin-top:16px">
+    <div class="card-title"><span class="card-icon">♻️</span>Leads Reciclables</div>
+    <div style="font-size:12px;color:var(--mp-text-3);margin-bottom:14px">
+      Ingresa una nueva propuesta o argumento y encontraremos prospectos <em>no_logrado</em> que podrían reconsiderar.
+    </div>
+
+    <!-- Buscador -->
+    <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end">
+      <div style="flex:1;min-width:220px">
+        <label style="font-size:11px;font-weight:600;color:var(--mp-text-2);display:block;margin-bottom:4px">Argumento / promoción nueva</label>
+        <input id="recicla-input" type="text" placeholder="Ej: baja de tasa, 0% comisión, equipo gratis..."
+               style="width:100%;border:1px solid var(--mp-border);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--mp-text)"
+               onkeydown="if(event.key==='Enter')buscarReciclables()">
+      </div>
+      <button class="btn btn-primary" onclick="buscarReciclables()" style="height:36px;padding:0 18px">🔍 Buscar</button>
+      <button class="btn btn-ghost" onclick="buscarReciclables('')" style="height:36px;padding:0 14px;font-size:12px">Ver todos</button>
+    </div>
+
+    <!-- Filtros rápidos por categoría de motivo -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px" id="recicla-filtros">
+      <span style="font-size:11px;color:var(--mp-text-3);align-self:center">Filtrar por motivo:</span>
+      <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;border-radius:16px" onclick="buscarReciclables('precio,caro,comision')">💰 Precio / Comisión</button>
+      <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;border-radius:16px" onclick="buscarReciclables('tiempo,ocupado,ahora no')">⏱ Tiempo</button>
+      <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;border-radius:16px" onclick="buscarReciclables('competencia,tbk,sumup,getnet,tuu,bci')">🏦 Competencia</button>
+      <button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;border-radius:16px" onclick="buscarReciclables('sin interes,no quiere,no necesita')">🚫 Sin interés</button>
+    </div>
+
+    <!-- Contador resultado -->
+    <div id="recicla-count" style="font-size:12px;color:var(--mp-text-3);margin-bottom:8px;display:none"></div>
+
+    <!-- Tabla resultados -->
+    <div id="recicla-results" style="display:none">
+      <div class="table-wrap" style="max-height:400px;overflow-y:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Negocio</th>
+              <th>Rubro</th>
+              <th>Teléfono</th>
+              <th>Comuna</th>
+              <th>Motivo no logrado</th>
+              <th>Fecha</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="recicla-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="recicla-empty" style="display:none;text-align:center;padding:20px;color:var(--mp-text-3);font-size:13px">
+      Sin resultados para ese argumento.
     </div>
   </div>
 </div>
@@ -2988,6 +3062,12 @@ async function loadOverview(){
   document.getElementById('kpi-wa-interesados').textContent    = fmt(d.wa_interesados||0);
   document.getElementById('kpi-sellers').textContent           = fmt(d.sellers_activos);
   document.getElementById('badgeSellers').textContent          = d.sellers_activos || 0;
+
+  // ── Desglose Gestión Interesados ───────────────────────────────
+  document.getElementById('bd-total').textContent       = fmt(d.prospects_total||0);
+  document.getElementById('bd-seguimiento').textContent = fmt(d.prospects_seguimiento||0);
+  document.getElementById('bd-cerrados').textContent    = fmt(d.prospects_cerrados||0);
+  document.getElementById('bd-no-logrado').textContent  = fmt(d.prospects_no_logrado||0);
 
   // ── Totales combinados ─────────────────────────────────────
   document.getElementById('kpi-leads').textContent    = fmt(d.total_leads);
@@ -5766,6 +5846,56 @@ async function loadIntel(){
     </div>`).join('');
 }
 setInterval(updateNextSendTime, 60000);
+
+// ── Leads Reciclables ────────────────────────────────────────────
+async function buscarReciclables(termino) {
+  // Si se llama con argumento usa ese, si no lee el input
+  const q = (termino !== undefined) ? termino : (document.getElementById('recicla-input').value || '').trim();
+  if(termino !== undefined && termino !== '') {
+    document.getElementById('recicla-input').value = termino;
+  }
+
+  const url = '/api/prospects/reciclables' + (q ? '?q=' + encodeURIComponent(q) : '');
+  const data = await api(url);
+  if(!data) return;
+
+  const countEl  = document.getElementById('recicla-count');
+  const resultsEl= document.getElementById('recicla-results');
+  const emptyEl  = document.getElementById('recicla-empty');
+  const tbody    = document.getElementById('recicla-tbody');
+
+  countEl.style.display = 'block';
+
+  if(!data.length) {
+    countEl.textContent = 'Sin resultados.';
+    resultsEl.style.display = 'none';
+    emptyEl.style.display   = 'block';
+    return;
+  }
+
+  emptyEl.style.display   = 'none';
+  resultsEl.style.display = 'block';
+  countEl.innerHTML = `<strong>${data.length}</strong> prospect${data.length>1?'os':''} reciclable${data.length>1?'s':''} encontrado${data.length>1?'s':''} ${q?`para "<em>${q}</em>"`:''}.`;
+
+  const fmtFecha = s => s ? s.slice(0,10) : '—';
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td style="font-weight:600">${r.negocio||r.name||'—'}</td>
+      <td style="color:var(--mp-text-2)">${r.rubro||'—'}</td>
+      <td>
+        <a href="https://wa.me/56${(r.phone||'').replace(/\D/g,'')}?text=${encodeURIComponent('Hola '+((r.name||'').split(' ')[0]||'')+'! Te contacto nuevamente...')}"
+           target="_blank" style="color:var(--mp-blue);text-decoration:none;font-weight:600">
+          📱 ${r.phone||'—'}
+        </a>
+      </td>
+      <td>${r.comuna||'—'}</td>
+      <td style="max-width:240px;font-size:11px;color:#6b7280;white-space:pre-wrap">${r.motivo_perdida||'—'}</td>
+      <td style="font-size:11px;color:var(--mp-text-3)">${fmtFecha(r.fecha_perdida)}</td>
+      <td>
+        <button onclick="abrirProspecto(${r.id})" style="font-size:11px;padding:3px 10px;background:var(--mp-blue-lt);color:var(--mp-blue);border:1px solid var(--mp-blue);border-radius:6px;cursor:pointer">Ver</button>
+      </td>
+    </tr>`).join('');
+}
 
 /* ==================================================
    PARCHE: Integracion MercadoPago Fast
