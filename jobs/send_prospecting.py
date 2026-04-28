@@ -24,12 +24,21 @@ ALLOWED_SEND_HOURS = (7, 20)  # 07:00 a 20:00
 
 
 def is_valid_phone(phone: str) -> bool:
-    """Valida que el número esté en formato correcto (56XXXXXXXXX o +56XXXXXXXXX)"""
+    """
+    Valida que sea número móvil chileno válido para WhatsApp.
+    - RECHAZA: 562XXXXXXX (números fijos/landlines - no soportan WhatsApp)
+    - ACEPTA: 569XXXXXXX (celulares - 9 dígitos)
+    """
     if not phone:
         return False
     # Limpia espacios y guiones
     phone = phone.strip().replace(' ', '').replace('-', '')
-    # Debe ser +56 o 56 seguido de 9 dígitos (9 dígitos para celular chileno)
+
+    # RECHAZA números fijos que comienzan con 562
+    if re.match(r'^(\+?56)?2\d{8}$', phone):
+        return False  # Número fijo (landline), no soporta WhatsApp
+
+    # ACEPTA solo celulares: +56 o 56 seguido de 9 dígitos (comienzan con 9)
     return bool(re.match(r'^(\+?56)?9\d{8}$', phone))
 
 
