@@ -492,12 +492,13 @@ def get_wa_actividad():
 @leads_bp.route('/wa-actividad/export', methods=['GET'])
 def export_wa_actividad():
     """Exporta detalle WA de una fecha (o últimos 7 días) como Excel."""
-    try:
-        from flask import Response
-        import io, openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment
-        from openpyxl.utils import get_column_letter
+    from flask import Response
+    import io, openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
 
+    conn = None
+    try:
         fecha = request.args.get('fecha')   # YYYY-MM-DD opcional
         conn  = get_db()
 
@@ -514,10 +515,11 @@ def export_wa_actividad():
         else:
             rows = conn.execute(base_q + " AND date(m.sent_at) >= date('now','localtime','-6 days') ORDER BY m.sent_at DESC", ()).fetchall()
             fname = 'wa_actividad_7dias.xlsx'
-        conn.close()
     except Exception as e:
-        conn.close()
         return jsonify({'error': f'Error en consulta: {str(e)}'}), 500
+    finally:
+        if conn:
+            conn.close()
 
     TIPO_MAP = {
         'prospecting':    'Prospección',
