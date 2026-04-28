@@ -1,24 +1,30 @@
-FROM node:20-slim
+# ── Build stage ─────────────────────────────────────────────────────
+FROM node:20-slim AS builder
 
-# Dependencias de sistema para Baileys (criptografía nativa)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-# Instalar dependencias primero (capa de caché)
 COPY package*.json ./
 RUN npm ci --production
 
-# Copiar código
+# ── Runtime stage ────────────────────────────────────────────────────
+FROM node:20-slim
+
+# Solo libatomic1 es necesaria en runtime (algunas deps la usan)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libatomic1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /app/node_modules ./node_modules
 COPY server.js ./
 
-# Railway inyecta $PORT; el código usa process.env.PORT
+# Limitar heap de Node para evitar OOM kill en Railway (512 MB container)
+ENV NODE_OPTIONS="--max-old-space-size=384"
 ENV NODE_ENV=production
-
-# Auth_info se monta como volumen en /data — NO en /app
-# El código usa AUTH_DIR=/data si WA_AUTH_DIR está seteado
 
 EXPOSE 8080
 
