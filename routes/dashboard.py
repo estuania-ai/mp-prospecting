@@ -59,11 +59,12 @@ def kpis():
         GROUP BY week, year ORDER BY year DESC, week DESC LIMIT 8
     ''').fetchall()
 
-    # Interesados por semana (lead_status.updated_at)
+    # Interesados por semana = Prospects creados en Gestión (fuente de verdad)
+    # Cuando se agrega un prospect a Gestión, ese lead se vuelve "interesado"
     _wk_inter = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
-        SELECT strftime('%W', updated_at) as week, strftime('%Y', updated_at) as year,
+        SELECT strftime('%W', created_at) as week, strftime('%Y', created_at) as year,
                COUNT(*) as cnt
-        FROM lead_status WHERE status='interesado' {df_ls}
+        FROM prospects {_date_clause('created_at', from_date, to_date)}
         GROUP BY week, year
     ''').fetchall()}
 

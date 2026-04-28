@@ -57,6 +57,20 @@ def create_prospect():
     ))
     conn.commit()
     prospect_id = cur.lastrowid
+
+    # ── Sincronizar lead_status si tiene lead_id ─────────────────────
+    lead_id = data.get('lead_id')
+    if lead_id:
+        conn.execute("""
+            INSERT INTO lead_status (lead_id, status, notes, updated_at)
+            VALUES (?, 'interesado', 'Agregado a Gestión', datetime('now','localtime'))
+            ON CONFLICT(lead_id) DO UPDATE SET
+                status='interesado',
+                notes='Actualizado desde Gestión',
+                updated_at=datetime('now','localtime')
+        """, (lead_id,))
+        conn.commit()
+
     conn.close()
     return jsonify({'ok': True, 'id': prospect_id})
 
@@ -449,3 +463,44 @@ def get_reciclables():
 
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+
+@prospects_bp.route('/sync-lead-status', methods=['POST'])
+def sync_lead_status():
+    """
+    Sincroniza todos los prospects con lead_id a lead_status.
+    Usa el estado actual del prospect como referencia.
+    Útil para reparar registros existentes.
+    """
+    ESTADO_LEAD_MAP = {
+        'en_seguimiento': 'interesado',
+        'reunion_agendada': 'quiere_reunion',
+        'cerrado': 'cerrado',
+        'no_logrado': 'no_interesado',
+        'sin_respuesta': 'enviado'
+    }
+
+    conn = get_db()
+
+    # Obtener todos los prospects con lead_id
+    prospects = conn.execute(
+        "SELECT id, lead_id, estado FROM prospects WHERE lead_id IS NOT NULL"
+    ).fetchall()
+
+    synced = 0
+    for p in prospects:
+        ls = ESTADO_LEAD_MAP.get(p['estado'], 'interesado')
+        conn.execute("""
+            INSERT INTO lead_status (lead_id, status, notes, updated_at)
+            VALUES (?, ?, 'Sincronizado desde Gestión', datetime('now','localtime'))
+            ON CONFLICT(lead_id) DO UPDATE SET
+                status=excluded.status,
+                notes=excluded.notes,
+                updated_at=excluded.updated_at
+        """, (p['lead_id'], ls))
+        synced += 1
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({'ok': True, 'synced': synced})
