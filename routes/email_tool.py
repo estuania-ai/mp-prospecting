@@ -1212,6 +1212,47 @@ def _inject_tracking(html: str, token: str, booking_url: str) -> str:
     return html
 
 
+def _send_resend(to_email: str, subject: str, html_body: str,
+                 from_email: str, from_name: str,
+                 hdr_bytes: bytes, pos_bytes: bytes, sig_bytes: bytes) -> dict:
+    """Envía via Resend API (HTTP) — no requiere acceso SMTP directo."""
+    import os, base64, requests as _req
+    api_key = os.getenv('RESEND_API_KEY', '')
+    if not api_key:
+        return {'ok': False, 'error': 'RESEND_API_KEY no configurado'}
+
+    # Reemplazar referencias CID por data URIs base64 en el HTML
+    def _b64_uri(data: bytes, mime: str) -> str:
+        return f'data:{mime};base64,{base64.b64encode(data).decode()}'
+
+    html = html_body
+    if hdr_bytes:
+        html = html.replace('cid:email_hdr_anim', _b64_uri(hdr_bytes, 'image/gif'))
+    if pos_bytes:
+        html = html.replace('cid:email_pos_anim', _b64_uri(pos_bytes, 'image/gif'))
+    if sig_bytes:
+        html = html.replace('cid:email_sig_photo', _b64_uri(sig_bytes, 'image/jpeg'))
+
+    payload = {
+        'from':    f'{from_name} <{from_email}>',
+        'to':      [to_email],
+        'subject': subject,
+        'html':    html,
+    }
+    try:
+        resp = _req.post(
+            'https://api.resend.com/emails',
+            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+            json=payload,
+            timeout=30,
+        )
+        if resp.status_code in (200, 201):
+            return {'ok': True, 'id': resp.json().get('id')}
+        return {'ok': False, 'error': f'Resend HTTP {resp.status_code}: {resp.text[:200]}'}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)[:200]}
+
+
 def _send_smtp(to_email: str, subject: str, body_text: str,
                unsubscribe_url: str = '', rubro: str = '',
                contact_name: str = '', booking_url: str = '',
@@ -1231,7 +1272,7 @@ def _send_smtp(to_email: str, subject: str, body_text: str,
     from_email = os.getenv('EMAIL_FROM', smtp_user)
     from_name  = os.getenv('EMAIL_FROM_NAME', 'Juan Sebastián Pinto')
 
-    if not smtp_user or not smtp_pass:
+    if not smtp_user and not os.getenv('RESEND_API_KEY'):
         return {'ok': False, 'error': 'SMTP no configurado'}
 
     static_dir      = pathlib.Path(__file__).parent.parent / 'static' / 'images'
@@ -1301,6 +1342,20 @@ def _send_smtp(to_email: str, subject: str, body_text: str,
     except Exception as e:
         logger.warning(f'[EmailTool] No se pudo adjuntar foto firma: {e}')
 
+    # ── Resend API (si SMTP no disponible o bloqueado) ───────────────────────
+    if os.getenv('RESEND_API_KEY') and _smtp_conn is None:
+        result = _send_resend(
+            to_email=to_email, subject=subject, html_body=html_body,
+            from_email=from_email, from_name=from_name,
+            hdr_bytes=hdr_bytes if 'hdr_bytes' in dir() else None,
+            pos_bytes=pos_bytes if 'pos_bytes' in dir() else None,
+            sig_bytes=raw_sig   if 'raw_sig'   in dir() else None,
+        )
+        if result.get('ok'):
+            result['tracking_token'] = tracking_token
+        return result
+
+    # ── SMTP directo ─────────────────────────────────────────────────────────
     try:
         msg_bytes = msg_root.as_string()
         if _smtp_conn is not None:
@@ -1586,7 +1641,7 @@ def _send_smtp_followup(to_email: str, subject: str, rubro: str,
     from_email = os.getenv('EMAIL_FROM', smtp_user)
     from_name  = os.getenv('EMAIL_FROM_NAME', 'Juan Sebastián Pinto')
 
-    if not smtp_user or not smtp_pass:
+    if not smtp_user and not os.getenv('RESEND_API_KEY'):
         return {'ok': False, 'error': 'SMTP no configurado'}
 
     email_assets_dir = pathlib.Path(__file__).parent.parent / 'static' / 'email_assets'
@@ -1648,6 +1703,20 @@ def _send_smtp_followup(to_email: str, subject: str, rubro: str,
         sig_img.add_header('Content-Disposition', 'inline', filename='sig_photo.jpeg')
         msg_related.attach(sig_img)
 
+    # ── Resend API (si SMTP no disponible o bloqueado) ───────────────────────
+    if os.getenv('RESEND_API_KEY'):
+        result = _send_resend(
+            to_email=to_email, subject=subject, html_body=html_body,
+            from_email=from_email, from_name=from_name,
+            hdr_bytes=hdr_gif_bytes if 'hdr_gif_bytes' in dir() else None,
+            pos_bytes=pos_gif_bytes if 'pos_gif_bytes' in dir() else None,
+            sig_bytes=sig_path.read_bytes() if sig_path.exists() else None,
+        )
+        if result.get('ok'):
+            result['tracking_token'] = tracking_token
+        return result
+
+    # ── SMTP directo ─────────────────────────────────────────────────────────
     try:
         ctx = ssl.create_default_context()
         with smtplib.SMTP(smtp_host, smtp_port) as s:
