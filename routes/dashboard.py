@@ -121,8 +121,9 @@ def kpis():
             'quiere_reunion': re,
             'no_interesado':  ni,
             'respuestas':     respuestas,
-            'tasa_respuesta': round(respuestas / s * 100, 1) if s else 0,
-            'tasa_cierre':    round(c / respuestas * 100, 1) if respuestas else 0,
+            'tasa_respuesta':      round(respuestas / s * 100, 1) if s else 0,
+            'tasa_ventas':         round(c / respuestas * 100, 1) if respuestas else 0,
+            'tasa_cierre_final':   round(c / i * 100, 1) if i else 0,
         })
 
     top_comunas = conn.execute(f'''

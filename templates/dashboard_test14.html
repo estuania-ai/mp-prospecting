@@ -3431,7 +3431,8 @@ function buildWeeklyChart(weekly){
               const noInt = w.no_interesado || 0;
               const opto  = w.optout        || 0;
               const tasaR = w.tasa_respuesta|| 0;
-              const tasaC = w.tasa_cierre   || 0;
+              const tasaV = w.tasa_ventas   || 0;
+              const tasaCF = w.tasa_cierre_final || 0;
 
               return [
                 `📤 Enviados          ${sent}`,
@@ -3444,7 +3445,11 @@ function buildWeeklyChart(weekly){
                 `   🚫 Opt-out        ${opto}`,
                 `─────────────────────`,
                 `📊 Tasa respuesta    ${tasaR}%`,
-                `🎯 Tasa cierre       ${tasaC}%`,
+                `   % de mensajes que recibieron respuesta`,
+                `🎯 Tasa de ventas    ${tasaV}%`,
+                `   % de respuestas que resultaron en cierre`,
+                `💰 Tasa cierre final ${tasaCF}%`,
+                `   % de interesados que se cerraron`,
               ];
             },
           },
