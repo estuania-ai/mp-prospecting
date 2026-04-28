@@ -32,10 +32,10 @@ def kpis():
     total_leads  = conn.execute('SELECT COUNT(*) FROM leads').fetchone()[0]
 
     total_sent   = conn.execute(
-        f"SELECT COUNT(*) FROM messages WHERE status='sent' {df_msg}"
+        f"SELECT COUNT(DISTINCT lead_id) FROM messages WHERE status='sent' {df_msg}"
     ).fetchone()[0]
     total_opened = conn.execute(
-        f"SELECT COUNT(*) FROM messages WHERE opened_at IS NOT NULL {df_msg}"
+        f"SELECT COUNT(DISTINCT lead_id) FROM messages WHERE opened_at IS NOT NULL {df_msg}"
     ).fetchone()[0]
 
     # Estados lead_status en el periodo
@@ -54,7 +54,7 @@ def kpis():
     weekly_raw = conn.execute(f'''
         SELECT strftime('%W', sent_at) as week,
                strftime('%Y', sent_at) as year,
-               COUNT(*) as sent
+               COUNT(DISTINCT lead_id) as sent
         FROM messages WHERE status='sent' {df_msg}
         GROUP BY week, year ORDER BY year DESC, week DESC LIMIT 8
     ''').fetchall()
