@@ -89,8 +89,16 @@ async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict
     first = nombre_parts[0]
     last  = nombre_parts[1] if len(nombre_parts) > 1 else first
 
+    import shutil as _shutil
+    _chromium_path = (
+        _shutil.which("chromium") or
+        _shutil.which("chromium-browser") or
+        None
+    )
+    logger.info(f"[Fast] Chromium ejecutable: {_chromium_path or 'playwright default'}")
+
     async with async_playwright() as p:
-        browser = await p.chromium.launch(
+        launch_kwargs = dict(
             headless=True,
             slow_mo=200,
             args=[
@@ -101,6 +109,9 @@ async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict
                 "--disable-gpu",
             ],
         )
+        if _chromium_path:
+            launch_kwargs["executable_path"] = _chromium_path
+        browser = await p.chromium.launch(**launch_kwargs)
         context = await browser.new_context(
             storage_state=SESSION_FILE,
             viewport={"width": 1280, "height": 800},
