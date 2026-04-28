@@ -2403,18 +2403,22 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div>
-        <div class="sched-section-label">&#9675; Scraping automático</div>
+        <div class="sched-section-label">🗺️ Scraping automático</div>
         <div class="sched-list" id="sched-scraping">
           <div style="color:#9CA3AF;font-size:12px">Cargando...</div>
         </div>
-        <div class="sched-section-label">&#9993; Envío de email</div>
+        <div class="sched-section-label">📧 Envío de email · 3 lotes diarios (Regla 1-2-4-6)</div>
         <div class="sched-list" id="sched-email">
           <div style="color:#9CA3AF;font-size:12px">Cargando...</div>
         </div>
       </div>
       <div>
-        <div class="sched-section-label">&#8634; Seguimiento &amp; Monitor</div>
+        <div class="sched-section-label">🔁 Seguimiento &amp; Monitor</div>
         <div class="sched-list" id="sched-seguimiento">
+          <div style="color:#9CA3AF;font-size:12px">Cargando...</div>
+        </div>
+        <div class="sched-section-label" style="margin-top:14px">💬 WhatsApp · Lotes diarios</div>
+        <div class="sched-list" id="sched-wa">
           <div style="color:#9CA3AF;font-size:12px">Cargando...</div>
         </div>
       </div>
@@ -7321,20 +7325,50 @@ function renderKpiEstadosChart(estados) {
 
 // ── Email: SCHEDULER ──────────────────────────────────
 var JOB_META = {
-  'auto_scraping':  { ico:'\u25CB', title:'Scraping Automático 08:00 AM', desc:'Busca nuevos contactos de email según Inteligencia · L-V', badge:'badge-scraping',   tipo:'Scraping',    group:'scraping'   },
-  'email_daily':    { ico:'\u2709',  title:'Email Prospección 11:00 AM',   desc:'Envía a contactos pendientes + scraping complementario',   badge:'badge-email',      tipo:'Email',       group:'email'      },
-  'email_followup': { ico:'\u21BA', title:'Seguimiento Email',            desc:'Seguimientos 48h y 96h · cada 2 horas',                   badge:'badge-seguimiento',tipo:'Seguimiento', group:'seguimiento'},
-  'inbox_monitor':  { ico:'\u21BB', title:'Monitor de Bandeja',           desc:'Detecta respuestas y rebotes · cada 30 min',              badge:'badge-monitor',    tipo:'Monitor',     group:'seguimiento'},
+  // Scraping
+  'auto_scraping':  { ico:'🗺️', title:'Scraping Automático · 08:00',  desc:'Busca nuevos contactos de email según Inteligencia · L-V',        badge:'badge-scraping',    tipo:'Scraping',    group:'scraping'   },
+  // Email — 3 lotes diarios
+  'email_lote1':    { ico:'📧', title:'Email Lote Mañana · 09:00',    desc:'40 emails · Regla 1-2-4-6 · contactos nuevos y pendientes · L-V', badge:'badge-email',       tipo:'Email',       group:'email'      },
+  'email_lote2':    { ico:'📧', title:'Email Lote Mediodía · 12:00',  desc:'35 emails · Regla 1-2-4-6 · L-V',                                  badge:'badge-email',       tipo:'Email',       group:'email'      },
+  'email_lote3':    { ico:'📧', title:'Email Lote Tarde · 16:00',     desc:'25 emails · Regla 1-2-4-6 · L-V',                                  badge:'badge-email',       tipo:'Email',       group:'email'      },
+  'email_daily':    { ico:'📧', title:'Email Prospección · 09:00',    desc:'Envía a contactos pendientes · L-V',                               badge:'badge-email',       tipo:'Email',       group:'email'      },
+  // Seguimientos y monitor
+  'email_followup': { ico:'🔁', title:'Seguimiento Email · cada 2h', desc:'Seguimientos 48h y 96h automáticos',                               badge:'badge-seguimiento', tipo:'Seguimiento', group:'seguimiento'},
+  'inbox_monitor':  { ico:'🔍', title:'Monitor Bandeja · cada 30min',desc:'Detecta respuestas y rebotes via Gmail',                            badge:'badge-monitor',     tipo:'Monitor',     group:'seguimiento'},
+  // WhatsApp
+  'wa_followup':    { ico:'💬', title:'WA Follow-up · 10:00',         desc:'WhatsApp a contactos email sin respuesta hace +3 días · L-V',      badge:'badge-seguimiento', tipo:'WA',          group:'seguimiento'},
+  // WA batches (grupo separado para no mezclar)
+  'batch_0930':     { ico:'💬', title:'WA Lote 1 · 09:30',            desc:'15 mensajes WA nuevos prospectos · L-V',                           badge:'badge-scraping',    tipo:'WA',          group:'wa'         },
+  'batch_1500':     { ico:'💬', title:'WA Lote 2 · 15:00',            desc:'10 mensajes WA · L-V',                                             badge:'badge-scraping',    tipo:'WA',          group:'wa'         },
+  'batch_1730':     { ico:'💬', title:'WA Lote 3 · 17:30',            desc:'15 mensajes WA · L-V',                                             badge:'badge-scraping',    tipo:'WA',          group:'wa'         },
 };
 
 function fmtNextRun(isoStr) {
-  if (!isoStr || isoStr === 'None') return 'Sin programar';
+  if (!isoStr || isoStr === 'None' || isoStr === 'null') return 'Sin programar';
+  // El servidor devuelve ISO 8601 con offset Chile (ej: "2026-04-28T09:00:00-04:00")
   var d = new Date(isoStr);
-  if (isNaN(d)) return isoStr;
-  var dias = ['dom','lun','mar','mié','jue','vie','sáb'];
-  var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-  return dias[d.getDay()] + ' ' + d.getDate() + ' ' + meses[d.getMonth()] +
-         ' · ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  if (isNaN(d.getTime())) return isoStr;
+  // Mostrar en hora Chile explícitamente
+  try {
+    var opts = { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', hour12:false, timeZone:'America/Santiago' };
+    return d.toLocaleString('es-CL', opts).replace(',','·');
+  } catch(e) {
+    // Fallback: usa offset del ISO string directamente
+    var match = isoStr.match(/T(\d{2}):(\d{2}):\d{2}([+-]\d{2}:\d{2})/);
+    if (match) {
+      var baseH = parseInt(match[1]), baseM = parseInt(match[2]);
+      var offParts = match[3].match(/([+-])(\d{2}):(\d{2})/);
+      var offSign = offParts[1]==='+' ? 1 : -1;
+      var offH = parseInt(offParts[2]);
+      var utcH = baseH - offSign*offH; // convert to UTC
+      var clH = (utcH - 4 + 24) % 24; // Chile UTC-4
+      var dd = new Date(isoStr);
+      return ['dom','lun','mar','mié','jue','vie','sáb'][dd.getDay()] + ' ' + dd.getDate() + ' ' +
+             ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][dd.getMonth()] +
+             ' · ' + String(clH).padStart(2,'0') + ':' + String(baseM).padStart(2,'0');
+    }
+    return isoStr.substring(0,16);
+  }
 }
 
 function ctBadge(run) {
@@ -7389,11 +7423,11 @@ function loadEmailScheduler() {
       badgeEl.style.background = status.running ? '#D1FAE5' : '#FEE2E2';
       badgeEl.style.color      = status.running ? '#059669' : '#DC2626';
     }
-    var groups = { scraping:[], email:[], seguimiento:[] };
+    var groups = { scraping:[], email:[], seguimiento:[], wa:[] };
     var jobs = (status.jobs || []).sort(function(a,b){ return new Date(a.next_run)-new Date(b.next_run); });
     jobs.forEach(function(j) {
       var m = JOB_META[j.id];
-      if (m && groups[m.group]) groups[m.group].push(j);
+      if (m && groups[m.group] !== undefined) groups[m.group].push(j);
     });
     Object.keys(groups).forEach(function(g) {
       var el = document.getElementById('sched-' + g);

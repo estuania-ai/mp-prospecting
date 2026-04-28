@@ -184,11 +184,20 @@ atexit.register(lambda: scheduler.shutdown())
 
 @app.route('/api/scheduler/status')
 def scheduler_status():
+    from pytz import timezone as pytz_tz
+    tz_stgo = pytz_tz('America/Santiago')
     jobs = []
     for job in scheduler.get_jobs():
+        nrt = job.next_run_time
+        # Convertir a hora Chile y devolver como ISO 8601 para que JS lo parsee bien
+        if nrt:
+            nrt_stgo = nrt.astimezone(tz_stgo)
+            next_run_iso = nrt_stgo.isoformat()   # e.g. "2026-04-28T09:00:00-04:00"
+        else:
+            next_run_iso = None
         jobs.append({
             'id': job.id,
-            'next_run': str(job.next_run_time),
+            'next_run': next_run_iso,
             'trigger': str(job.trigger)
         })
     return jsonify({'running': scheduler.running, 'jobs': jobs})
