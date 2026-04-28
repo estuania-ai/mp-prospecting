@@ -7,9 +7,6 @@ RUN npm ci --production --no-audit --no-fund
 
 COPY server.js ./
 
-# Crear directorio de auth para cuando no hay volumen montado
-RUN mkdir -p /app/auth_info
-
 ENV NODE_OPTIONS="--max-old-space-size=384"
 ENV NODE_ENV=production
 

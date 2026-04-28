@@ -36,6 +36,27 @@ let webhookUrl   = fs.existsSync(WEBHOOK_FILE) ? fs.readFileSync(WEBHOOK_FILE,'u
 
 const logger = pino({ level: 'silent' });
 
+// ── Restaurar sesión desde variable de entorno WA_AUTH_BACKUP ────
+function restoreAuthBackup() {
+  const backup = process.env.WA_AUTH_BACKUP;
+  if (!backup) {
+    console.log('[WA] No hay WA_AUTH_BACKUP — se generará QR');
+    return;
+  }
+  try {
+    const data = JSON.parse(Buffer.from(backup, 'base64').toString('utf8'));
+    if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+    let count = 0;
+    for (const [filename, content] of Object.entries(data)) {
+      fs.writeFileSync(path.join(AUTH_DIR, filename), JSON.stringify(content), 'utf8');
+      count++;
+    }
+    console.log(`[WA] Sesión restaurada desde WA_AUTH_BACKUP (${count} archivos)`);
+  } catch(e) {
+    console.error('[WA] Error restaurando WA_AUTH_BACKUP:', e.message);
+  }
+}
+
 // ── Health check — ANTES del auth (Railway necesita respuesta 200) ──
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', state: connState, version: '1.0.0' });
@@ -172,6 +193,19 @@ function normalizeJid(phone) {
   return full + '@s.whatsapp.net';
 }
 
+// ── Export de sesión auth ────────────────────────────────────────
+function exportAuthFiles() {
+  const result = {};
+  if (!fs.existsSync(AUTH_DIR)) return result;
+  for (const f of fs.readdirSync(AUTH_DIR)) {
+    try {
+      const content = fs.readFileSync(path.join(AUTH_DIR, f), 'utf8');
+      result[f] = JSON.parse(content);
+    } catch(e) { /* skip archivos no-JSON */ }
+  }
+  return result;
+}
+
 // ══════════════════════════════════════════════════════════════════
 // ENDPOINTS
 // ══════════════════════════════════════════════════════════════════
@@ -273,6 +307,23 @@ app.post('/webhook/set/:instance', (req, res) => {
   res.json({ ok: true, webhook: webhookUrl });
 });
 
+// ── Exportar sesión para backup (guardar en WA_AUTH_BACKUP) ──────
+app.get('/auth/export', (req, res) => {
+  const files = exportAuthFiles();
+  const count = Object.keys(files).length;
+  if (count === 0) {
+    return res.status(404).json({ ok: false, error: 'No hay archivos de auth. ¿Está conectado?' });
+  }
+  const base64 = Buffer.from(JSON.stringify(files)).toString('base64');
+  console.log(`[WA] Auth export: ${count} archivos exportados`);
+  res.json({
+    ok: true,
+    files: count,
+    instructions: 'Copia el valor de "backup" y pégalo como variable WA_AUTH_BACKUP en Railway',
+    backup: base64,
+  });
+});
+
 // ══════════════════════════════════════════════════════════════════
 // MANEJO DE ERRORES GLOBALES — evita que el proceso muera silenciosamente
 // ══════════════════════════════════════════════════════════════════
@@ -290,6 +341,10 @@ process.stdout.write('[WA] Llamando app.listen en PORT=' + (process.env.PORT || 
 app.listen(PORT, () => {
   console.log(`[WA Server] ✅ Corriendo en http://localhost:${PORT}`);
   console.log(`[WA Server] API Key: ${API_KEY}`);
+
+  // Restaurar sesión desde backup antes de arrancar
+  restoreAuthBackup();
+
   // Iniciar conexión WhatsApp automáticamente
   startSock().catch(e => console.error('[WA] Error iniciando:', e.message));
 
