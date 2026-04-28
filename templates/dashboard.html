@@ -1036,6 +1036,7 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   <div class="page-header">
     <div class="page-title">Historial de envÃ­os</div>
     <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" onclick="openManualSendPanel()" style="background:#7b3fe4;border:none">ðŸ"¤ EnvÃ­o Manual por Rubro</button>
       <button class="btn btn-green btn-sm" onclick="triggerJob('prospecting_daily')">â–¶ ProspecciÃ³n ahora</button>
       <button class="btn btn-primary btn-sm" onclick="triggerJob('fidelizacion_weekly')">â–¶ FidelizaciÃ³n ahora</button>
     </div>
@@ -4390,6 +4391,151 @@ async function loadIntel(){
 }
 setInterval(updateNextSendTime, 60000);
 </script>
+
+<!-- â"€â"€â"€ MODAL: ENVIO MANUAL POR RUBRO â"€â"€â"€ -->
+<div id="manual-send-panel" style="display:none;" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>ðŸ"¤ EnvÃ­o Manual por Rubro</h2>
+      <button class="close-btn" onclick="closeManualSendPanel()">âœ•</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Estado Actual del Servicio -->
+      <div class="status-box-manual">
+        <div class="status-item-manual">
+          <span class="label-manual">Estado WhatsApp:</span>
+          <span id="wa-status-manual" class="status-badge offline">Desconectado</span>
+        </div>
+        <div class="status-item-manual">
+          <span class="label-manual">Horario Permitido:</span>
+          <span class="status-info-manual">07:00 - 20:00</span>
+        </div>
+        <div class="status-item-manual">
+          <span class="label-manual">Hora Actual:</span>
+          <span id="current-time-manual" class="status-info-manual">--:--</span>
+        </div>
+      </div>
+
+      <!-- Selector de Rubro -->
+      <div class="form-group-manual">
+        <label for="rubro-select">Selecciona un Rubro:</label>
+        <div class="rubro-select-wrapper">
+          <select id="rubro-select" onchange="onRubroSelected()">
+            <option value="">-- Selecciona un rubro --</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- InformaciÃ³n del Rubro Seleccionado -->
+      <div id="rubro-details" style="display:none;" class="rubro-details-box">
+        <div class="detail-row-manual">
+          <span class="detail-label-manual">Leads VÃ¡lidos:</span>
+          <span id="valid-leads-count" class="detail-value-manual">0</span>
+        </div>
+        <div class="detail-row-manual">
+          <span class="detail-label-manual">Leads InvÃ¡lidos:</span>
+          <span id="invalid-leads-count" class="detail-value-manual">0</span>
+        </div>
+        <div class="detail-row-manual">
+          <span class="detail-label-manual">Total Leads:</span>
+          <span id="total-leads-count" class="detail-value-manual">0</span>
+        </div>
+
+        <!-- Preview de Leads -->
+        <div class="leads-preview" id="leads-preview-container" style="display:none;">
+          <div class="preview-header">
+            <h4>Preview de Leads a Enviar (primeros 10):</h4>
+          </div>
+          <div id="leads-preview" class="leads-list"></div>
+        </div>
+      </div>
+
+      <!-- Advertencias -->
+      <div id="warnings-box" class="warnings-box-manual" style="display:none;">
+        <div id="hour-warning" class="warning-msg-manual" style="display:none;">
+          â³ <strong>EnvÃ­os fuera de horario:</strong> Solo se pueden enviar entre 07:00 y 20:00
+        </div>
+        <div id="no-leads-warning" class="warning-msg-manual" style="display:none;">
+          â" <strong>Sin leads:</strong> No hay leads vÃ¡lidos para este rubro
+        </div>
+        <div id="wa-offline-warning" class="warning-msg-manual" style="display:none;">
+          ðŸ"± <strong>WhatsApp Desconectado:</strong> Conecta tu WhatsApp antes de enviar
+        </div>
+      </div>
+
+      <!-- Botones de AcciÃ³n -->
+      <div class="modal-actions">
+        <button id="send-btn" class="btn btn-primary" onclick="confirmManualSendByRubro()" disabled>
+          Enviar a todos los leads
+        </button>
+        <button class="btn btn-secondary" onclick="closeManualSendPanel()">
+          Cancelar
+        </button>
+      </div>
+
+      <!-- InformaciÃ³n Adicional -->
+      <div class="info-box-manual">
+        <h4>ðŸ"' Protecciones Anti-Spam Activas:</h4>
+        <ul>
+          <li>âœ" ValidaciÃ³n de telÃ©fono mÃ³vil chileno</li>
+          <li>âœ" ExclusiÃ³n de nÃºmeros fijos (562XXXXXXX)</li>
+          <li>âœ" Bloqueo de envÃ­os fuera de horario (07:00-20:00)</li>
+          <li>âœ" DeduplicaciÃ³n: mÃ¡ximo 1 mensaje por lead/dÃ­a</li>
+          <li>âœ" ExclusiÃ³n automÃ¡tica de nÃºmeros en opt-out</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* â"€â"€ MODAL ENVIO MANUAL â"€â"€â"€ */
+#manual-send-panel.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000}
+#manual-send-panel.modal-overlay .modal-card{background:#fff;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.2);width:90%;max-width:600px;max-height:85vh;overflow-y:auto;animation:slideUpManual .3s ease-out}
+@keyframes slideUpManual{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.status-box-manual{background:#f8fafc;border:1px solid var(--mp-border);border-radius:8px;padding:16px;margin-bottom:24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.status-item-manual{display:flex;flex-direction:column;gap:4px}
+.label-manual{font-size:11px;color:var(--mp-text-3);font-weight:600;text-transform:uppercase}
+.status-info-manual{font-size:13px;font-weight:500;color:var(--mp-text)}
+.form-group-manual{margin-bottom:24px}
+.form-group-manual label{display:block;font-size:13px;font-weight:600;margin-bottom:8px;color:var(--mp-text)}
+#rubro-select{width:100%;padding:10px 12px;border:1px solid var(--mp-border);border-radius:6px;font-size:13px;background:#fff;cursor:pointer;color:var(--mp-text)}
+#rubro-select:hover{border-color:var(--mp-blue)}
+#rubro-select:focus{outline:0;border-color:var(--mp-blue);box-shadow:0 0 0 3px rgba(0,158,227,.1)}
+.rubro-details-box{background:#f8fafc;border:1px solid var(--mp-border);border-radius:8px;padding:16px;margin-bottom:16px}
+.detail-row-manual{display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:13px}
+.detail-label-manual{color:var(--mp-text-3);font-weight:500}
+.detail-value-manual{font-weight:700;color:var(--mp-blue)}
+.leads-preview{margin-top:16px;padding-top:16px;border-top:1px solid var(--mp-border)}
+.preview-header{margin-bottom:12px}
+.preview-header h4{font-size:11px;color:var(--mp-text);margin:0;text-transform:uppercase;font-weight:600}
+.leads-list{max-height:250px;overflow-y:auto;display:grid;gap:8px}
+.lead-item{background:#fff;border:1px solid var(--mp-border);border-radius:6px;padding:10px 12px;font-size:12px;display:flex;justify-content:space-between;align-items:center}
+.lead-name{font-weight:500;color:var(--mp-text)}
+.lead-phone{color:var(--mp-text-3);font-family:monospace;font-size:11px}
+.warnings-box-manual{margin-bottom:20px}
+.warning-msg-manual{background:rgba(255,119,51,.1);border-left:3px solid #ff7733;padding:12px;border-radius:4px;font-size:12px;color:#8b4513;margin-bottom:8px;display:none}
+.warning-msg-manual strong{color:#ff7733}
+.info-box-manual{background:#e6f6fd;border:1px solid #b3e5fc;border-radius:8px;padding:16px;font-size:12px}
+.info-box-manual h4{margin:0 0 12px;font-size:13px;color:#007cba;font-weight:600}
+.info-box-manual ul{list-style:none;margin:0;padding:0}
+.info-box-manual li{padding:4px 0;color:#007cba;line-height:1.5}
+</style>
+
+<script>
+let rubrosCache=null;let leadsCache={};
+function openManualSendPanel(){document.getElementById('manual-send-panel').style.display='flex';loadRubros();updateTimeDisplay();updateWAStatus();setInterval(updateTimeDisplay,1e3)}
+function closeManualSendPanel(){document.getElementById('manual-send-panel').style.display='none';resetForm()}
+async function loadRubros(){try{const res=await fetch('/api/manual/rubros');const data=await res.json();rubrosCache=data.rubros;const select=document.getElementById('rubro-select');data.rubros.forEach(rubro=>{const option=document.createElement('option');option.value=rubro.key;option.textContent=rubro.emoji+' '+rubro.label;option.dataset.categoria=rubro.categoria;select.appendChild(option)})}catch(e){console.error('Error cargando rubros:',e);alert('Error cargando lista de rubros')}}
+async function onRubroSelected(){const rubro=document.getElementById('rubro-select').value;if(!rubro){document.getElementById('rubro-details').style.display='none';document.getElementById('warnings-box').style.display='none';return}try{const res=await fetch('/api/manual/leads-by-rubro/'+rubro);const data=await res.json();leadsCache[rubro]=data;document.getElementById('valid-leads-count').textContent=data.valid||0;document.getElementById('invalid-leads-count').textContent=data.invalid||0;document.getElementById('total-leads-count').textContent=data.total||0;document.getElementById('rubro-details').style.display='block';if(data.valid>0){const preview=data.leads.slice(0,10);const previewHtml=preview.map(lead=>'<div class="lead-item"><span class="lead-name">'+lead.name+'</span><span class="lead-phone">'+lead.phone+'</span></div>').join('');document.getElementById('leads-preview').innerHTML=previewHtml;document.getElementById('leads-preview-container').style.display='block'}else{document.getElementById('leads-preview-container').style.display='none'}updateWarnings(data.valid)}catch(e){console.error('Error cargando leads:',e);alert('Error cargando leads del rubro')}}
+function updateWarnings(validLeads){const warningsBox=document.getElementById('warnings-box');const hourWarning=document.getElementById('hour-warning');const noLeadsWarning=document.getElementById('no-leads-warning');const waOfflineWarning=document.getElementById('wa-offline-warning');const now=new Date().getHours();const isAllowedHour=now>=7&&now<20;const waStatus=document.getElementById('wa-status-manual').textContent==='Conectado';warningsBox.style.display='block';hourWarning.style.display=isAllowedHour?'none':'block';noLeadsWarning.style.display=validLeads>0?'none':'block';waOfflineWarning.style.display=waStatus?'none':'block';const sendBtn=document.getElementById('send-btn');sendBtn.disabled=!isAllowedHour||validLeads===0||!waStatus}
+async function confirmManualSendByRubro(){const rubro=document.getElementById('rubro-select').value;const data=leadsCache[rubro];if(!confirm('Â¿Enviar '+data.valid+' mensajes a leads del rubro "'+data.rubro+'"?\n\nSe respetarÃ¡n todas las reglas anti-spam')){return}try{document.getElementById('send-btn').disabled=true;const res=await fetch('/api/manual/send-by-rubro',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rubro})});const response=await res.json();if(res.ok){alert('âœ" EnvÃ­o iniciado:\n'+response.message+'\n\nTotal: '+response.total_selected+' leads');closeManualSendPanel()}else{alert('âœ— Error: '+response.error)}}catch(e){console.error('Error enviando:',e);alert('Error iniciando envÃ­o')}finally{document.getElementById('send-btn').disabled=false}}
+function updateTimeDisplay(){const now=new Date();const hours=String(now.getHours()).padStart(2,'0');const minutes=String(now.getMinutes()).padStart(2,'0');document.getElementById('current-time-manual').textContent=hours+':'+minutes;if(document.getElementById('manual-send-panel').style.display==='flex'){const rubro=document.getElementById('rubro-select').value;if(rubro&&leadsCache[rubro]){updateWarnings(leadsCache[rubro].valid)}}}
+async function updateWAStatus(){try{const res=await fetch('/api/manual/status');const data=await res.json();const badge=document.getElementById('wa-status-manual');if(data.logged_in){badge.textContent='Conectado';badge.classList.remove('offline');badge.classList.add('online')}else{badge.textContent='Desconectado';badge.classList.add('offline');badge.classList.remove('online')}}catch(e){console.error('Error actualizando estado:',e)}}
+function resetForm(){document.getElementById('rubro-select').value='';document.getElementById('rubro-details').style.display='none';document.getElementById('warnings-box').style.display='none';leadsCache={}}
+</script>
+
 <div id="toast" class="toast"></div>
 </body>
 </html>
