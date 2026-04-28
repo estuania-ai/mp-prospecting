@@ -83,18 +83,44 @@ def kpis():
         GROUP BY week, year
     ''').fetchall()}
 
+    # Quiere reunión por semana
+    _wk_reunion = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
+        SELECT strftime('%W', updated_at) as week, strftime('%Y', updated_at) as year,
+               COUNT(*) as cnt
+        FROM lead_status WHERE status='quiere_reunion' {df_ls}
+        GROUP BY week, year
+    ''').fetchall()}
+
+    # No interesado por semana
+    _wk_no_int = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
+        SELECT strftime('%W', updated_at) as week, strftime('%Y', updated_at) as year,
+               COUNT(*) as cnt
+        FROM lead_status WHERE status='no_interesado' {df_ls}
+        GROUP BY week, year
+    ''').fetchall()}
+
     # Combinar en lista final
     weekly = []
     for r in weekly_raw:
         w, y = r['week'], r['year']
-        s = r['sent']
-        i = _wk_inter.get((w, y), 0)
-        c = _wk_cerr.get((w, y), 0)
-        o = _wk_opto.get((w, y), 0)
+        s  = r['sent']
+        i  = _wk_inter.get((w, y), 0)
+        c  = _wk_cerr.get((w, y), 0)
+        o  = _wk_opto.get((w, y), 0)
+        re = _wk_reunion.get((w, y), 0)
+        ni = _wk_no_int.get((w, y), 0)
+        # Respuestas = suma de todos los estados activos de esa semana
+        respuestas = i + c + o + re + ni
         weekly.append({
             'week': w, 'year': y, 'sent': s,
-            'interesados': i, 'cerrados': c, 'optout': o,
-            'tasa_cierre': round(c / s * 100, 1) if s else 0,
+            'interesados':    i,
+            'cerrados':       c,
+            'optout':         o,
+            'quiere_reunion': re,
+            'no_interesado':  ni,
+            'respuestas':     respuestas,
+            'tasa_respuesta': round(respuestas / s * 100, 1) if s else 0,
+            'tasa_cierre':    round(c / respuestas * 100, 1) if respuestas else 0,
         })
 
     top_comunas = conn.execute(f'''

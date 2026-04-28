@@ -3365,9 +3365,9 @@ var _chartFunnel = null;
 
 function buildWeeklyChart(weekly){
   // weekly viene ordenado desc → revertir para mostrar cronológico
-  const wk      = [...weekly].reverse();
-  const isLast  = (i) => i === wk.length - 1;
-  const labels  = wk.map(w => 'Sem '+w.week+(w.year?' '+w.year:''));
+  const wk     = [...weekly].reverse();
+  const isLast = (i) => i === wk.length - 1;
+  const labels = wk.map(w => 'Sem ' + w.week + (w.year ? ' ' + w.year : ''));
 
   if(weeklyChart) weeklyChart.destroy();
   const ctx = document.getElementById('chartWeekly').getContext('2d');
@@ -3379,38 +3379,24 @@ function buildWeeklyChart(weekly){
       datasets: [
         {
           label: 'Enviados',
-          data: wk.map(w => w.sent),
+          data: wk.map(w => w.sent || 0),
           backgroundColor: wk.map((_,i) => isLast(i) ? '#ffe600' : '#009ee3'),
           borderRadius: 6,
           borderSkipped: false,
           order: 2,
         },
         {
-          label: 'Interesados',
-          data: wk.map(w => w.interesados || 0),
+          label: 'Respuestas',
+          data: wk.map(w => w.respuestas || 0),
           type: 'line',
-          borderColor: '#f59e0b',
-          backgroundColor: 'rgba(245,158,11,0.15)',
-          pointBackgroundColor: '#f59e0b',
+          borderColor: '#7b3fe4',
+          backgroundColor: 'rgba(123,63,228,0.12)',
+          pointBackgroundColor: '#7b3fe4',
           pointRadius: 5,
           pointHoverRadius: 7,
           tension: 0.3,
           fill: false,
           order: 1,
-          yAxisID: 'y2',
-        },
-        {
-          label: 'Cerrados',
-          data: wk.map(w => w.cerrados || 0),
-          type: 'line',
-          borderColor: '#00a650',
-          backgroundColor: 'rgba(0,166,80,0.12)',
-          pointBackgroundColor: '#00a650',
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          tension: 0.3,
-          fill: false,
-          order: 0,
           yAxisID: 'y2',
         }
       ]
@@ -3423,41 +3409,60 @@ function buildWeeklyChart(weekly){
         legend: {
           display: true,
           position: 'top',
-          labels: { font: { size: 11 }, color: '#4a5568', boxWidth: 12, padding: 16 }
+          labels: { font: { size: 11 }, color: '#4a5568', boxWidth: 12, padding: 14 }
         },
         tooltip: {
           callbacks: {
             title: (items) => {
               const i = items[0].dataIndex;
-              return `${wk[i] ? 'Sem ' + wk[i].week + ' ' + wk[i].year : items[0].label}`;
+              const w = wk[i] || {};
+              return 'Sem ' + (w.week||'') + ' ' + (w.year||'');
             },
+            beforeBody: () => [''],
+            label: () => null,
             afterBody: (items) => {
               const i = items[0].dataIndex;
               const w = wk[i] || {};
-              const sent   = w.sent   || 0;
-              const cerr   = w.cerrados || 0;
-              const opt    = w.optout  || 0;
-              const tasa   = sent > 0 ? (cerr / sent * 100).toFixed(1) : 0;
+              const sent  = w.sent          || 0;
+              const resp  = w.respuestas    || 0;
+              const inter = w.interesados   || 0;
+              const cerr  = w.cerrados      || 0;
+              const reun  = w.quiere_reunion|| 0;
+              const noInt = w.no_interesado || 0;
+              const opto  = w.optout        || 0;
+              const tasaR = w.tasa_respuesta|| 0;
+              const tasaC = w.tasa_cierre   || 0;
+
               return [
-                '',
-                `🔵 Enviados:     ${sent}`,
-                `🟡 Interesados:  ${w.interesados || 0}`,
-                `🟢 Cerrados:     ${cerr}`,
-                `🔴 Opt-out:      ${opt}`,
-                `📊 Tasa cierre:  ${tasa}%`,
+                `📤 Enviados          ${sent}`,
+                `💬 Respuestas        ${resp}`,
+                `─────────────────────`,
+                `   ⭐ Interesados    ${inter}`,
+                `   🤝 Quiere reunión ${reun}`,
+                `   ✅ Cerrados       ${cerr}`,
+                `   ❌ No interesado  ${noInt}`,
+                `   🚫 Opt-out        ${opto}`,
+                `─────────────────────`,
+                `📊 Tasa respuesta    ${tasaR}%`,
+                `🎯 Tasa cierre       ${tasaC}%`,
               ];
             },
-            label: () => null,   // ocultar labels individuales (los muestra afterBody)
           },
-          backgroundColor: 'rgba(26,35,50,0.92)',
-          titleFont: { size: 12, weight: 'bold' },
-          bodyFont: { size: 11 },
-          padding: 12,
-          cornerRadius: 8,
+          backgroundColor: 'rgba(15,23,42,0.93)',
+          titleColor: '#e2e8f0',
+          bodyColor: '#cbd5e1',
+          titleFont: { size: 12, weight: '700', family: "'Segoe UI', monospace" },
+          bodyFont: { size: 11, family: "'Segoe UI', monospace" },
+          padding: 14,
+          cornerRadius: 10,
+          displayColors: false,
         }
       },
       scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#8896a8' } },
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 11 }, color: '#8896a8' }
+        },
         y: {
           grid: { color: '#eef2f7' },
           ticks: { font: { size: 11 }, color: '#8896a8' },
@@ -3469,7 +3474,7 @@ function buildWeeklyChart(weekly){
           grid: { display: false },
           ticks: { font: { size: 11 }, color: '#8896a8' },
           beginAtZero: true,
-          title: { display: true, text: 'Interesados / Cerrados', font: { size: 10 }, color: '#8896a8' }
+          title: { display: true, text: 'Respuestas', font: { size: 10 }, color: '#8896a8' }
         }
       }
     }
