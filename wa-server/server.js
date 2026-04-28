@@ -194,10 +194,13 @@ function normalizeJid(phone) {
 }
 
 // ── Export de sesión auth ────────────────────────────────────────
-function exportAuthFiles() {
+function exportAuthFiles(onlyEssential = false) {
   const result = {};
   if (!fs.existsSync(AUTH_DIR)) return result;
+  // Archivos esenciales: creds.json + app-state-sync-key (claves de sincronización)
+  const essentialPattern = /^(creds\.json|app-state-sync-key-.+\.json)$/;
   for (const f of fs.readdirSync(AUTH_DIR)) {
+    if (onlyEssential && !essentialPattern.test(f)) continue;
     try {
       const content = fs.readFileSync(path.join(AUTH_DIR, f), 'utf8');
       result[f] = JSON.parse(content);
@@ -309,7 +312,7 @@ app.post('/webhook/set/:instance', (req, res) => {
 
 // ── Exportar sesión para backup (guardar en WA_AUTH_BACKUP) ──────
 app.get('/auth/export', (req, res) => {
-  const files = exportAuthFiles();
+  const files = exportAuthFiles(false);
   const count = Object.keys(files).length;
   if (count === 0) {
     return res.status(404).json({ ok: false, error: 'No hay archivos de auth. ¿Está conectado?' });
@@ -319,6 +322,26 @@ app.get('/auth/export', (req, res) => {
   res.json({
     ok: true,
     files: count,
+    instructions: 'Copia el valor de "backup" y pégalo como variable WA_AUTH_BACKUP en Railway',
+    backup: base64,
+  });
+});
+
+// ── Exportar solo archivos esenciales (creds + sync-keys) ────────
+// Backup reducido para Railway env vars (evita límite de tamaño)
+app.get('/auth/export-mini', (req, res) => {
+  const files = exportAuthFiles(true);
+  const count = Object.keys(files).length;
+  if (count === 0) {
+    return res.status(404).json({ ok: false, error: 'No hay archivos de auth. ¿Está conectado?' });
+  }
+  const base64 = Buffer.from(JSON.stringify(files)).toString('base64');
+  const sizeKB = Math.round(Buffer.byteLength(base64) / 1024);
+  console.log(`[WA] Auth export-mini: ${count} archivos esenciales exportados (${sizeKB} KB)`);
+  res.json({
+    ok: true,
+    files: count,
+    size_kb: sizeKB,
     instructions: 'Copia el valor de "backup" y pégalo como variable WA_AUTH_BACKUP en Railway',
     backup: base64,
   });
