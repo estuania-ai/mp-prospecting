@@ -21,40 +21,45 @@ SESSION_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'fast_sessi
 
 def _ensure_session_from_env() -> bool:
     """
-    Si no existe fast_session.json en disco pero hay FAST_SESSION_JSON en el entorno,
-    escribe el archivo para que playwright pueda usarlo.
-    Retorna True si la sesión quedó disponible.
+    Garantiza que fast_session.json exista en disco como JSON válido sin BOM.
+    Siempre reescribe desde FAST_SESSION_JSON env var si está disponible,
+    parseando el JSON y serializando de cero (elimina cualquier BOM/caracter raro).
     """
-    # Validar archivo existente — si tiene BOM o JSON inválido, eliminarlo y reescribir
+    import json as _json
+
+    session_json = os.getenv("FAST_SESSION_JSON", "")
+
+    if session_json:
+        # Eliminar BOM y whitespace en cualquier forma
+        # ﻿ es el BOM Unicode, también puede aparecer como bytes \xef\xbb\xbf
+        session_json = session_json.lstrip("﻿￾ \t\r\n").strip()
+
+        try:
+            # Parsear y reserializar — esto elimina cualquier carácter problemático
+            session_obj = _json.loads(session_json)
+            os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
+            # Escribir como JSON limpio sin BOM (utf-8 sin firma)
+            with open(SESSION_FILE, "w", encoding="utf-8", newline="") as f:
+                _json.dump(session_obj, f, ensure_ascii=False)
+            logger.info("[Fast] Sesión escrita desde FAST_SESSION_JSON (parseada y limpia)")
+            return True
+        except Exception as e:
+            logger.error(f"[Fast] FAST_SESSION_JSON no es JSON válido: {e}")
+            # Caer al fallback: usar archivo existente si lo hay
+            pass
+
+    # Fallback: usar archivo existente si ya está en disco y es válido
     if os.path.isfile(SESSION_FILE) and os.path.getsize(SESSION_FILE) > 100:
         try:
-            import json as _json
             with open(SESSION_FILE, encoding="utf-8-sig") as _f:
                 _json.load(_f)
-            return True  # archivo válido
+            return True
         except Exception:
-            logger.warning("[Fast] Session file inválido (BOM o JSON corrupto), reescribiendo desde env var")
             try:
                 os.remove(SESSION_FILE)
             except Exception:
                 pass
-
-    session_json = os.getenv("FAST_SESSION_JSON", "").strip()
-    # Eliminar BOM que Windows/Notepad agrega al inicio
-    session_json = session_json.lstrip('﻿').strip()
-    if not session_json:
-        return False
-    try:
-        import json as _json
-        _json.loads(session_json)  # validar JSON antes de escribir
-        os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
-        with open(SESSION_FILE, "w", encoding="utf-8") as f:
-            f.write(session_json)
-        logger.info("[Fast] Sesión restaurada desde variable de entorno FAST_SESSION_JSON")
-        return True
-    except Exception as e:
-        logger.error(f"[Fast] No se pudo escribir sesión desde env: {e}")
-        return False
+    return False
 
 
 def _formatear_telefono(raw: str) -> str:
