@@ -129,7 +129,7 @@ def kpis():
         'tasa_cierre':    tasa_cierre,
         'by_status':      by_status,
         # WA leads
-        'wa_interesados': interesados,
+        'wa_interesados': interesados + reuniones,  # interesado + quiere_reunion
         'wa_reuniones':   reuniones,
         'wa_cerrados':    cerrados,
         # Email leads
