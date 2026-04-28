@@ -504,7 +504,7 @@ def export_wa_actividad():
 
         base_q = """
             SELECT m.sent_at, m.message_type, m.status, m.rubro, m.phone,
-                   m.error_detail, l.name as negocio, l.comuna
+                   l.name as negocio, l.comuna
             FROM messages m
             LEFT JOIN leads l ON m.lead_id = l.id
             WHERE m.message_type IN ('prospecting','manual','seguimiento_24h','seguimiento_72h')
@@ -544,7 +544,7 @@ def export_wa_actividad():
     ws.title = 'Actividad WA'
 
     # Encabezado
-    headers = ['Fecha Envío', 'Tipo', 'Categoría', 'Rubro', 'Negocio', 'Teléfono', 'Comuna', 'Estado', 'Error']
+    headers = ['Fecha Envío', 'Tipo', 'Categoría', 'Rubro', 'Negocio', 'Teléfono', 'Comuna', 'Estado']
     hdr_fill = PatternFill('solid', fgColor='009EE3')
     hdr_font = Font(bold=True, color='FFFFFF')
     for col, h in enumerate(headers, 1):
@@ -561,7 +561,6 @@ def export_wa_actividad():
         # Datos
         for row_idx, r in enumerate(rows, 2):
             estado = STATUS_MAP.get(r['status'], r['status'] or 'Enviado')
-            error  = r['error_detail'] or ''
             # Convertir sent_at a string si no lo es (por si acaso es datetime)
             sent_at_str = str(r['sent_at']) if r['sent_at'] else ''
             ws.append([
@@ -573,7 +572,6 @@ def export_wa_actividad():
                 r['phone'] or '',
                 r['comuna'] or '',
                 estado,
-                error,
             ])
             # Color verde/rojo en columna Estado
             fill = fill_ok if r['status'] == 'sent' else fill_err
@@ -583,7 +581,7 @@ def export_wa_actividad():
             )
 
         # Ancho columnas
-        col_widths = [20, 20, 14, 18, 30, 16, 18, 14, 40]
+        col_widths = [20, 20, 14, 18, 30, 16, 18, 14]
         for i, w in enumerate(col_widths, 1):
             ws.column_dimensions[get_column_letter(i)].width = w
 
