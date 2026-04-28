@@ -144,16 +144,23 @@ async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict
             # Solo usar el chromium de nix en modo headless (Railway)
             launch_kwargs["executable_path"] = _chromium_path
         browser = await p.chromium.launch(**launch_kwargs)
-        context = await browser.new_context(
+        # Importante: no override del user_agent — debe coincidir con el que
+        # se usó al crear la sesión (fast_login_manual.py usa el default).
+        # Si MP detecta cambio de UA, invalida la sesión.
+        context_kwargs = dict(
             storage_state=SESSION_FILE,
             viewport={"width": 1280, "height": 800},
             locale="es-CL",
-            user_agent=(
+        )
+        # En Railway (headless) sí necesitamos UA explícito porque el chromium
+        # de nix puede tener un UA distinto al de playwright local
+        if _headless:
+            context_kwargs["user_agent"] = (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
-            ),
-        )
+            )
+        context = await browser.new_context(**context_kwargs)
         page = await context.new_page()
 
         try:
