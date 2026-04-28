@@ -28,9 +28,13 @@ def _ensure_session_from_env() -> bool:
     if os.path.isfile(SESSION_FILE) and os.path.getsize(SESSION_FILE) > 100:
         return True
     session_json = os.getenv("FAST_SESSION_JSON", "").strip()
+    # Eliminar BOM (﻿) que Windows/Notepad agrega al inicio del texto
+    session_json = session_json.lstrip('﻿').strip()
     if not session_json:
         return False
     try:
+        import json as _json
+        _json.loads(session_json)  # validar JSON antes de escribir
         os.makedirs(os.path.dirname(SESSION_FILE), exist_ok=True)
         with open(SESSION_FILE, "w", encoding="utf-8") as f:
             f.write(session_json)
