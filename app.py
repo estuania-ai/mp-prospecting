@@ -136,6 +136,18 @@ def job_wa_followup():
     if t.is_alive():
         logger.warning("[wa_followup] Timeout de 1h — thread abandonado.")
 
+def job_wa_seguimiento():
+    """Cada 2h L-V — Seguimiento WA automático para leads WA en estado 'enviado' 24h/72h.
+    Respeta ventanas de prospección (09:30, 15:00, 17:30 ±15min)."""
+    import threading
+    from jobs.wa_seguimiento import run_wa_seguimiento
+
+    t = threading.Thread(target=run_wa_seguimiento, daemon=True, name='wa_seguimiento')
+    t.start()
+    t.join(timeout=1800)  # máximo 30 minutos
+    if t.is_alive():
+        logger.warning("[wa_seguimiento] Timeout de 30min — thread abandonado.")
+
 
 # ── Parámetros comunes ────────────────────────────────────────────────────────
 # misfire_grace_time=3600 → si el proceso estuvo caído, ejecuta el job siempre
@@ -177,6 +189,10 @@ scheduler.add_job(job_auto_scraping, CronTrigger(hour=8, minute=0),
 # WhatsApp follow-up 10:00 diario — envía WA a emails sin respuesta hace +N días
 scheduler.add_job(job_wa_followup, CronTrigger(hour=10, minute=0),
                   id='wa_followup', replace_existing=True, **_JOB_OPTS)
+# Seguimiento WA automático cada 2h L-V — 24h y 72h para leads en estado 'enviado'
+# (la función internamente verifica ventanas de prospección antes de enviar)
+scheduler.add_job(job_wa_seguimiento, IntervalTrigger(hours=2),
+                  id='wa_seguimiento', replace_existing=True, **_INTVL_OPTS)
 
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
@@ -184,20 +200,21 @@ atexit.register(lambda: scheduler.shutdown())
 
 @app.route('/api/scheduler/status')
 def scheduler_status():
-    from pytz import timezone as pytz_tz
-    tz_stgo = pytz_tz('America/Santiago')
     jobs = []
     for job in scheduler.get_jobs():
         nrt = job.next_run_time
-        # Convertir a hora Chile y devolver como ISO 8601 para que JS lo parsee bien
+        # Devolver epoch ms (entero) — completamente libre de ambigüedades de timezone.
+        # JS: new Date(ts_ms) siempre crea el momento UTC correcto.
         if nrt:
-            nrt_stgo = nrt.astimezone(tz_stgo)
-            next_run_iso = nrt_stgo.isoformat()   # e.g. "2026-04-28T09:00:00-04:00"
+            try:
+                next_run_ms = int(nrt.timestamp() * 1000)
+            except Exception:
+                next_run_ms = None
         else:
-            next_run_iso = None
+            next_run_ms = None
         jobs.append({
             'id': job.id,
-            'next_run': next_run_iso,
+            'next_run': next_run_ms,   # epoch ms, e.g. 1745836200000
             'trigger': str(job.trigger)
         })
     return jsonify({'running': scheduler.running, 'jobs': jobs})
@@ -219,6 +236,7 @@ def trigger_job(job_id):
             'email_followup':      job_email_followup,
             'auto_scraping':       job_auto_scraping,
             'wa_followup':         job_wa_followup,
+            'wa_seguimiento':      job_wa_seguimiento,
         }
         fn = map_jobs.get(job_id)
         if fn:

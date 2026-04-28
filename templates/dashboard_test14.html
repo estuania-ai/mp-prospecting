@@ -2417,10 +2417,6 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
         <div class="sched-list" id="sched-seguimiento">
           <div style="color:#9CA3AF;font-size:12px">Cargando...</div>
         </div>
-        <div class="sched-section-label" style="margin-top:14px">💬 WhatsApp · Lotes diarios</div>
-        <div class="sched-list" id="sched-wa">
-          <div style="color:#9CA3AF;font-size:12px">Cargando...</div>
-        </div>
       </div>
     </div>
   </div>
@@ -3730,7 +3726,7 @@ async function loadEnvios(){
       return jobs.map(function(j){
         var titulo = jobNames[j.id] || j.id;
         var nextDate = j.next_run ? new Date(j.next_run) : null;
-        var nextStr = nextDate ? nextDate.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'short'}) + ' ' + nextDate.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}) : 'Sin programar';
+        var nextStr = nextDate ? nextDate.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'short',timeZone:'America/Santiago'}) + ' ' + nextDate.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit',timeZone:'America/Santiago'}) : 'Sin programar';
         var isFidel = j.id === 'fidelizacion_weekly';
         var msgsStr = msgs[j.id] ? ' - ' + msgs[j.id] : '';
         var subtitulo = isFidel ? nextStr + ' - Etapas dias 7, 14, 15, 30, 35' : nextStr + msgsStr + ' - leads no enviados';
@@ -3757,6 +3753,24 @@ async function loadEnvios(){
           </button>
         </div>
       </div>`).join('');
+  }
+
+  // Seguimientos WA pendientes
+  if(document.getElementById('seguimientosPendientes')){
+    api('/api/leads/seguimientos-pendientes').then(function(seg){
+      if(!seg || (!seg.pendientes_24h.length && !seg.pendientes_72h.length)){
+        document.getElementById('seguimientosPendientes').innerHTML = '<div style="font-size:11px;color:var(--mp-green);text-align:center;padding:6px">✓ Sin seguimientos pendientes</div>';
+        return;
+      }
+      var html = '';
+      seg.pendientes_24h.forEach(function(l){
+        html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:7px;background:#fff3cd;margin-bottom:4px"><span style="font-size:13px">🟡</span><div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600;color:var(--mp-text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+l.name+'</div><div style="font-size:10px;color:#856404">Seguimiento 24h · '+l.horas+'h sin respuesta</div></div></div>';
+      });
+      seg.pendientes_72h.forEach(function(l){
+        html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:7px;background:#fff5f5;margin-bottom:4px"><span style="font-size:13px">🟠</span><div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600;color:var(--mp-text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+l.name+'</div><div style="font-size:10px;color:var(--mp-red)">Seguimiento 72h · '+l.horas+'h sin respuesta</div></div></div>';
+      });
+      document.getElementById('seguimientosPendientes').innerHTML = html;
+    });
   }
 }
 
@@ -7335,39 +7349,32 @@ var JOB_META = {
   // Seguimientos y monitor
   'email_followup': { ico:'🔁', title:'Seguimiento Email · cada 2h', desc:'Seguimientos 48h y 96h automáticos',                               badge:'badge-seguimiento', tipo:'Seguimiento', group:'seguimiento'},
   'inbox_monitor':  { ico:'🔍', title:'Monitor Bandeja · cada 30min',desc:'Detecta respuestas y rebotes via Gmail',                            badge:'badge-monitor',     tipo:'Monitor',     group:'seguimiento'},
-  // WhatsApp
+  // WhatsApp seguimientos
   'wa_followup':    { ico:'💬', title:'WA Follow-up · 10:00',         desc:'WhatsApp a contactos email sin respuesta hace +3 días · L-V',      badge:'badge-seguimiento', tipo:'WA',          group:'seguimiento'},
+  'wa_seguimiento': { ico:'💬', title:'WA Seguimiento · cada 2h',     desc:'Seguimiento 24h y 72h a leads WA en estado enviado · L-V',         badge:'badge-seguimiento', tipo:'WA',          group:'seguimiento'},
   // WA batches (grupo separado para no mezclar)
   'batch_0930':     { ico:'💬', title:'WA Lote 1 · 09:30',            desc:'15 mensajes WA nuevos prospectos · L-V',                           badge:'badge-scraping',    tipo:'WA',          group:'wa'         },
   'batch_1500':     { ico:'💬', title:'WA Lote 2 · 15:00',            desc:'10 mensajes WA · L-V',                                             badge:'badge-scraping',    tipo:'WA',          group:'wa'         },
   'batch_1730':     { ico:'💬', title:'WA Lote 3 · 17:30',            desc:'15 mensajes WA · L-V',                                             badge:'badge-scraping',    tipo:'WA',          group:'wa'         },
 };
 
-function fmtNextRun(isoStr) {
-  if (!isoStr || isoStr === 'None' || isoStr === 'null') return 'Sin programar';
-  // El servidor devuelve ISO 8601 con offset Chile (ej: "2026-04-28T09:00:00-04:00")
-  var d = new Date(isoStr);
-  if (isNaN(d.getTime())) return isoStr;
-  // Mostrar en hora Chile explícitamente
+function fmtNextRun(val) {
+  if (val === null || val === undefined || val === 'None' || val === 'null') return 'Sin programar';
+  // val es epoch ms (número entero) devuelto por el servidor → new Date(ms) siempre correcto
+  var d = new Date(val);
+  if (isNaN(d.getTime())) return 'Sin programar';
+  // Mostrar en hora Chile explícitamente (cubre cualquier timezone del browser)
   try {
     var opts = { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', hour12:false, timeZone:'America/Santiago' };
     return d.toLocaleString('es-CL', opts).replace(',','·');
   } catch(e) {
-    // Fallback: usa offset del ISO string directamente
-    var match = isoStr.match(/T(\d{2}):(\d{2}):\d{2}([+-]\d{2}:\d{2})/);
-    if (match) {
-      var baseH = parseInt(match[1]), baseM = parseInt(match[2]);
-      var offParts = match[3].match(/([+-])(\d{2}):(\d{2})/);
-      var offSign = offParts[1]==='+' ? 1 : -1;
-      var offH = parseInt(offParts[2]);
-      var utcH = baseH - offSign*offH; // convert to UTC
-      var clH = (utcH - 4 + 24) % 24; // Chile UTC-4
-      var dd = new Date(isoStr);
-      return ['dom','lun','mar','mié','jue','vie','sáb'][dd.getDay()] + ' ' + dd.getDate() + ' ' +
-             ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][dd.getMonth()] +
-             ' · ' + String(clH).padStart(2,'0') + ':' + String(baseM).padStart(2,'0');
-    }
-    return isoStr.substring(0,16);
+    // Fallback manual: UTC → Chile (UTC-4)
+    var utcH = d.getUTCHours(), utcM = d.getUTCMinutes();
+    var clH  = (utcH - 4 + 24) % 24;
+    var days = ['dom','lun','mar','mié','jue','vie','sáb'];
+    var months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] +
+           ' · ' + String(clH).padStart(2,'0') + ':' + String(utcM).padStart(2,'0');
   }
 }
 
@@ -7423,7 +7430,7 @@ function loadEmailScheduler() {
       badgeEl.style.background = status.running ? '#D1FAE5' : '#FEE2E2';
       badgeEl.style.color      = status.running ? '#059669' : '#DC2626';
     }
-    var groups = { scraping:[], email:[], seguimiento:[], wa:[] };
+    var groups = { scraping:[], email:[], seguimiento:[] };
     var jobs = (status.jobs || []).sort(function(a,b){ return new Date(a.next_run)-new Date(b.next_run); });
     jobs.forEach(function(j) {
       var m = JOB_META[j.id];
