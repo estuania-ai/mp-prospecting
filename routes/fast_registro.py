@@ -565,37 +565,66 @@ def registrar_en_fast(lead_id):
     if not nombre or not telefono:
         return jsonify({"ok": False, "mensaje": "nombre y telefono son obligatorios"}), 400
 
-    try:
-        import threading as _threading
-        result_holder = [None]
-        error_holder  = [None]
+    # ── Si hay FAST_LOCAL_URL configurada, hacemos proxy al servidor local ──
+    fast_local_url = os.getenv("FAST_LOCAL_URL", "").strip()
+    fast_local_token = os.getenv("FAST_LOCAL_TOKEN", "").strip()
 
-        def _run():
-            import asyncio as _asyncio
-            _loop = _asyncio.new_event_loop()
-            _asyncio.set_event_loop(_loop)
-            try:
-                result_holder[0] = _loop.run_until_complete(
-                    _registrar_en_fast(nombre, telefono, direccion)
-                )
-            except Exception as exc:
-                error_holder[0] = exc
-            finally:
-                _loop.close()
-                _asyncio.set_event_loop(None)
+    if fast_local_url:
+        # Modo proxy: la automatización corre en la PC del usuario via Cloudflare Tunnel
+        try:
+            import requests
+            url = fast_local_url.rstrip("/") + "/registrar-fast"
+            logger.info(f"[Fast] Proxy a servidor local: {url}")
+            resp = requests.post(
+                url,
+                json={"nombre": nombre, "telefono": telefono, "direccion": direccion},
+                headers={"X-Fast-Token": fast_local_token},
+                timeout=300,
+            )
+            if resp.status_code == 401:
+                return jsonify({"ok": False, "mensaje": "Token inválido en servidor local"}), 500
+            result = resp.json()
+        except requests.exceptions.ConnectionError:
+            return jsonify({
+                "ok": False,
+                "mensaje": "Servidor local Fast no disponible. Verifica que tu PC esté prendida con fast_local_server.py corriendo."
+            }), 503
+        except Exception as e:
+            logger.error(f"[Fast] Error proxy a local: {e}", exc_info=True)
+            return jsonify({"ok": False, "mensaje": f"Error proxy local: {str(e)[:200]}"}), 500
+    else:
+        # Modo legacy: ejecutar playwright directamente (en Railway no funciona por IP)
+        try:
+            import threading as _threading
+            result_holder = [None]
+            error_holder  = [None]
 
-        t = _threading.Thread(target=_run, daemon=True)
-        t.start()
-        t.join(timeout=300)
+            def _run():
+                import asyncio as _asyncio
+                _loop = _asyncio.new_event_loop()
+                _asyncio.set_event_loop(_loop)
+                try:
+                    result_holder[0] = _loop.run_until_complete(
+                        _registrar_en_fast(nombre, telefono, direccion)
+                    )
+                except Exception as exc:
+                    error_holder[0] = exc
+                finally:
+                    _loop.close()
+                    _asyncio.set_event_loop(None)
 
-        if error_holder[0] is not None:
-            raise error_holder[0]
-        if result_holder[0] is None:
-            raise RuntimeError("Timeout: la automatización no completó en 5 minutos")
-        result = result_holder[0]
-    except Exception as e:
-        logger.error(f"[Fast] Error en automatización: {e}", exc_info=True)
-        return jsonify({"ok": False, "mensaje": f"Error: {str(e)[:200]}"}), 500
+            t = _threading.Thread(target=_run, daemon=True)
+            t.start()
+            t.join(timeout=300)
+
+            if error_holder[0] is not None:
+                raise error_holder[0]
+            if result_holder[0] is None:
+                raise RuntimeError("Timeout: la automatización no completó en 5 minutos")
+            result = result_holder[0]
+        except Exception as e:
+            logger.error(f"[Fast] Error en automatización: {e}", exc_info=True)
+            return jsonify({"ok": False, "mensaje": f"Error: {str(e)[:200]}"}), 500
 
     try:
         conn = get_db()
