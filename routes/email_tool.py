@@ -1212,14 +1212,14 @@ def _inject_tracking(html: str, token: str, booking_url: str) -> str:
     return html
 
 
-def _send_resend(to_email: str, subject: str, html_body: str,
-                 from_email: str, from_name: str,
-                 hdr_bytes: bytes, pos_bytes: bytes, sig_bytes: bytes) -> dict:
-    """Envía via Resend API (HTTP) — no requiere acceso SMTP directo."""
+def _send_via_api(to_email: str, subject: str, html_body: str,
+                  from_email: str, from_name: str,
+                  hdr_bytes: bytes, pos_bytes: bytes, sig_bytes: bytes) -> dict:
+    """
+    Envía via API HTTP (SendGrid o Resend) — no requiere acceso SMTP directo.
+    Prioridad: SENDGRID_API_KEY > RESEND_API_KEY
+    """
     import os, base64, requests as _req
-    api_key = os.getenv('RESEND_API_KEY', '')
-    if not api_key:
-        return {'ok': False, 'error': 'RESEND_API_KEY no configurado'}
 
     # Reemplazar referencias CID por data URIs base64 en el HTML
     def _b64_uri(data: bytes, mime: str) -> str:
@@ -1233,24 +1233,51 @@ def _send_resend(to_email: str, subject: str, html_body: str,
     if sig_bytes:
         html = html.replace('cid:email_sig_photo', _b64_uri(sig_bytes, 'image/jpeg'))
 
-    payload = {
-        'from':    f'{from_name} <{from_email}>',
-        'to':      [to_email],
-        'subject': subject,
-        'html':    html,
-    }
-    try:
-        resp = _req.post(
-            'https://api.resend.com/emails',
-            headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
-            json=payload,
-            timeout=30,
-        )
-        if resp.status_code in (200, 201):
-            return {'ok': True, 'id': resp.json().get('id')}
-        return {'ok': False, 'error': f'Resend HTTP {resp.status_code}: {resp.text[:200]}'}
-    except Exception as e:
-        return {'ok': False, 'error': str(e)[:200]}
+    # ── SendGrid ──────────────────────────────────────────────────────────────
+    sg_key = os.getenv('SENDGRID_API_KEY', '')
+    if sg_key:
+        payload = {
+            'personalizations': [{'to': [{'email': to_email}]}],
+            'from':    {'email': from_email, 'name': from_name},
+            'subject': subject,
+            'content': [{'type': 'text/html', 'value': html}],
+        }
+        try:
+            resp = _req.post(
+                'https://api.sendgrid.com/v3/mail/send',
+                headers={'Authorization': f'Bearer {sg_key}', 'Content-Type': 'application/json'},
+                json=payload,
+                timeout=30,
+            )
+            if resp.status_code in (200, 202):
+                return {'ok': True}
+            return {'ok': False, 'error': f'SendGrid HTTP {resp.status_code}: {resp.text[:200]}'}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)[:200]}
+
+    # ── Resend (fallback) ─────────────────────────────────────────────────────
+    resend_key = os.getenv('RESEND_API_KEY', '')
+    if resend_key:
+        payload = {
+            'from':    f'{from_name} <{from_email}>',
+            'to':      [to_email],
+            'subject': subject,
+            'html':    html,
+        }
+        try:
+            resp = _req.post(
+                'https://api.resend.com/emails',
+                headers={'Authorization': f'Bearer {resend_key}', 'Content-Type': 'application/json'},
+                json=payload,
+                timeout=30,
+            )
+            if resp.status_code in (200, 201):
+                return {'ok': True, 'id': resp.json().get('id')}
+            return {'ok': False, 'error': f'Resend HTTP {resp.status_code}: {resp.text[:200]}'}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)[:200]}
+
+    return {'ok': False, 'error': 'Sin API de envío configurada (SENDGRID_API_KEY o RESEND_API_KEY)'}
 
 
 def _send_smtp(to_email: str, subject: str, body_text: str,
@@ -1343,8 +1370,8 @@ def _send_smtp(to_email: str, subject: str, body_text: str,
         logger.warning(f'[EmailTool] No se pudo adjuntar foto firma: {e}')
 
     # ── Resend API (si SMTP no disponible o bloqueado) ───────────────────────
-    if os.getenv('RESEND_API_KEY') and _smtp_conn is None:
-        result = _send_resend(
+    if (os.getenv('SENDGRID_API_KEY') or os.getenv('RESEND_API_KEY')) and _smtp_conn is None:
+        result = _send_via_api(
             to_email=to_email, subject=subject, html_body=html_body,
             from_email=from_email, from_name=from_name,
             hdr_bytes=hdr_bytes if 'hdr_bytes' in dir() else None,
@@ -1704,8 +1731,8 @@ def _send_smtp_followup(to_email: str, subject: str, rubro: str,
         msg_related.attach(sig_img)
 
     # ── Resend API (si SMTP no disponible o bloqueado) ───────────────────────
-    if os.getenv('RESEND_API_KEY'):
-        result = _send_resend(
+    if os.getenv('SENDGRID_API_KEY') or os.getenv('RESEND_API_KEY'):
+        result = _send_via_api(
             to_email=to_email, subject=subject, html_body=html_body,
             from_email=from_email, from_name=from_name,
             hdr_bytes=hdr_gif_bytes if 'hdr_gif_bytes' in dir() else None,
@@ -5127,14 +5154,32 @@ def smtp_check():
     pwd   = os.getenv('SMTP_PASS', '')
     frm   = os.getenv('EMAIL_FROM', '')
     configured = bool(user and pwd)
+    sg_key = os.getenv('SENDGRID_API_KEY', '')
     result = {
-        'SMTP_HOST':  bool(host),
-        'SMTP_PORT':  bool(port),
-        'SMTP_USER':  bool(user),
-        'SMTP_PASS':  bool(pwd),
-        'EMAIL_FROM': bool(frm),
-        'configured': configured,
+        'SMTP_HOST':         bool(host),
+        'SMTP_PORT':         bool(port),
+        'SMTP_USER':         bool(user),
+        'SMTP_PASS':         bool(pwd),
+        'EMAIL_FROM':        bool(frm),
+        'SENDGRID_API_KEY':  bool(sg_key),
+        'canal':             'sendgrid' if sg_key else ('smtp' if configured else 'ninguno'),
+        'configured':        configured or bool(sg_key),
     }
+    if sg_key:
+        try:
+            import requests as _req
+            resp = _req.post(
+                'https://api.sendgrid.com/v3/mail/send',
+                headers={'Authorization': f'Bearer {sg_key}', 'Content-Type': 'application/json'},
+                json={'personalizations': [{'to': [{'email': 'test@test.com'}]}],
+                      'from': {'email': frm or 'test@test.com'}, 'subject': 'test',
+                      'content': [{'type': 'text/plain', 'value': 'test'}]},
+                timeout=10
+            )
+            result['sendgrid_login'] = 'OK' if resp.status_code in (200, 202) else f'HTTP {resp.status_code}: {resp.text[:100]}'
+        except Exception as e:
+            result['sendgrid_login'] = str(e)
+        return jsonify(result)
     if configured:
         try:
             ctx = ssl.create_default_context()
