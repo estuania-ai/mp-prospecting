@@ -1236,8 +1236,13 @@ def _send_via_api(to_email: str, subject: str, html_body: str,
     # ── SendGrid ──────────────────────────────────────────────────────────────
     sg_key = os.getenv('SENDGRID_API_KEY', '')
     if sg_key:
+        # BCC al remitente para que quede copia en su bandeja
+        bcc_addr = os.getenv('EMAIL_BCC', from_email)
+        personalizations: dict = {'to': [{'email': to_email}]}
+        if bcc_addr and bcc_addr != to_email:
+            personalizations['bcc'] = [{'email': bcc_addr}]
         payload = {
-            'personalizations': [{'to': [{'email': to_email}]}],
+            'personalizations': [personalizations],
             'from':    {'email': from_email, 'name': from_name},
             'subject': subject,
             'content': [{'type': 'text/html', 'value': html}],
