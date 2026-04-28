@@ -1,54 +1,84 @@
-"""Rutas Flask: Dashboard KPIs"""
-from flask import Blueprint, jsonify
+"""Rutas Flask: Dashboard KPIs — con soporte de filtro mensual"""
+from flask import Blueprint, jsonify, request
 from database import get_db
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
+
+def _date_clause(col, from_date, to_date, prefix='AND'):
+    """Devuelve fragmento SQL para filtrar por rango de fechas."""
+    if from_date and to_date:
+        return f"{prefix} date({col}) BETWEEN '{from_date}' AND '{to_date}'"
+    if from_date:
+        return f"{prefix} date({col}) >= '{from_date}'"
+    if to_date:
+        return f"{prefix} date({col}) <= '{to_date}'"
+    return ''
+
+
 @dashboard_bp.route('/kpis', methods=['GET'])
 def kpis():
+    from_date = request.args.get('from', '').strip()
+    to_date   = request.args.get('to', '').strip()
+
+    df_msg      = _date_clause('sent_at',    from_date, to_date)
+    df_ls       = _date_clause('updated_at', from_date, to_date)
+    df_pro      = _date_clause('updated_at', from_date, to_date)
+    df_email    = _date_clause('fecha_envio', from_date, to_date)
+
     conn = get_db()
 
+    # Totales leads (pool acumulado — sin filtro de fecha)
     total_leads  = conn.execute('SELECT COUNT(*) FROM leads').fetchone()[0]
-    total_sent   = conn.execute("SELECT COUNT(*) FROM messages WHERE status='sent'").fetchone()[0]
-    total_opened = conn.execute("SELECT COUNT(*) FROM messages WHERE opened_at IS NOT NULL").fetchone()[0]
 
-    by_status = conn.execute('''
-        SELECT status, COUNT(*) as cnt FROM lead_status GROUP BY status
+    total_sent   = conn.execute(
+        f"SELECT COUNT(*) FROM messages WHERE status='sent' {df_msg}"
+    ).fetchone()[0]
+    total_opened = conn.execute(
+        f"SELECT COUNT(*) FROM messages WHERE opened_at IS NOT NULL {df_msg}"
+    ).fetchone()[0]
+
+    # Estados lead_status en el periodo
+    by_status = conn.execute(f'''
+        SELECT status, COUNT(*) as cnt FROM lead_status
+        WHERE 1=1 {df_ls}
+        GROUP BY status
     ''').fetchall()
     by_status = {r['status']: r['cnt'] for r in by_status}
 
-    # Leads pendientes (no_enviado)
-    no_enviado = by_status.get('no_enviado', 0)
+    # Pendientes (no_enviado) — siempre estado actual, sin filtro fecha
+    no_enviado = conn.execute(
+        "SELECT COUNT(*) FROM lead_status WHERE status='no_enviado'"
+    ).fetchone()[0]
 
-    weekly = conn.execute('''
+    weekly = conn.execute(f'''
         SELECT strftime('%W', sent_at) as week,
                strftime('%Y', sent_at) as year,
                COUNT(*) as sent
-        FROM messages WHERE status='sent'
+        FROM messages WHERE status='sent' {df_msg}
         GROUP BY week, year ORDER BY year DESC, week DESC LIMIT 8
     ''').fetchall()
 
-    top_comunas = conn.execute('''
+    top_comunas = conn.execute(f'''
         SELECT comuna, COUNT(*) as total,
                COUNT(CASE WHEN ls.status='interesado' THEN 1 END) as interesados
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
-        WHERE comuna IS NOT NULL AND comuna != ''
+        WHERE comuna IS NOT NULL AND comuna != '' {_date_clause('ls.updated_at', from_date, to_date)}
         GROUP BY comuna ORDER BY total DESC LIMIT 8
     ''').fetchall()
 
-    top_rubros = conn.execute('''
+    top_rubros = conn.execute(f'''
         SELECT l.rubro, COUNT(*) as total,
                COUNT(CASE WHEN ls.status='interesado' THEN 1 END) as interesados,
                COUNT(CASE WHEN ls.status='cerrado' THEN 1 END) as cerrados
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
-        WHERE l.rubro IS NOT NULL AND l.rubro != ''
+        WHERE l.rubro IS NOT NULL AND l.rubro != '' {_date_clause('ls.updated_at', from_date, to_date)}
         GROUP BY l.rubro ORDER BY total DESC
     ''').fetchall()
 
-    # Stats por categoria
-    categoria_stats = conn.execute('''
+    categoria_stats = conn.execute(f'''
         SELECT l.categoria,
                COUNT(DISTINCT l.id) as total,
                COUNT(DISTINCT CASE WHEN ls.status='interesado' THEN l.id END) as interesados,
@@ -57,7 +87,7 @@ def kpis():
                COUNT(DISTINCT CASE WHEN ls.status='enviado' THEN l.id END) as enviados
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
-        WHERE l.categoria IS NOT NULL AND l.categoria != ''
+        WHERE l.categoria IS NOT NULL AND l.categoria != '' {_date_clause('ls.updated_at', from_date, to_date)}
         GROUP BY l.categoria ORDER BY total DESC
     ''').fetchall()
 
@@ -72,9 +102,16 @@ def kpis():
 
     # ── Métricas prospects (Gestión > Interesados) ───────────────────
     try:
-        prospects_total     = conn.execute("SELECT COUNT(*) FROM prospects").fetchone()[0]
-        prospects_cerrados  = conn.execute("SELECT COUNT(*) FROM prospects WHERE estado='cerrado'").fetchone()[0]
-        prospects_no_logrado= conn.execute("SELECT COUNT(*) FROM prospects WHERE estado='no_logrado'").fetchone()[0]
+        prospects_total = conn.execute(
+            "SELECT COUNT(*) FROM prospects"
+        ).fetchone()[0]
+        prospects_cerrados = conn.execute(
+            f"SELECT COUNT(*) FROM prospects WHERE estado='cerrado' {df_pro}"
+        ).fetchone()[0]
+        prospects_no_logrado = conn.execute(
+            f"SELECT COUNT(*) FROM prospects WHERE estado='no_logrado' {df_pro}"
+        ).fetchone()[0]
+        # En seguimiento = estado activo distinto de cerrado/no_logrado (estado actual)
         prospects_seguimiento = conn.execute(
             "SELECT COUNT(*) FROM prospects WHERE estado NOT IN ('cerrado','no_logrado')"
         ).fetchone()[0]
@@ -84,22 +121,25 @@ def kpis():
     # ── Métricas canal Email (et_contacts) ──────────────────────────
     try:
         email_enviados    = conn.execute(
-            "SELECT COUNT(*) FROM et_contacts WHERE campaign_status IN ('enviado','seguimiento_48h','no_responde')"
+            f"SELECT COUNT(*) FROM et_contacts "
+            f"WHERE campaign_status IN ('enviado','seguimiento_48h','no_responde') {df_email}"
         ).fetchone()[0]
         email_interesados = conn.execute(
-            "SELECT COUNT(*) FROM et_contacts WHERE estado_interes IN ('interesado','quiere_reunion','en_negociacion','followup_wa_enviado')"
+            f"SELECT COUNT(*) FROM et_contacts "
+            f"WHERE estado_interes IN ('interesado','quiere_reunion','en_negociacion','followup_wa_enviado') {df_email}"
         ).fetchone()[0]
         email_respondidos = conn.execute(
-            "SELECT COUNT(*) FROM et_contacts WHERE estado_interes IN ('respondido','interesado','quiere_reunion','en_negociacion','cerrado')"
+            f"SELECT COUNT(*) FROM et_contacts "
+            f"WHERE estado_interes IN ('respondido','interesado','quiere_reunion','en_negociacion','cerrado') {df_email}"
         ).fetchone()[0]
         email_cerrados    = conn.execute(
-            "SELECT COUNT(*) FROM et_contacts WHERE estado_interes='cerrado'"
+            f"SELECT COUNT(*) FROM et_contacts WHERE estado_interes='cerrado' {df_email}"
         ).fetchone()[0]
         email_reuniones   = conn.execute(
-            "SELECT COUNT(*) FROM et_contacts WHERE estado_interes='quiere_reunion'"
+            f"SELECT COUNT(*) FROM et_contacts WHERE estado_interes='quiere_reunion' {df_email}"
         ).fetchone()[0]
         email_no_responde = conn.execute(
-            "SELECT COUNT(*) FROM et_contacts WHERE campaign_status='no_responde'"
+            f"SELECT COUNT(*) FROM et_contacts WHERE campaign_status='no_responde' {df_email}"
         ).fetchone()[0]
         email_pendientes  = conn.execute(
             "SELECT COUNT(*) FROM et_contacts WHERE campaign_status IN ('pendiente','no_enviado')"
@@ -118,9 +158,16 @@ def kpis():
 
     interesados = by_status.get('interesado', 0)
     reuniones   = by_status.get('quiere_reunion', 0)
-    # Cerrados WA = lead_status cerrados + prospects cerrados (Gestión)
-    cerrados    = by_status.get('cerrado', 0) + prospects_cerrados
     enviados    = by_status.get('enviado', 0)
+
+    # ── Cerrados WA: Gestión es fuente de verdad (evita duplicados)
+    # Prospects cerrados en el periodo + lead_status cerrados sin prospect asociado
+    wa_cerrados_ls = by_status.get('cerrado', 0)
+    # Sólo sumar lead_status cerrados que NO tienen prospect (para no duplicar)
+    # prospects_cerrados ya representa a todos los cierres gestionados
+    # Si lead_status cerrado existe SIN prospect → sumarlo adicionalmente
+    # Resultado: prospects_cerrados + lead_status cerrados huérfanos
+    cerrados = prospects_cerrados + max(0, wa_cerrados_ls - prospects_cerrados)
 
     # Totales combinados (WA + Email)
     total_interesados = interesados + email_interesados
@@ -141,7 +188,7 @@ def kpis():
         'tasa_cierre':    tasa_cierre,
         'by_status':      by_status,
         # WA leads
-        'wa_interesados': interesados + reuniones,  # interesado + quiere_reunion
+        'wa_interesados': interesados + reuniones,
         'wa_reuniones':   reuniones,
         'wa_cerrados':    cerrados,
         # Email leads
@@ -164,12 +211,15 @@ def kpis():
         'top_comunas':    [dict(r) for r in top_comunas],
         'top_rubros':     [dict(r) for r in top_rubros],
         'categoria_stats':[dict(r) for r in categoria_stats],
-        'optout_motivos':[dict(r) for r in optout_motivos],
+        'optout_motivos': [dict(r) for r in optout_motivos],
         # Gestión > Interesados desglose
         'prospects_total':       prospects_total,
         'prospects_cerrados':    prospects_cerrados,
         'prospects_seguimiento': prospects_seguimiento,
         'prospects_no_logrado':  prospects_no_logrado,
+        # Periodo aplicado
+        'filtro_desde': from_date or None,
+        'filtro_hasta': to_date   or None,
     })
 
 

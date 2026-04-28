@@ -218,6 +218,9 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
 .btn-sm{padding:5px 12px;font-size:11px;border-radius:6px}
 .btn-ghost{background:transparent;border:1.5px solid var(--mp-border);color:var(--mp-text-2)}
 .btn-ghost:hover{border-color:var(--mp-blue);color:var(--mp-blue)}
+.int-flt{font-size:11px;padding:3px 10px;border-radius:14px;border:1.5px solid var(--mp-border);background:#fff;color:var(--mp-text-2);cursor:pointer;transition:all .15s}
+.int-flt:hover{border-color:var(--mp-blue);color:var(--mp-blue)}
+.int-flt.active{background:var(--mp-blue);color:#fff;border-color:var(--mp-blue)}
 .btn-danger{background:var(--mp-red);color:#fff}
 .btn-green{background:var(--mp-green);color:#fff}
 
@@ -721,7 +724,18 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
       <div class="page-title">Resumen general</div>
       <div class="page-sub" id="overviewDate"></div>
     </div>
-    <button class="btn btn-primary" onclick="loadOverview()">↻ Actualizar</button>
+    <button class="btn btn-primary" onclick="applyMonthFilter(document.getElementById('mes-filter').value)">↻ Actualizar</button>
+  </div>
+
+  <!-- ── Barra de filtro mensual ────────────────────────────── -->
+  <div style="background:#fff;border:1px solid var(--mp-border);border-radius:10px;padding:10px 16px;margin-bottom:18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <span style="font-size:12px;font-weight:700;color:var(--mp-text-2);white-space:nowrap">📅 Período:</span>
+    <select id="mes-filter" onchange="applyMonthFilter(this.value)"
+      style="border:1px solid var(--mp-border);border-radius:8px;padding:5px 10px;font-size:13px;color:var(--mp-text);background:#fff;cursor:pointer;min-width:180px">
+    </select>
+    <span id="filtro-badge" style="display:none;background:#dbeafe;color:#1d4ed8;font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px"></span>
+    <div style="flex:1"></div>
+    <span style="font-size:11px;color:var(--mp-text-3)">Los KPIs muestran actividad del período seleccionado</span>
   </div>
 
   <!-- KPI: Canal Email -->
@@ -906,6 +920,33 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
       </button>
       <button class="btn btn-primary" onclick="loadInteresados()">↻ Actualizar</button>
     </div>
+  </div>
+
+  <!-- ── Filtros interesados ────────────────────────────────── -->
+  <div style="background:#fff;border:1px solid var(--mp-border);border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-size:12px;font-weight:700;color:var(--mp-text-2);white-space:nowrap">📅 Mes:</span>
+    <select id="int-mes-filter" onchange="filtrarInteresados()"
+      style="border:1px solid var(--mp-border);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--mp-text);background:#fff;cursor:pointer">
+      <option value="">Todo el tiempo</option>
+    </select>
+    <div style="width:1px;height:20px;background:var(--mp-border)"></div>
+    <span style="font-size:12px;font-weight:700;color:var(--mp-text-2);white-space:nowrap">Estado:</span>
+    <div style="display:flex;gap:5px;flex-wrap:wrap">
+      <button class="int-flt active" onclick="setIntEstado(this,'')">Todos</button>
+      <button class="int-flt" onclick="setIntEstado(this,'en_seguimiento')">🔵 Seguimiento</button>
+      <button class="int-flt" onclick="setIntEstado(this,'reunion_agendada')">🤝 Reunión</button>
+      <button class="int-flt" onclick="setIntEstado(this,'cerrado')">✅ Cerrado</button>
+      <button class="int-flt" onclick="setIntEstado(this,'no_logrado')">❌ No logrado</button>
+      <button class="int-flt" onclick="setIntEstado(this,'sin_respuesta')">📵 Sin respuesta</button>
+    </div>
+    <div style="width:1px;height:20px;background:var(--mp-border)"></div>
+    <span style="font-size:12px;font-weight:700;color:var(--mp-text-2);white-space:nowrap">Canal:</span>
+    <select id="int-canal-filter" onchange="filtrarInteresados()"
+      style="border:1px solid var(--mp-border);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--mp-text);background:#fff;cursor:pointer">
+      <option value="">Todos</option>
+      <option value="wa">WhatsApp</option>
+      <option value="email">Email</option>
+    </select>
   </div>
 
   <!-- KPIs -->
@@ -2961,7 +3002,7 @@ function showPage(id, el, label){
   document.getElementById('pageLabel').textContent = label;
 
   const loaders = {
-    overview: loadOverview,
+    overview: function(){ applyMonthFilter(document.getElementById('mes-filter').value); },
     leads: function(){ loadLeads(); },
     envios: loadEnvios,
     sellers: loadSellers,
@@ -3040,11 +3081,67 @@ function fmt(n){ return n != null ? n.toLocaleString('es-CL') : '—'; }
 function fmtDate(s){ return s ? s.slice(0,16).replace('T',' ') : '—'; }
 
 // ─── OVERVIEW ───────────────────────────────────────
-async function loadOverview(){
+// ── Filtro mensual ────────────────────────────────────────────────
+(function buildMonthFilter(){
+  const sel = document.getElementById('mes-filter');
+  if(!sel) return;
+  const now = new Date();
+  // "Todo el tiempo" primero
+  const opt0 = document.createElement('option');
+  opt0.value = ''; opt0.textContent = 'Todo el tiempo'; sel.appendChild(opt0);
+  // Últimos 12 meses
+  for(let i = 0; i < 12; i++){
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const lbl = d.toLocaleDateString('es-CL',{month:'long',year:'numeric'});
+    const opt = document.createElement('option');
+    opt.value = `${y}-${m}`;
+    opt.textContent = i === 0 ? `Este mes (${lbl})` : lbl.charAt(0).toUpperCase()+lbl.slice(1);
+    sel.appendChild(opt);
+  }
+  // Default: este mes
+  sel.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+})();
+
+function applyMonthFilter(val){
+  if(!val){
+    loadOverview('','');
+    return;
+  }
+  const [y,m] = val.split('-');
+  const from = `${y}-${m}-01`;
+  // Último día del mes
+  const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
+  const to = `${y}-${m}-${String(lastDay).padStart(2,'0')}`;
+  loadOverview(from, to);
+}
+
+async function loadOverview(fromDate, toDate){
+  // Si no se pasan args, leer del selector
+  if(fromDate === undefined){
+    const sel = document.getElementById('mes-filter');
+    const val = sel ? sel.value : '';
+    if(val){ applyMonthFilter(val); return; }
+    fromDate = ''; toDate = '';
+  }
+
+  // Actualizar badge período
+  const badge = document.getElementById('filtro-badge');
+  const sel   = document.getElementById('mes-filter');
+  if(fromDate && badge){
+    badge.style.display='inline';
+    const selOpt = sel ? sel.options[sel.selectedIndex] : null;
+    badge.textContent = selOpt ? selOpt.textContent : fromDate + ' → ' + toDate;
+  } else if(badge){
+    badge.style.display='none';
+  }
+
   document.getElementById('overviewDate').textContent =
     new Date().toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
-  const d = await api('/api/dashboard/kpis');
+  const params = (fromDate && toDate) ? `?from=${fromDate}&to=${toDate}` : '';
+  const d = await api('/api/dashboard/kpis' + params);
   if(!d) return;
 
   // ── Canal Email KPIs ──────────────────────────────────────
@@ -4276,7 +4373,12 @@ window.rubrosPersonalizados = [];
 api('/api/leads/rubros-personalizados').then(function(r){
   if(r && r.rubros) window.rubrosPersonalizados = r.rubros;
 });
-loadOverview();
+// Carga inicial: usar el mes por defecto del selector
+setTimeout(function(){
+  const sel = document.getElementById('mes-filter');
+  if(sel && sel.value) applyMonthFilter(sel.value);
+  else loadOverview('','');
+}, 0);
 checkWaStatus();
 updateNextSendTime();
 
@@ -4417,8 +4519,115 @@ async function sendSeguimiento(leadId, nombre){
 var prospectoActual = null;
 var semanaOffset = 0;
 
-const MSG_INFO_PRESET = "Hola! Claro que si, muchas gracias por el interes. Para resumirte lo mas importante de la imagen: Es que tienes beneficios para cualquier necesidad de tu negocio, ya sea liquidez, creditos, Cuotas sin interes, Boletas, etc lo que necesites segun tu negocio. Dime, Que necesitas hoy en dia?, te tinca si te pego una llamadita corta de 5 minutos, tu me dices cuando o bien agendamos un dia en la semana para vernos, lo que sea mas comodo para ti, revisamos de forma super transparente si realmente te conviene el cambio. La idea es asesorarte. Me avisas que tengas un gran dia.";
+// ── Filtros Gestión Interesados ───────────────────────────────────
+var _intAllProspects = [];
+var _intAllTasks     = [];
+var _intEstadoFilter = '';
+
+(function buildIntMonthFilter(){
+  var sel = document.getElementById('int-mes-filter');
+  if(!sel) return;
+  var now = new Date();
+  for(var i = 0; i < 12; i++){
+    var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    var y = d.getFullYear();
+    var m = String(d.getMonth()+1).padStart(2,'0');
+    var lbl = d.toLocaleDateString('es-CL',{month:'long',year:'numeric'});
+    var opt = document.createElement('option');
+    opt.value = y+'-'+m;
+    opt.textContent = i===0 ? 'Este mes ('+lbl+')' : lbl.charAt(0).toUpperCase()+lbl.slice(1);
+    sel.appendChild(opt);
+  }
+})();
+
+function setIntEstado(btn, estado){
+  _intEstadoFilter = estado;
+  document.querySelectorAll('.int-flt').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  filtrarInteresados();
+}
+
+function filtrarInteresados(){
+  if(!_intAllProspects.length) return;
+  var mesVal  = (document.getElementById('int-mes-filter')||{}).value || '';
+  var canal   = (document.getElementById('int-canal-filter')||{}).value || '';
+  var estado  = _intEstadoFilter;
+
+  var filtered = _intAllProspects.filter(function(p){
+    // Filtro mes (por updated_at)
+    if(mesVal){
+      var upd = (p.updated_at||p.created_at||'').slice(0,7); // YYYY-MM
+      if(upd !== mesVal) return false;
+    }
+    // Filtro estado
+    if(estado && p.estado !== estado) return false;
+    // Filtro canal
+    if(canal === 'email' && p.source !== 'email') return false;
+    if(canal === 'wa'    && p.source === 'email') return false;
+    return true;
+  });
+
+  renderInteresadosKpis(filtered, _intAllTasks);
+  renderInteresadosList(filtered);
+}
+
+function renderInteresadosKpis(prospects, tasks){
+  document.getElementById('int-total').textContent = prospects.length;
+  var hoy = (tasks||[]).filter(function(t){return !t.completada;}).length;
+  var atrasadas = (tasks||[]).filter(function(t){return t.completada==0 && t.fecha < new Date().toISOString().slice(0,10);}).length;
+  var completadas = (tasks||[]).filter(function(t){return t.completada;}).length;
+  document.getElementById('int-hoy').textContent = hoy;
+  document.getElementById('int-atrasadas').textContent = atrasadas;
+  document.getElementById('int-completadas').textContent = completadas;
+  var cerrados   = prospects.filter(function(p){return p.estado==='cerrado';});
+  var nologrados = prospects.filter(function(p){return p.estado==='no_logrado';});
+  var total      = prospects.length;
+  var tasaCierre = total > 0 ? Math.round(cerrados.length/total*100) : 0;
+  document.getElementById('int-cerrados').textContent   = cerrados.length;
+  document.getElementById('int-tasa').textContent       = tasaCierre+'%';
+  document.getElementById('int-nologrados').textContent = nologrados.length;
+}
+
+const MSG_INFO_PRESET ="Hola! Claro que si, muchas gracias por el interes. Para resumirte lo mas importante de la imagen: Es que tienes beneficios para cualquier necesidad de tu negocio, ya sea liquidez, creditos, Cuotas sin interes, Boletas, etc lo que necesites segun tu negocio. Dime, Que necesitas hoy en dia?, te tinca si te pego una llamadita corta de 5 minutos, tu me dices cuando o bien agendamos un dia en la semana para vernos, lo que sea mas comodo para ti, revisamos de forma super transparente si realmente te conviene el cambio. La idea es asesorarte. Me avisas que tengas un gran dia.";
 const MSG_SEG_PRESET = "Hola, como estas? Te escribo cortito porque de la ultima vez que conversamos no tuve respuesta y queria saber si te quedo alguna duda. Te parece si agendamos una llamada rapida o paso a visitarte al local para revisarlo sin compromiso? Quedo super atento a lo que te acomode!";
+
+function renderInteresadosList(prospects){
+  if(!prospects.length){
+    document.getElementById('prospectosList').innerHTML = '<div style="text-align:center;padding:24px;color:var(--mp-text-3)">Sin prospectos para los filtros seleccionados</div>';
+    return;
+  }
+  document.getElementById('prospectosList').innerHTML = prospects.map(function(p){
+    var pendientes  = p.tareas_pendientes || 0;
+    var esEmail     = p.source === 'email';
+    var iconoCanal  = esEmail
+      ? '<span style="background:#EFF6FF;color:var(--mp-blue);font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:6px">✉ Email</span>'
+      : '';
+    var contactoSub = esEmail
+      ? (p.email || '—')
+      : (p.name + (p.competencia ? ' · ' + p.competencia : ''));
+    var btnContacto = esEmail
+      ? '<a href="mailto:'+p.email+'" onclick="event.stopPropagation()" title="Enviar email" style="background:#EFF6FF;color:var(--mp-blue);border:1px solid #bee3f8;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px;text-decoration:none">✉</a>'
+      : '<a href="https://wa.me/'+(p.phone||'')+'" target="_blank" onclick="event.stopPropagation()" style="background:#d4f5e2;color:#00875a;border:1px solid #b2dfc9;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px;text-decoration:none">💬 WA</a>';
+    return '<div class="log-item" style="cursor:pointer;border-left:3px solid '+(pendientes>0?'var(--mp-warn)':'(esEmail?\'var(--mp-blue)\':\'var(--mp-border)\')')+';margin-bottom:6px" onclick="abrirProspecto('+p.id+')">' +
+      '<div class="log-ico">'+(esEmail?'✉':'⭐')+'</div>' +
+      '<div class="log-info">' +
+      '<div class="log-title">'+p.negocio+iconoCanal+'</div>' +
+      '<div class="log-meta">'+contactoSub+' · '+p.rubro+'</div>' +
+      '</div>' +
+      (pendientes>0?'<span style="background:var(--mp-warn);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">'+pendientes+' tareas</span>':'') +
+      '<select onchange="cambiarEstadoProspecto('+p.id+',this.value,'+(p.lead_id||0)+')" onclick="event.stopPropagation()" style="font-size:11px;border:1px solid #ddd;border-radius:6px;padding:2px 6px;cursor:pointer">' +
+      '<option value="en_seguimiento" '+((!p.estado||p.estado==="en_seguimiento")?"selected":"")+'>🔵 En seguimiento</option>' +
+      '<option value="reunion_agendada" '+(p.estado==="reunion_agendada"?"selected":"")+'>🤝 Reunion</option>' +
+      '<option value="cerrado" '+(p.estado==="cerrado"?"selected":"")+'>✅ Cerrado</option>' +
+      '<option value="no_logrado" '+(p.estado==="no_logrado"?"selected":"")+'>❌ No logrado</option>' +
+      '<option value="sin_respuesta" '+(p.estado==="sin_respuesta"?"selected":"")+'>📵 Sin respuesta</option>' +
+      '</select>' +
+      btnContacto +
+      '<button onclick="event.stopPropagation();abrirActividad('+p.id+',\''+p.negocio+'\')" style="background:#e8f4fd;color:var(--mp-blue);border:1px solid #bee3f8;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px">📋</button>' +
+      '<button onclick="event.stopPropagation();eliminarProspecto('+p.id+','+(p.lead_id||0)+')" style="background:#fff5f5;color:var(--mp-red);border:1px solid #ffd0d0;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px">🗑</button>' +
+      '</div>';
+  }).join('');
+}
 
 async function loadInteresados(){
   const [prospects, tasks] = await Promise.all([
@@ -4427,14 +4636,12 @@ async function loadInteresados(){
   ]);
   if(!prospects) return;
 
-  // KPIs
-  document.getElementById('int-total').textContent = prospects.length;
-  var hoy = (tasks||[]).filter(t=>!t.completada).length;
-  var atrasadas = (tasks||[]).filter(t=>t.completada==0 && t.fecha < new Date().toISOString().slice(0,10)).length;
-  document.getElementById('int-hoy').textContent = hoy;
-  document.getElementById('int-atrasadas').textContent = atrasadas;
+  // Guardar data completa para filtros posteriores
+  _intAllProspects = prospects;
+  _intAllTasks     = tasks || [];
 
-  // Badge campana
+  // Badge campana (siempre sobre datos completos)
+  var hoy = (tasks||[]).filter(function(t){return !t.completada;}).length;
   if(hoy > 0){
     document.getElementById('alertaCampana').style.display='block';
     document.getElementById('alertaCount').textContent = hoy;
@@ -4444,53 +4651,11 @@ async function loadInteresados(){
     document.getElementById('tareasBadge').textContent = '0';
   }
 
-  // Render prospectos
-  if(!prospects.length){
-    document.getElementById('prospectosList').innerHTML = '<div style="text-align:center;padding:24px;color:var(--mp-text-3)">Sin prospectos interesados aun</div>';
-  } else {
-    document.getElementById('prospectosList').innerHTML = prospects.map(function(p){
-      var pendientes  = p.tareas_pendientes || 0;
-      var esEmail     = p.source === 'email';
-      var iconoCanal  = esEmail
-        ? '<span style="background:#EFF6FF;color:var(--mp-blue);font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-left:6px">✉ Email</span>'
-        : '';
-      var contactoSub = esEmail
-        ? (p.email || '—')
-        : (p.name + (p.competencia ? ' · ' + p.competencia : ''));
-      var btnContacto = esEmail
-        ? '<a href="mailto:'+p.email+'" onclick="event.stopPropagation()" title="Enviar email" style="background:#EFF6FF;color:var(--mp-blue);border:1px solid #bee3f8;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px;text-decoration:none">✉</a>'
-        : '<a href="https://wa.me/'+(p.phone||'')+'" target="_blank" onclick="event.stopPropagation()" style="background:#d4f5e2;color:#00875a;border:1px solid #b2dfc9;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px;text-decoration:none">💬 WA</a>';
-      return '<div class="log-item" style="cursor:pointer;border-left:3px solid '+(pendientes>0?'var(--mp-warn)':'(esEmail?\'var(--mp-blue)\':\'var(--mp-border)\')')+';margin-bottom:6px" onclick="abrirProspecto('+p.id+')">' +
-        '<div class="log-ico">'+(esEmail?'✉':'⭐')+'</div>' +
-        '<div class="log-info">' +
-        '<div class="log-title">'+p.negocio+iconoCanal+'</div>' +
-        '<div class="log-meta">'+contactoSub+' · '+p.rubro+'</div>' +
-        '</div>' +
-        (pendientes>0?'<span style="background:var(--mp-warn);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">'+pendientes+' tareas</span>':'') +
-        '<select onchange="cambiarEstadoProspecto('+p.id+',this.value,'+(p.lead_id||0)+')" onclick="event.stopPropagation()" style="font-size:11px;border:1px solid #ddd;border-radius:6px;padding:2px 6px;cursor:pointer">' +
-        '<option value="en_seguimiento" '+((!p.estado||p.estado==="en_seguimiento")?"selected":"")+'>🔵 En seguimiento</option>' +
-        '<option value="reunion_agendada" '+(p.estado==="reunion_agendada"?"selected":"")+'>🤝 Reunion</option>' +
-        '<option value="cerrado" '+(p.estado==="cerrado"?"selected":"")+'>✅ Cerrado</option>' +
-        '<option value="no_logrado" '+(p.estado==="no_logrado"?"selected":"")+'>❌ No logrado</option>' +
-        '<option value="sin_respuesta" '+(p.estado==="sin_respuesta"?"selected":"")+'>📵 Sin respuesta</option>' +
-        '</select>' +
-        btnContacto +
-        '<button onclick="event.stopPropagation();abrirActividad('+p.id+',p.negocio)" style="background:#e8f4fd;color:var(--mp-blue);border:1px solid #bee3f8;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px">📋</button>' +
-        '<button onclick="event.stopPropagation();eliminarProspecto('+p.id+','+(p.lead_id||0)+')" style="background:#fff5f5;color:var(--mp-red);border:1px solid #ffd0d0;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;margin-left:4px">🗑</button>' +
-        '</div>';
-    }).join('');
-  }
+  // KPIs + lista con filtros activos
+  filtrarInteresados();
 
-  // KPI adicionales
+  // Días promedio cierre (siempre total)
   var cerrados = prospects.filter(function(p){return p.estado==='cerrado';});
-  var nologrados = prospects.filter(function(p){return p.estado==='no_logrado';});
-  var completadas = (tasks||[]).filter(function(t){return t.completada;}).length;
-  var total = prospects.length;
-  var tasaCierre = total > 0 ? Math.round(cerrados.length/total*100) : 0;
-  document.getElementById('int-cerrados').textContent = cerrados.length;
-  document.getElementById('int-tasa').textContent = tasaCierre+'%';
-  document.getElementById('int-nologrados').textContent = nologrados.length;
-  document.getElementById('int-completadas').textContent = completadas;
   var diasProm = document.getElementById('int-dias-prom');
   if(diasProm){
     var cerradosConFecha = cerrados.filter(function(p){return p.created_at && p.updated_at;});
