@@ -734,63 +734,86 @@ async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str)
             await asyncio.sleep(2)
             await page.screenshot(path="logs/fastupd_search.png")
 
-            # 4) Click en el primer resultado (card de Andes UI con el nombre)
-            # La UI muestra el resultado como una "card" con: estado | nombre | direccion | ultima atencion | chevron >
-            await asyncio.sleep(1.5)  # esperar render del resultado
+            # 4) Click en el card del resultado usando MOUSE REAL
+            # JS .click() no dispara la navegación del SPA - hay que usar coordenadas del mouse
+            await asyncio.sleep(2)  # esperar render del resultado
 
-            row_clicked = await page.evaluate("""
+            # Obtener coordenadas del card más específico que contiene el nombre
+            card_info = await page.evaluate("""
                 (nombre) => {
                     const norm = (s) => (s||'').trim().toLowerCase();
                     const target = norm(nombre);
-                    // Buscar elementos clickeables que contengan el nombre
                     const candidates = [...document.querySelectorAll('a, button, [role="button"], [class*="card"], [class*="item"], li, article, div')];
-                    // Filtrar: tiene el nombre, es razonablemente pequeño (no el body)
                     const matches = candidates.filter(el => {
                         const t = norm(el.innerText);
                         if (!t.includes(target)) return false;
-                        if (t.length > 600) return false;  // no es la pagina entera
+                        if (t.length > 800) return false;
                         const r = el.getBoundingClientRect();
-                        return r.width > 200 && r.height > 40 && r.height < 250;
+                        return r.width > 200 && r.height > 40 && r.height < 300 && r.top > 0;
                     });
-                    // Ordenar por tamaño ascendente: el match más pequeño es la card específica
                     matches.sort((a, b) => {
                         const ra = a.getBoundingClientRect();
                         const rb = b.getBoundingClientRect();
                         return (ra.width * ra.height) - (rb.width * rb.height);
                     });
-                    if (matches.length === 0) return {ok: false, count: 0};
+                    if (matches.length === 0) return null;
                     const el = matches[0];
                     el.scrollIntoView({block: 'center', behavior: 'instant'});
-                    el.click();
-                    return {ok: true, count: matches.length, tag: el.tagName, cls: el.className};
+                    const r = el.getBoundingClientRect();
+                    return {
+                        x: r.left + r.width / 2,
+                        y: r.top + r.height / 2,
+                        tag: el.tagName,
+                        cls: (el.className || '').toString().substring(0, 80),
+                        w: r.width,
+                        h: r.height,
+                        count: matches.length
+                    };
                 }
             """, nombre)
 
-            if not (isinstance(row_clicked, dict) and row_clicked.get("ok")):
-                # Fallback: selectores tradicionales
+            row_clicked = False
+            if isinstance(card_info, dict) and "x" in card_info:
+                logger.info(f"[FastUpd] Card encontrado: {card_info}")
+                await asyncio.sleep(0.5)
+                # Click real con mouse en las coordenadas del centro del card
+                await page.mouse.click(card_info["x"], card_info["y"])
+                row_clicked = True
+                logger.info(f"[FastUpd] Click mouse en ({card_info['x']:.0f}, {card_info['y']:.0f})")
+
+            if not row_clicked:
+                # Fallback: selectores Playwright tradicionales con click real
                 for sel in [
+                    f'a:has-text("{nombre}")',
+                    f'[role="link"]:has-text("{nombre}")',
                     f'.andes-card:has-text("{nombre}")',
                     f'[class*="card"]:has-text("{nombre}")',
-                    f'a:has-text("{nombre}")',
-                    f'tr:has-text("{nombre}")',
                     f'li:has-text("{nombre}")',
                 ]:
                     try:
                         loc = page.locator(sel).first
                         await loc.wait_for(state="visible", timeout=4_000)
-                        await loc.click()
-                        row_clicked = {"ok": True, "via": sel}
+                        await loc.scroll_into_view_if_needed()
+                        await loc.click(timeout=5_000)
+                        row_clicked = True
                         logger.info(f"[FastUpd] Click card via fallback {sel}")
                         break
                     except Exception:
                         continue
 
-            if not (isinstance(row_clicked, dict) and row_clicked.get("ok")):
+            if not row_clicked:
                 await page.screenshot(path="logs/fastupd_no_row.png")
                 await browser.close()
                 return {"ok": False, "mensaje": f"Lead '{nombre}' encontrado en buscador pero no se pudo abrir su card"}
 
-            logger.info(f"[FastUpd] Card clickeada: {row_clicked}")
+            # Esperar navegacion: la URL deberia cambiar al detalle del comercio
+            try:
+                await page.wait_for_url("**/comercio/**", timeout=10_000)
+            except Exception:
+                # No matchea ese patron, esperar networkidle
+                await page.wait_for_load_state("networkidle", timeout=10_000)
+            await asyncio.sleep(1.5)
+            logger.info(f"[FastUpd] URL tras click card: {page.url}")
 
             await page.wait_for_load_state("networkidle", timeout=10_000)
             await asyncio.sleep(1.5)
