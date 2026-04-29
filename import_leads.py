@@ -1,4 +1,4 @@
-﻿import requests, sqlite3, re, sys
+import requests, sqlite3, re, sys
 sys.path.insert(0,'.')
 from database import get_db
 

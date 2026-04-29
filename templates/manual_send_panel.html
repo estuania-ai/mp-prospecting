@@ -1,0 +1,618 @@
+<!-- Panel de Envío Manual por Rubro -->
+<div id="manual-send-panel" style="display:none;" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>📤 Envío Manual por Rubro</h2>
+      <button class="close-btn" onclick="closeManualSendPanel()">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Estado Actual del Servicio -->
+      <div class="status-box">
+        <div class="status-item">
+          <span class="label">Estado WhatsApp:</span>
+          <span id="wa-status-manual" class="status-badge offline">Desconectado</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Horario Permitido:</span>
+          <span class="status-info">07:00 - 20:00</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Hora Actual:</span>
+          <span id="current-time-manual" class="status-info">--:--</span>
+        </div>
+      </div>
+
+      <!-- Selector de Rubro -->
+      <div class="form-group">
+        <label for="rubro-select">Selecciona un Rubro:</label>
+        <div class="rubro-select-wrapper">
+          <select id="rubro-select" onchange="onRubroSelected()">
+            <option value="">-- Selecciona un rubro --</option>
+          </select>
+          <span class="rubro-info" id="rubro-info"></span>
+        </div>
+      </div>
+
+      <!-- Información del Rubro Seleccionado -->
+      <div id="rubro-details" style="display:none;" class="rubro-details-box">
+        <div class="detail-row">
+          <span class="detail-label">Leads Válidos:</span>
+          <span id="valid-leads-count" class="detail-value">0</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Leads Inválidos:</span>
+          <span id="invalid-leads-count" class="detail-value">0</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Total Leads:</span>
+          <span id="total-leads-count" class="detail-value">0</span>
+        </div>
+
+        <!-- Preview de Leads -->
+        <div class="leads-preview" id="leads-preview-container" style="display:none;">
+          <div class="preview-header">
+            <h4>Preview de Leads a Enviar (primeros 10):</h4>
+          </div>
+          <div id="leads-preview" class="leads-list"></div>
+        </div>
+      </div>
+
+      <!-- Advertencias -->
+      <div id="warnings-box" class="warnings-box" style="display:none;">
+        <div id="hour-warning" class="warning-msg" style="display:none;">
+          ⏰ <strong>Envíos fuera de horario:</strong> Solo se pueden enviar entre 07:00 y 20:00
+        </div>
+        <div id="no-leads-warning" class="warning-msg" style="display:none;">
+          ⚠️ <strong>Sin leads:</strong> No hay leads válidos para este rubro
+        </div>
+        <div id="wa-offline-warning" class="warning-msg" style="display:none;">
+          📱 <strong>WhatsApp Desconectado:</strong> Conecta tu WhatsApp antes de enviar
+        </div>
+      </div>
+
+      <!-- Botones de Acción -->
+      <div class="modal-actions">
+        <button id="send-btn" class="btn btn-primary" onclick="confirmManualSendByRubro()" disabled>
+          Enviar a todos los leads
+        </button>
+        <button class="btn btn-secondary" onclick="closeManualSendPanel()">
+          Cancelar
+        </button>
+      </div>
+
+      <!-- Información Adicional -->
+      <div class="info-box">
+        <h4>🔒 Protecciones Anti-Spam Activas:</h4>
+        <ul>
+          <li>✓ Validación de teléfono móvil chileno</li>
+          <li>✓ Exclusión de números fijos (562XXXXXXX)</li>
+          <li>✓ Bloqueo de envíos fuera de horario (07:00-20:00)</li>
+          <li>✓ Deduplicación: máximo 1 mensaje por lead/día</li>
+          <li>✓ Exclusión automática de números en opt-out</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Modal Overlay */
+#manual-send-panel.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  width: 90%;
+  max-width: 600px;
+  max-height: 85vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px;
+  border-bottom: 1px solid #dde5ef;
+  background: #f8fafc;
+}
+
+.modal-header h2 {
+  font-size: 18px;
+  color: #1a2332;
+  margin: 0;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #8896a8;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: #f0f4f8;
+  color: #1a2332;
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.status-box {
+  background: #f8fafc;
+  border: 1px solid #dde5ef;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+.status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.status-item .label {
+  font-size: 12px;
+  color: #8896a8;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-badge {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.status-badge.online {
+  background: rgba(0, 166, 80, 0.1);
+  color: #00a650;
+}
+
+.status-badge.offline {
+  background: rgba(242, 61, 79, 0.1);
+  color: #f23d4f;
+}
+
+.status-info {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a2332;
+}
+
+.form-group {
+  margin-bottom: 24px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #1a2332;
+}
+
+.rubro-select-wrapper {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+#rubro-select {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #dde5ef;
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  cursor: pointer;
+  color: #1a2332;
+}
+
+#rubro-select:hover {
+  border-color: #009ee3;
+}
+
+#rubro-select:focus {
+  outline: none;
+  border-color: #009ee3;
+  box-shadow: 0 0 0 3px rgba(0, 158, 227, 0.1);
+}
+
+.rubro-info {
+  font-size: 12px;
+  color: #8896a8;
+}
+
+.rubro-details-box {
+  background: #f8fafc;
+  border: 1px solid #dde5ef;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 13px;
+}
+
+.detail-label {
+  color: #8896a8;
+  font-weight: 500;
+}
+
+.detail-value {
+  font-weight: 700;
+  color: #009ee3;
+}
+
+.leads-preview {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #dde5ef;
+}
+
+.preview-header {
+  margin-bottom: 12px;
+}
+
+.preview-header h4 {
+  font-size: 12px;
+  color: #1a2332;
+  margin: 0;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.leads-list {
+  max-height: 250px;
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.lead-item {
+  background: white;
+  border: 1px solid #dde5ef;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.lead-name {
+  font-weight: 500;
+  color: #1a2332;
+}
+
+.lead-phone {
+  color: #8896a8;
+  font-family: monospace;
+}
+
+.warnings-box {
+  margin-bottom: 20px;
+}
+
+.warning-msg {
+  background: rgba(255, 119, 51, 0.1);
+  border-left: 3px solid #ff7733;
+  padding: 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #8b4513;
+  margin-bottom: 8px;
+  display: none;
+}
+
+.warning-msg strong {
+  color: #ff7733;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.btn {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+}
+
+.btn-primary {
+  background: #009ee3;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #007cba;
+  box-shadow: 0 4px 12px rgba(0, 158, 227, 0.3);
+}
+
+.btn-primary:disabled {
+  background: #d1dbe8;
+  color: #8896a8;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #f0f4f8;
+  color: #4a5568;
+  border: 1px solid #dde5ef;
+}
+
+.btn-secondary:hover {
+  background: #dde5ef;
+}
+
+.info-box {
+  background: #e6f6fd;
+  border: 1px solid #b3e5fc;
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 12px;
+}
+
+.info-box h4 {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #007cba;
+  font-weight: 600;
+}
+
+.info-box ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.info-box li {
+  padding: 4px 0;
+  color: #007cba;
+  line-height: 1.5;
+}
+</style>
+
+<script>
+let rubrosCache = null;
+let leadsCache = {};
+
+// Abrir panel
+function openManualSendPanel() {
+  document.getElementById('manual-send-panel').style.display = 'flex';
+  loadRubros();
+  updateTimeDisplay();
+  updateWAStatus();
+  setInterval(updateTimeDisplay, 1000);
+}
+
+// Cerrar panel
+function closeManualSendPanel() {
+  document.getElementById('manual-send-panel').style.display = 'none';
+  resetForm();
+}
+
+// Cargar lista de rubros
+async function loadRubros() {
+  try {
+    const res = await fetch('/api/manual/rubros');
+    const data = await res.json();
+
+    rubrosCache = data.rubros;
+    const select = document.getElementById('rubro-select');
+
+    data.rubros.forEach(rubro => {
+      const option = document.createElement('option');
+      option.value = rubro.key;
+      option.textContent = `${rubro.emoji} ${rubro.label}`;
+      option.dataset.categoria = rubro.categoria;
+      select.appendChild(option);
+    });
+  } catch (e) {
+    console.error('Error cargando rubros:', e);
+    alert('Error cargando lista de rubros');
+  }
+}
+
+// Cuando se selecciona un rubro
+async function onRubroSelected() {
+  const rubro = document.getElementById('rubro-select').value;
+
+  if (!rubro) {
+    document.getElementById('rubro-details').style.display = 'none';
+    document.getElementById('warnings-box').style.display = 'none';
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/manual/leads-by-rubro/${rubro}`);
+    const data = await res.json();
+
+    leadsCache[rubro] = data;
+
+    // Actualizar información
+    document.getElementById('valid-leads-count').textContent = data.valid || 0;
+    document.getElementById('invalid-leads-count').textContent = data.invalid || 0;
+    document.getElementById('total-leads-count').textContent = data.total || 0;
+
+    // Mostrar detalles
+    document.getElementById('rubro-details').style.display = 'block';
+
+    // Mostrar preview de leads válidos
+    if (data.valid > 0) {
+      const preview = data.leads.slice(0, 10);
+      const previewHtml = preview.map(lead => `
+        <div class="lead-item">
+          <span class="lead-name">${lead.name}</span>
+          <span class="lead-phone">${lead.phone}</span>
+        </div>
+      `).join('');
+
+      document.getElementById('leads-preview').innerHTML = previewHtml;
+      document.getElementById('leads-preview-container').style.display = 'block';
+    } else {
+      document.getElementById('leads-preview-container').style.display = 'none';
+    }
+
+    // Actualizar warnings
+    updateWarnings(data.valid);
+  } catch (e) {
+    console.error('Error cargando leads:', e);
+    alert('Error cargando leads del rubro');
+  }
+}
+
+// Actualizar warnings
+function updateWarnings(validLeads) {
+  const warningsBox = document.getElementById('warnings-box');
+  const hourWarning = document.getElementById('hour-warning');
+  const noLeadsWarning = document.getElementById('no-leads-warning');
+  const waOfflineWarning = document.getElementById('wa-offline-warning');
+
+  const now = new Date().getHours();
+  const isAllowedHour = now >= 7 && now < 20;
+  const waStatus = document.getElementById('wa-status-manual').textContent === 'Conectado';
+
+  warningsBox.style.display = 'block';
+  hourWarning.style.display = isAllowedHour ? 'none' : 'block';
+  noLeadsWarning.style.display = validLeads > 0 ? 'none' : 'block';
+  waOfflineWarning.style.display = waStatus ? 'none' : 'block';
+
+  // Habilitar/Deshabilitar botón de envío
+  const sendBtn = document.getElementById('send-btn');
+  sendBtn.disabled = !isAllowedHour || validLeads === 0 || !waStatus;
+}
+
+// Confirmación de envío
+async function confirmManualSendByRubro() {
+  const rubro = document.getElementById('rubro-select').value;
+  const data = leadsCache[rubro];
+
+  if (!confirm(`¿Enviar ${data.valid} mensajes a leads del rubro "${data.rubro}"?\n\nSe respetarán todas las reglas anti-spam`)) {
+    return;
+  }
+
+  try {
+    document.getElementById('send-btn').disabled = true;
+
+    const res = await fetch('/api/manual/send-by-rubro', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rubro })
+    });
+
+    const response = await res.json();
+
+    if (res.ok) {
+      alert(`✓ Envío iniciado:\n${response.message}\n\nTotal: ${response.total_selected} leads`);
+      closeManualSendPanel();
+    } else {
+      alert(`✗ Error: ${response.error}`);
+    }
+  } catch (e) {
+    console.error('Error enviando:', e);
+    alert('Error iniciando envío');
+  } finally {
+    document.getElementById('send-btn').disabled = false;
+  }
+}
+
+// Actualizar hora actual
+function updateTimeDisplay() {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  document.getElementById('current-time-manual').textContent = `${hours}:${minutes}`;
+
+  // Actualizar warnings si está el panel abierto
+  if (document.getElementById('manual-send-panel').style.display === 'flex') {
+    const rubro = document.getElementById('rubro-select').value;
+    if (rubro && leadsCache[rubro]) {
+      updateWarnings(leadsCache[rubro].valid);
+    }
+  }
+}
+
+// Actualizar estado de WhatsApp
+async function updateWAStatus() {
+  try {
+    const res = await fetch('/api/manual/status');
+    const data = await res.json();
+    const badge = document.getElementById('wa-status-manual');
+
+    if (data.logged_in) {
+      badge.textContent = 'Conectado';
+      badge.classList.remove('offline');
+      badge.classList.add('online');
+    } else {
+      badge.textContent = 'Desconectado';
+      badge.classList.add('offline');
+      badge.classList.remove('online');
+    }
+  } catch (e) {
+    console.error('Error actualizando estado:', e);
+  }
+}
+
+// Resetear formulario
+function resetForm() {
+  document.getElementById('rubro-select').value = '';
+  document.getElementById('rubro-details').style.display = 'none';
+  document.getElementById('warnings-box').style.display = 'none';
+  leadsCache = {};
+}
+</script>

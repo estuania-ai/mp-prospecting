@@ -1,4 +1,4 @@
-﻿import requests, sqlite3, json
+import requests, sqlite3, json
 
 conn2 = sqlite3.connect('data/prospecting.db')
 token = conn2.execute("SELECT value FROM config WHERE key='apify_token'").fetchone()[0]
