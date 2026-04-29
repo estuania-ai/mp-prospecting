@@ -774,24 +774,67 @@ def _render_header_frames(c: dict):
     ImageDraw.Draw(mask).ellipse((0, 0, logo_size - 1, logo_size - 1), fill=255)
     logo_img.putalpha(mask)
 
-    # ── Fuentes a 2× ──────────────────────────────────────────────────────────
-    fp = 'C:/Windows/Fonts/'
-    skill_fp = ('C:/Users/juanspinto/AppData/Roaming/Claude/local-agent-mode-sessions'
-                '/bf772bf9-9a4f-4c89-86cf-750bb90da7a6/d247d3bd-99ee-49c3-9a1e-110678353e64'
-                '/rpm/plugin_01XPcG5ZCM5xXEvTWbFra5qr/skills/media/assets/proxima_nova/')
+    # ── Fuentes a 2× — busca en multiples paths para Windows + Linux/nixpacks ──
+    f_bold_sm = f_bold_h1 = f_bold_h2 = f_reg_pre = None
+
+    def _find_font(candidates_bold, candidates_reg):
+        """Devuelve (path_bold, path_reg) o (None, None)."""
+        import os as _os, glob as _glob
+        bold_path = reg_path = None
+        for c in candidates_bold:
+            if '*' in c:
+                matches = _glob.glob(c)
+                if matches:
+                    bold_path = matches[0]; break
+            elif _os.path.isfile(c):
+                bold_path = c; break
+        for c in candidates_reg:
+            if '*' in c:
+                matches = _glob.glob(c)
+                if matches:
+                    reg_path = matches[0]; break
+            elif _os.path.isfile(c):
+                reg_path = c; break
+        return bold_path, reg_path
+
+    bold_p, reg_p = _find_font(
+        candidates_bold=[
+            # Custom: si el usuario incluye fuentes en el proyecto
+            str(email_assets_dir / 'fonts' / 'proximanova-bold.otf'),
+            # Linux nixpacks (Railway) - DejaVu Sans Bold
+            '/nix/store/*/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+            '/nix/store/*/share/fonts/dejavu/DejaVuSans-Bold.ttf',
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+            # Linux Liberation Sans (similar a Arial)
+            '/nix/store/*/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+            '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+            # Windows
+            'C:/Windows/Fonts/arialbd.ttf',
+        ],
+        candidates_reg=[
+            str(email_assets_dir / 'fonts' / 'proximanova-regular.otf'),
+            '/nix/store/*/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+            '/nix/store/*/share/fonts/dejavu/DejaVuSans.ttf',
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+            '/nix/store/*/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+            '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+            'C:/Windows/Fonts/arial.ttf',
+        ],
+    )
+
     try:
-        f_bold_sm = ImageFont.truetype(skill_fp + 'proximanova-bold.otf',      13 * SCALE)
-        f_bold_h1 = ImageFont.truetype(skill_fp + 'proximanova-bold.otf',      22 * SCALE)
-        f_bold_h2 = ImageFont.truetype(skill_fp + 'proximanova-bold.otf',      22 * SCALE)
-        f_reg_pre = ImageFont.truetype(skill_fp + 'proximanova-regular.otf',   12 * SCALE)
-    except Exception:
-        try:
-            f_bold_sm = ImageFont.truetype(fp + 'arialbd.ttf', 13 * SCALE)
-            f_bold_h1 = ImageFont.truetype(fp + 'arialbd.ttf', 22 * SCALE)
-            f_bold_h2 = ImageFont.truetype(fp + 'arialbd.ttf', 22 * SCALE)
-            f_reg_pre = ImageFont.truetype(fp + 'arial.ttf',   12 * SCALE)
-        except Exception:
-            f_bold_sm = f_bold_h1 = f_bold_h2 = f_reg_pre = ImageFont.load_default()
+        if bold_p:
+            f_bold_sm = ImageFont.truetype(bold_p, 13 * SCALE)
+            f_bold_h1 = ImageFont.truetype(bold_p, 22 * SCALE)
+            f_bold_h2 = ImageFont.truetype(bold_p, 22 * SCALE)
+        if reg_p:
+            f_reg_pre = ImageFont.truetype(reg_p, 12 * SCALE)
+        if not (f_bold_sm and f_reg_pre):
+            raise FileNotFoundError("No se encontraron fuentes en el sistema")
+        logger.info(f"[EmailTool] Fuentes header: bold={bold_p}, reg={reg_p}")
+    except Exception as _e:
+        logger.warning(f"[EmailTool] Fallback a fuente default: {_e}")
+        f_bold_sm = f_bold_h1 = f_bold_h2 = f_reg_pre = ImageFont.load_default()
 
     h1  = c.get('h1', 'Esto tarda menos')
     h2  = c.get('h2', 'que imaginas')

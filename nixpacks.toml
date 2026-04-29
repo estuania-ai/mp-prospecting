@@ -1,2 +1,2 @@
 [phases.setup]
-nixPkgs = ["python311", "chromium"]
+nixPkgs = ["python311", "chromium", "dejavu_fonts", "liberation_ttf"]
