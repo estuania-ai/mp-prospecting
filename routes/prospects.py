@@ -248,15 +248,83 @@ def reagendar_task(tid):
 
 @prospects_bp.route('/<int:prospect_id>', methods=['DELETE'])
 def delete_prospect(prospect_id):
-    """Elimina un prospecto de Interesados"""
+    """
+    Elimina un prospecto de Interesados.
+    Además: cambia el lead asociado a estado 'opt_out' (con motivo
+    'Competencia con mejores cargos') y dispara la actualización
+    automática en Fast (Rechazada / Competencia con mejores cargos / TPV 5M).
+    """
     conn = get_db()
+    # Obtener datos del prospect antes de eliminar
+    prospect = conn.execute(
+        'SELECT lead_id, phone, name, negocio FROM prospects WHERE id = ?',
+        (prospect_id,)
+    ).fetchone()
+
     # Eliminar tareas asociadas
     conn.execute('DELETE FROM tasks WHERE prospect_id=?', (prospect_id,))
     # Eliminar prospecto
     conn.execute('DELETE FROM prospects WHERE id=?', (prospect_id,))
     conn.commit()
     conn.close()
-    return jsonify({'ok': True})
+
+    # Cambiar lead a opt_out + disparar actualizacion en Fast
+    if prospect:
+        from database import update_lead_status
+        prospect = dict(prospect)
+        phone = prospect.get('phone')
+        lead_id = prospect.get('lead_id')
+
+        if phone:
+            try:
+                update_lead_status(
+                    phone,
+                    'opt_out',
+                    notes='Auto: eliminado de Interesados',
+                    optout_motivo='Competencia con mejores cargos'
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"[ProspectDelete] update_lead_status falló: {e}")
+
+        # Disparar actualizacion en Fast (background) - misma logica que update_status
+        if lead_id:
+            import threading, os
+            def _actualizar_fast_async():
+                import logging as _logging
+                _log = _logging.getLogger(__name__)
+                try:
+                    conn2 = get_db()
+                    row = conn2.execute(
+                        "SELECT fast_ok, name, phone FROM leads WHERE id = ?", (lead_id,)
+                    ).fetchone()
+                    conn2.close()
+                    if not row or not row['fast_ok']:
+                        _log.info(f"[ProspectDelete] Lead {lead_id} no esta en Fast, skip")
+                        return
+
+                    import requests as _req
+                    fast_local_url = os.getenv("FAST_LOCAL_URL", "").strip()
+                    fast_local_token = os.getenv("FAST_LOCAL_TOKEN", "").strip()
+                    if not fast_local_url:
+                        return
+
+                    url = fast_local_url.rstrip("/") + "/actualizar-visita-fast"
+                    resp = _req.post(
+                        url,
+                        json={"nombre": row['name'], "telefono": row['phone'], "estado": "opt_out"},
+                        headers={"X-Fast-Token": fast_local_token},
+                        timeout=300,
+                    )
+                    _log.info(f"[ProspectDelete] Lead {lead_id} -> opt_out: {resp.status_code} {resp.text[:200]}")
+                except Exception as e:
+                    _log.error(f"[ProspectDelete] Error actualizando Fast lead {lead_id}: {e}")
+
+            t = threading.Thread(target=_actualizar_fast_async)
+            t.daemon = True
+            t.start()
+
+    return jsonify({'ok': True, 'lead_changed_to': 'opt_out' if prospect else None})
 
 
 # ─── CRM ESTADOS Y ACTIVIDAD ─────────────────────────────────
