@@ -1369,24 +1369,14 @@ def _send_smtp(to_email: str, subject: str, body_text: str,
     except Exception as e:
         logger.warning(f'[EmailTool] No se pudo adjuntar foto firma: {e}')
 
-    # ── Resend API (si SMTP no disponible o bloqueado) ───────────────────────
-    if (os.getenv('SENDGRID_API_KEY') or os.getenv('RESEND_API_KEY')) and _smtp_conn is None:
-        result = _send_via_api(
-            to_email=to_email, subject=subject, html_body=html_body,
-            from_email=from_email, from_name=from_name,
-            hdr_bytes=hdr_bytes if 'hdr_bytes' in dir() else None,
-            pos_bytes=pos_bytes if 'pos_bytes' in dir() else None,
-            sig_bytes=raw_sig   if 'raw_sig'   in dir() else None,
-        )
-        if result.get('ok'):
-            result['tracking_token'] = tracking_token
-        return result
-
-    # ── EMAIL_LOCAL_URL: proxy al servidor local de la PC (evita bloqueos
-    # de Context-Aware Access cuando Railway intenta SMTP desde IP no usual) ──
+    # ── EMAIL_LOCAL_URL: proxy al servidor local de la PC (PRIORIDAD MÁXIMA) ──
+    # Si está configurado, ignoramos cualquier API/SMTP de Railway porque Workspace
+    # bloquea SMTP de Railway por Context-Aware Access. El servidor local manda
+    # desde la IP corporativa habitual del usuario.
     email_local_url = os.getenv('EMAIL_LOCAL_URL', '').strip()
     email_local_token = os.getenv('EMAIL_LOCAL_TOKEN', '').strip() or os.getenv('FAST_LOCAL_TOKEN', '').strip()
     if email_local_url and _smtp_conn is None:
+        logger.info(f'[EmailTool] Proxy a servidor local: {email_local_url}')
         try:
             import requests as _req
             msg_bytes = msg_root.as_string()
@@ -1404,6 +1394,7 @@ def _send_smtp(to_email: str, subject: str, body_text: str,
             if resp.status_code == 401:
                 return {'ok': False, 'error': 'Token inválido en servidor local'}
             data = resp.json()
+            logger.info(f'[EmailTool] Respuesta local: {data}')
             if data.get('ok'):
                 return {'ok': True, 'tracking_token': tracking_token}
             if data.get('bounced'):
@@ -1412,7 +1403,21 @@ def _send_smtp(to_email: str, subject: str, body_text: str,
         except _req.exceptions.ConnectionError:
             return {'ok': False, 'error': 'Servidor local de email no disponible (PC apagada o tunnel caído)'}
         except Exception as e:
+            logger.error(f'[EmailTool] Error proxy local: {e}', exc_info=True)
             return {'ok': False, 'error': f'Error proxy local: {str(e)[:200]}'}
+
+    # ── Resend API (si SMTP no disponible o bloqueado) ───────────────────────
+    if (os.getenv('SENDGRID_API_KEY') or os.getenv('RESEND_API_KEY')) and _smtp_conn is None:
+        result = _send_via_api(
+            to_email=to_email, subject=subject, html_body=html_body,
+            from_email=from_email, from_name=from_name,
+            hdr_bytes=hdr_bytes if 'hdr_bytes' in dir() else None,
+            pos_bytes=pos_bytes if 'pos_bytes' in dir() else None,
+            sig_bytes=raw_sig   if 'raw_sig'   in dir() else None,
+        )
+        if result.get('ok'):
+            result['tracking_token'] = tracking_token
+        return result
 
     # ── SMTP directo ─────────────────────────────────────────────────────────
     try:
