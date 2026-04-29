@@ -693,7 +693,16 @@ async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str)
                 await browser.close()
                 return {"ok": False, "mensaje": "No se encontró el botón 'Comercios' en el sidebar"}
 
-            await page.wait_for_load_state("networkidle", timeout=15_000)
+            # Esperar carga DOM (no networkidle - la pagina tiene polling constante)
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=10_000)
+            except Exception:
+                pass
+            # Esperar a que el input de busqueda exista (señal de pagina lista)
+            try:
+                await page.wait_for_selector('input[placeholder*="buscar" i], input[type="search"], input[type="text"]', timeout=10_000, state="visible")
+            except Exception:
+                logger.warning("[FastUpd] Input de busqueda no aparecio en 10s")
             await asyncio.sleep(1.5)
 
             # 3) Buscar por NOMBRE (columna 'negocio' de la BD leads)
@@ -827,9 +836,11 @@ async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str)
             try:
                 await page.wait_for_url("**/comercio/**", timeout=10_000)
             except Exception:
-                # No matchea ese patron, esperar networkidle
-                await page.wait_for_load_state("networkidle", timeout=10_000)
-            await asyncio.sleep(1.5)
+                try:
+                    await page.wait_for_load_state("domcontentloaded", timeout=8_000)
+                except Exception:
+                    pass
+            await asyncio.sleep(2)
             logger.info(f"[FastUpd] URL tras click card: {page.url}")
 
             await page.wait_for_load_state("networkidle", timeout=10_000)
