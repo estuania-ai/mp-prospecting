@@ -75,7 +75,8 @@ def registrar_fast():
 if __name__ == "__main__":
     port = int(os.getenv("FAST_LOCAL_PORT", 5050))
     print(f"\n=== Fast Local Server ===")
-    print(f"Escuchando en http://localhost:{port}")
-    print(f"Token actual: {FAST_LOCAL_TOKEN}")
-    print(f"Para Cloudflare Tunnel: cloudflared tunnel --url http://localhost:{port}\n")
-    app.run(host="0.0.0.0", port=port, debug=False)
+    print(f"Escuchando en http://127.0.0.1:{port} (solo localhost — sin prompt de firewall)")
+    print(f"Token actual: {FAST_LOCAL_TOKEN}\n")
+    # Bind solo a 127.0.0.1: no requiere permiso de Windows Firewall
+    # cloudflared accede via localhost, no necesita exposicion externa
+    app.run(host="127.0.0.1", port=port, debug=False)
