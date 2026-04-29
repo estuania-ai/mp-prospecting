@@ -143,6 +143,47 @@ def update_status(lead_id):
         t.daemon = True
         t.start()
 
+    # ── AUTO-ACTUALIZAR VISITA EN FAST ──
+    # Cuando cambia a interesado / opt_out / no_interesado, actualiza el estado
+    # de visita en MercadoPago Fast (solo si el lead ya está registrado allí).
+    if status in ("interesado", "opt_out", "no_interesado"):
+        import threading
+        def _actualizar_fast_async():
+            import logging as _logging
+            _log = _logging.getLogger(__name__)
+            try:
+                # Verificar que el lead esté registrado en Fast
+                conn = get_db()
+                row = conn.execute(
+                    "SELECT fast_ok FROM leads WHERE id = ?", (lead_id,)
+                ).fetchone()
+                conn.close()
+                if not row or not row['fast_ok']:
+                    _log.info(f"[FastAuto] Lead {lead_id} no está en Fast, skip actualización")
+                    return
+
+                import os, requests as _req
+                fast_local_url = os.getenv("FAST_LOCAL_URL", "").strip()
+                fast_local_token = os.getenv("FAST_LOCAL_TOKEN", "").strip()
+                if not fast_local_url:
+                    _log.info("[FastAuto] FAST_LOCAL_URL no configurado, skip")
+                    return
+
+                url = fast_local_url.rstrip("/") + "/actualizar-visita-fast"
+                resp = _req.post(
+                    url,
+                    json={"nombre": lead['name'], "telefono": lead['phone'], "estado": status},
+                    headers={"X-Fast-Token": fast_local_token},
+                    timeout=300,
+                )
+                _log.info(f"[FastAuto] Lead {lead_id} -> {status}: {resp.status_code} {resp.text[:200]}")
+            except Exception as e:
+                _log.error(f"[FastAuto] Error actualizando lead {lead_id}: {e}")
+
+        t = threading.Thread(target=_actualizar_fast_async)
+        t.daemon = True
+        t.start()
+
     return jsonify({'ok': True})
 
 

@@ -16,8 +16,8 @@ os.environ["FAST_HEADLESS"] = "false"
 
 from flask import Flask, request, jsonify
 
-# Importamos la función playwright existente
-from routes.fast_registro import _registrar_en_fast
+# Importamos las funciones playwright existentes
+from routes.fast_registro import _registrar_en_fast, _actualizar_visita_fast
 
 logging.basicConfig(
     level=logging.INFO,
@@ -69,6 +69,39 @@ def registrar_fast():
         asyncio.set_event_loop(None)
 
     logger.info(f"[Fast Local] Resultado: {result}")
+    return jsonify(result)
+
+
+@app.route("/actualizar-visita-fast", methods=["POST"])
+def actualizar_visita_fast_local():
+    auth = request.headers.get("X-Fast-Token", "")
+    if auth != FAST_LOCAL_TOKEN:
+        return jsonify({"ok": False, "mensaje": "Unauthorized"}), 401
+
+    data = request.get_json() or {}
+    nombre = (data.get("nombre") or "").strip()
+    telefono = (data.get("telefono") or "").strip()
+    estado = (data.get("estado") or "").strip().lower()
+
+    if not nombre or not telefono or not estado:
+        return jsonify({"ok": False, "mensaje": "nombre, telefono y estado requeridos"}), 400
+
+    logger.info(f"[Fast Local] Actualizar visita: {nombre} ({telefono}) -> {estado}")
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        result = loop.run_until_complete(
+            _actualizar_visita_fast(nombre, telefono, estado)
+        )
+    except Exception as e:
+        logger.error(f"[Fast Local] Error: {e}", exc_info=True)
+        result = {"ok": False, "mensaje": f"Error local: {str(e)[:200]}"}
+    finally:
+        loop.close()
+        asyncio.set_event_loop(None)
+
+    logger.info(f"[Fast Local] Resultado actualización: {result}")
     return jsonify(result)
 
 

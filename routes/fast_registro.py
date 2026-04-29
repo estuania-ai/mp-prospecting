@@ -570,6 +570,462 @@ async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict
             return {"ok": False, "mensaje": f"Error: {str(e)[:200]}"}
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# ACTUALIZAR VISITA: cambia el estado de un lead ya registrado en Fast
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Mapeo de estados del dashboard → (Etapa visita Fast, Motivo Fast)
+STATUS_VISITA_MAPPING = {
+    "interesado": {
+        "etapa": "Negociación",
+        "motivo": "Acuerdo de plazos",
+        "tpv": "5000000",
+    },
+    "opt_out": {
+        "etapa": "Rechazada",
+        "motivo": "Competencia con mejores cargos",
+        "tpv": None,
+    },
+    "no_interesado": {
+        "etapa": "Rechazada",
+        "motivo": "Competencia con mejores cargos",
+        "tpv": None,
+    },
+}
+
+
+async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str) -> dict:
+    """
+    Busca un comercio ya registrado en Fast por teléfono, hace clic en
+    'Registrar visita' y actualiza Etapa + Motivo (+ TPV si aplica).
+    """
+    from playwright.async_api import async_playwright, TimeoutError as PWTimeout
+
+    if not _session_exists():
+        return {"ok": False, "mensaje": "Sin sesion guardada. Ejecuta: python fast_login_manual.py"}
+
+    cfg = STATUS_VISITA_MAPPING.get(nuevo_estado.lower())
+    if not cfg:
+        return {"ok": False, "mensaje": f"Estado '{nuevo_estado}' no mapeado para actualizar visita"}
+
+    etapa_target = cfg["etapa"]
+    motivo_target = cfg["motivo"]
+    tpv_target = cfg.get("tpv")
+
+    telefono_fmt = _formatear_telefono(telefono)
+
+    import shutil as _shutil
+    _chromium_path = (
+        _shutil.which("chromium") or
+        _shutil.which("chromium-browser") or
+        None
+    )
+    _headless = os.getenv("FAST_HEADLESS", "true").lower() != "false"
+
+    async with async_playwright() as p:
+        launch_kwargs = dict(
+            headless=_headless,
+            slow_mo=200 if _headless else 100,
+            args=(
+                ["--disable-blink-features=AutomationControlled"]
+                if not _headless else
+                [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                ]
+            ),
+        )
+        if _chromium_path and _headless:
+            launch_kwargs["executable_path"] = _chromium_path
+
+        browser = await p.chromium.launch(**launch_kwargs)
+        context_kwargs = dict(
+            storage_state=SESSION_FILE,
+            viewport={"width": 1280, "height": 800},
+            locale="es-CL",
+        )
+        if _headless:
+            context_kwargs["user_agent"] = (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            )
+        context = await browser.new_context(**context_kwargs)
+        page = await context.new_page()
+
+        try:
+            # 1) Ir al home de Point Fast
+            await page.goto(FAST_URL, timeout=30_000)
+            await page.wait_for_load_state("networkidle", timeout=15_000)
+            logger.info(f"[FastUpd] URL inicial: {page.url}")
+
+            if "login" in page.url or "identificacion" in page.url:
+                await browser.close()
+                return {"ok": False, "mensaje": "Sesion expirada. Renueva con fast_login_manual.py"}
+
+            # 2) Click en "Comercios" del sidebar
+            comercios_clicked = False
+            for sel in ['a:has-text("Comercios")', 'button:has-text("Comercios")', 'text=Comercios']:
+                try:
+                    loc = page.locator(sel).first
+                    await loc.wait_for(state="visible", timeout=5_000)
+                    await loc.click(timeout=5_000)
+                    comercios_clicked = True
+                    logger.info(f"[FastUpd] Click 'Comercios' OK via {sel}")
+                    break
+                except Exception:
+                    continue
+
+            if not comercios_clicked:
+                await page.screenshot(path="logs/fastupd_no_comercios.png")
+                await browser.close()
+                return {"ok": False, "mensaje": "No se encontró el botón 'Comercios' en el sidebar"}
+
+            await page.wait_for_load_state("networkidle", timeout=15_000)
+            await asyncio.sleep(1.5)
+
+            # 3) Buscar por teléfono o nombre
+            buscado = telefono_fmt
+            search_filled = False
+            for sel in [
+                'input[placeholder*="buscar" i]',
+                'input[placeholder*="search" i]',
+                'input[type="search"]',
+                'input[type="text"]',
+            ]:
+                try:
+                    loc = page.locator(sel).first
+                    await loc.wait_for(state="visible", timeout=4_000)
+                    await loc.click()
+                    await loc.fill(buscado)
+                    search_filled = True
+                    logger.info(f"[FastUpd] Búsqueda llenada '{buscado}' via {sel}")
+                    break
+                except Exception:
+                    continue
+
+            if not search_filled:
+                # Fallback: buscar por nombre
+                buscado = nombre
+                for sel in ['input[type="text"]', 'input[type="search"]']:
+                    try:
+                        loc = page.locator(sel).first
+                        await loc.wait_for(state="visible", timeout=4_000)
+                        await loc.click()
+                        await loc.fill(buscado)
+                        search_filled = True
+                        break
+                    except Exception:
+                        continue
+
+            await asyncio.sleep(2)
+            await page.screenshot(path="logs/fastupd_search.png")
+
+            # 4) Click en el primer resultado de la lista
+            row_clicked = False
+            for sel in [
+                f'tr:has-text("{telefono_fmt[-8:]}")',
+                f'tr:has-text("{nombre}")',
+                f'[role="row"]:has-text("{nombre}")',
+                f'a:has-text("{nombre}")',
+                'tbody tr',
+            ]:
+                try:
+                    loc = page.locator(sel).first
+                    await loc.wait_for(state="visible", timeout=5_000)
+                    await loc.click()
+                    row_clicked = True
+                    logger.info(f"[FastUpd] Click fila OK via {sel}")
+                    break
+                except Exception:
+                    continue
+
+            if not row_clicked:
+                await page.screenshot(path="logs/fastupd_no_row.png")
+                await browser.close()
+                return {"ok": False, "mensaje": f"Lead '{nombre}' (tel {telefono_fmt}) no encontrado en lista de comercios"}
+
+            await page.wait_for_load_state("networkidle", timeout=10_000)
+            await asyncio.sleep(1.5)
+
+            # 5) Click en "Registrar visita"
+            visita_clicked = False
+            for sel in [
+                'button:has-text("Registrar visita")',
+                'a:has-text("Registrar visita")',
+                'text=Registrar visita',
+            ]:
+                try:
+                    loc = page.locator(sel).first
+                    await loc.wait_for(state="visible", timeout=8_000)
+                    await loc.click()
+                    visita_clicked = True
+                    logger.info(f"[FastUpd] Click 'Registrar visita' OK via {sel}")
+                    break
+                except Exception:
+                    continue
+
+            if not visita_clicked:
+                await page.screenshot(path="logs/fastupd_no_btn.png")
+                await browser.close()
+                return {"ok": False, "mensaje": "No se encontró el botón 'Registrar visita' en la ficha del lead"}
+
+            await page.wait_for_load_state("networkidle", timeout=15_000)
+            await asyncio.sleep(2)
+            await page.screenshot(path="logs/fastupd_form.png")
+
+            # 6) Click en la card de Etapa de la negociación (Negociación / Rechazada)
+            import re as _re
+
+            async def click_etapa(etapa_text):
+                pattern = _re.compile(r'^\s*' + _re.escape(etapa_text) + r'\s*$', _re.IGNORECASE)
+                for selector in ['button', 'td', 'li', '[role="gridcell"]']:
+                    locs = page.locator(selector).filter(has_text=pattern)
+                    n = await locs.count()
+                    for i in range(min(n, 8)):
+                        loc = locs.nth(i)
+                        try:
+                            box = await loc.bounding_box()
+                            if box and box['x'] > 250 and box['width'] > 40 and box['height'] > 15:
+                                await loc.scroll_into_view_if_needed()
+                                await asyncio.sleep(0.4)
+                                await loc.click(timeout=5_000)
+                                logger.info(f"[FastUpd] Etapa '{etapa_text}' click OK")
+                                return True
+                        except Exception:
+                            continue
+                return False
+
+            etapa_ok = await click_etapa(etapa_target)
+            if not etapa_ok:
+                await page.screenshot(path="logs/fastupd_no_etapa.png")
+                await browser.close()
+                return {"ok": False, "mensaje": f"No se encontró la etapa '{etapa_target}' en el formulario"}
+
+            await asyncio.sleep(1.5)
+
+            # 7) Abrir dropdown Motivo y seleccionar la opción
+            try:
+                motivo_coords = await page.evaluate("""
+                    () => {
+                        const label = [...document.querySelectorAll('span.andes-dropdown__label, label')]
+                            .find(e => (e.innerText||'').trim().startsWith('Motivo'));
+                        if (!label) return null;
+                        const dropdown = label.closest('.andes-dropdown');
+                        if (!dropdown) return null;
+                        const trigger = dropdown.querySelector('.andes-dropdown__trigger, button');
+                        if (!trigger) return null;
+                        trigger.scrollIntoView({block: 'center', behavior: 'instant'});
+                        const r = trigger.getBoundingClientRect();
+                        return {x: r.left + r.width/2, y: r.top + r.height/2};
+                    }
+                """)
+                if motivo_coords:
+                    await page.mouse.click(motivo_coords['x'], motivo_coords['y'])
+                else:
+                    triggers = page.locator('button.andes-dropdown__trigger')
+                    if await triggers.count() >= 2:
+                        await triggers.nth(1).click(timeout=5_000)
+
+                await asyncio.sleep(1.2)
+
+                motivo_clicked = False
+                for sel in [
+                    f'.andes-list__item:has-text("{motivo_target}")',
+                    f'li.andes-list__item:has-text("{motivo_target}")',
+                    f'li:has-text("{motivo_target}")',
+                    f'[role="option"]:has-text("{motivo_target}")',
+                    f'text={motivo_target}',
+                ]:
+                    try:
+                        opt = page.locator(sel).first
+                        if await opt.count() > 0 and await opt.is_visible(timeout=2_000):
+                            await opt.scroll_into_view_if_needed()
+                            await asyncio.sleep(0.3)
+                            await opt.click(timeout=4_000)
+                            motivo_clicked = True
+                            logger.info(f"[FastUpd] Motivo '{motivo_target}' OK")
+                            break
+                    except Exception:
+                        continue
+
+                if not motivo_clicked:
+                    logger.warning(f"[FastUpd] No se pudo seleccionar motivo '{motivo_target}'")
+
+                await asyncio.sleep(0.5)
+                # Confirmar selección si hay botón "Confirmar"
+                for btn_sel in ['button.andes-button:has-text("Confirmar")', 'button:has-text("Confirmar")']:
+                    try:
+                        btn = page.locator(btn_sel).first
+                        if await btn.count() > 0 and await btn.is_visible(timeout=2_000):
+                            await btn.click(timeout=5_000)
+                            break
+                    except Exception:
+                        continue
+                await asyncio.sleep(1)
+            except Exception as e:
+                logger.warning(f"[FastUpd] Error seteando motivo: {e}")
+
+            # 8) Si hay TPV, llenarlo
+            if tpv_target:
+                tpv_filled = False
+                for sel in [
+                    'input[name*="tpv" i]',
+                    'input[placeholder*="volumen" i]',
+                    'input[placeholder*="tpv" i]',
+                    'input[id*="tpv" i]',
+                    'input[type="number"]',
+                ]:
+                    try:
+                        loc = page.locator(sel).first
+                        if await loc.count() > 0 and await loc.is_visible(timeout=2_000):
+                            await loc.scroll_into_view_if_needed()
+                            await loc.click()
+                            await loc.fill(tpv_target)
+                            tpv_filled = True
+                            logger.info(f"[FastUpd] TPV '{tpv_target}' llenado via {sel}")
+                            break
+                    except Exception:
+                        continue
+                if not tpv_filled:
+                    logger.info("[FastUpd] Campo TPV no encontrado (puede no aplicar para este estado)")
+
+            # 9) Submit final
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await asyncio.sleep(0.8)
+
+            submitted = False
+            for btn_name in ["Registrar visita", "Registrar", "Guardar", "Confirmar visita"]:
+                try:
+                    btn = page.get_by_role("button", name=btn_name)
+                    if await btn.count() > 0 and await btn.is_visible(timeout=2_000):
+                        await btn.click(timeout=8_000)
+                        submitted = True
+                        logger.info(f"[FastUpd] Botón '{btn_name}' clickeado")
+                        break
+                except Exception:
+                    continue
+
+            if not submitted:
+                try:
+                    btn = page.locator('button[type="submit"]').last
+                    if await btn.count() > 0:
+                        await btn.click(timeout=8_000)
+                        submitted = True
+                except Exception:
+                    pass
+
+            if not submitted:
+                await page.screenshot(path="logs/fastupd_no_submit.png", full_page=True)
+                await browser.close()
+                return {"ok": False, "mensaje": "No se encontró botón submit final"}
+
+            # Esperar éxito
+            submit_url = page.url
+            success = False
+            for tick in range(20):
+                await asyncio.sleep(0.5)
+                if page.url != submit_url:
+                    success = True
+                    break
+                try:
+                    body = (await page.evaluate("document.body.innerText")).lower()
+                    if any(k in body for k in ["visita registrada", "registrado con éxito",
+                                                "fue registrada", "comercio actualizado"]):
+                        success = True
+                        break
+                except Exception:
+                    pass
+
+            await page.screenshot(path="logs/fastupd_done.png", full_page=True)
+            await browser.close()
+
+            if success:
+                return {"ok": True, "mensaje": f"Visita actualizada: {etapa_target} / {motivo_target}"}
+            return {"ok": False, "mensaje": "Submit hecho pero no se confirmó éxito — revisar fastupd_done.png"}
+
+        except PWTimeout as e:
+            logger.error(f"[FastUpd] Timeout: {e}")
+            try:
+                await page.screenshot(path="logs/fastupd_timeout.png", full_page=True)
+                await browser.close()
+            except Exception:
+                pass
+            return {"ok": False, "mensaje": f"Timeout: {str(e)[:120]}"}
+
+        except Exception as e:
+            logger.error(f"[FastUpd] Error: {e}", exc_info=True)
+            try:
+                await browser.close()
+            except Exception:
+                pass
+            return {"ok": False, "mensaje": f"Error: {str(e)[:200]}"}
+
+
+@fast_bp.route('/<int:lead_id>/actualizar-visita', methods=['POST'])
+def actualizar_visita_fast_endpoint(lead_id):
+    """
+    Actualiza el estado de visita en Fast para un lead que ya está registrado.
+    Body: { "estado": "interesado" | "opt_out" | "no_interesado" }
+    """
+    data = request.get_json() or {}
+    estado = (data.get("estado") or "").strip().lower()
+
+    if estado not in STATUS_VISITA_MAPPING:
+        return jsonify({"ok": False, "mensaje": f"Estado no soportado: {estado}"}), 400
+
+    conn = get_db()
+    lead = conn.execute(
+        "SELECT id, name, phone, fast_ok FROM leads WHERE id = ?", (lead_id,)
+    ).fetchone()
+    conn.close()
+
+    if not lead:
+        return jsonify({"ok": False, "mensaje": "Lead no encontrado"}), 404
+
+    lead = dict(lead)
+    if not lead.get("fast_ok"):
+        return jsonify({
+            "ok": False,
+            "mensaje": "Lead no está registrado en Fast (registrar primero)"
+        }), 400
+
+    nombre = lead["name"]
+    telefono = lead["phone"]
+
+    # Proxy a servidor local si está configurado
+    fast_local_url = os.getenv("FAST_LOCAL_URL", "").strip()
+    fast_local_token = os.getenv("FAST_LOCAL_TOKEN", "").strip()
+
+    if fast_local_url:
+        try:
+            import requests
+            url = fast_local_url.rstrip("/") + "/actualizar-visita-fast"
+            resp = requests.post(
+                url,
+                json={"nombre": nombre, "telefono": telefono, "estado": estado},
+                headers={"X-Fast-Token": fast_local_token},
+                timeout=300,
+            )
+            if resp.status_code == 401:
+                return jsonify({"ok": False, "mensaje": "Token inválido en servidor local"}), 500
+            return jsonify(resp.json())
+        except requests.exceptions.ConnectionError:
+            return jsonify({
+                "ok": False,
+                "mensaje": "Servidor local Fast no disponible"
+            }), 503
+        except Exception as e:
+            logger.error(f"[FastUpd] Error proxy: {e}", exc_info=True)
+            return jsonify({"ok": False, "mensaje": f"Error proxy: {str(e)[:200]}"}), 500
+
+    # Modo local directo (no recomendado en Railway)
+    return jsonify({"ok": False, "mensaje": "FAST_LOCAL_URL no configurado"}), 500
+
+
 @fast_bp.route('/<int:lead_id>/registrar-fast', methods=['POST'])
 def registrar_en_fast(lead_id):
     if not MP_EMAIL or not MP_PASSWORD:
