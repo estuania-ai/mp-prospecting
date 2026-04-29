@@ -105,6 +105,64 @@ def actualizar_visita_fast_local():
     return jsonify(result)
 
 
+# ════════════════════════════════════════════════════════════════════════
+# SMTP local: envía emails desde tu cuenta corporativa via tu IP/PC
+# Esto evita los bloqueos de Context-Aware Access de Google Workspace
+# ════════════════════════════════════════════════════════════════════════
+
+@app.route("/send-email", methods=["POST"])
+def send_email_local():
+    """
+    Recibe el email pre-armado desde Railway y lo envía vía SMTP local.
+    Body: {"to_email", "subject", "raw_message" (string MIME completo) }
+    Headers: X-Fast-Token
+    """
+    import smtplib, ssl
+
+    auth = request.headers.get("X-Fast-Token", "")
+    if auth != FAST_LOCAL_TOKEN:
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+
+    data = request.get_json() or {}
+    to_email = (data.get("to_email") or "").strip()
+    raw_message = data.get("raw_message") or ""
+    from_email = data.get("from_email") or os.getenv("SMTP_USER", "")
+
+    if not to_email or not raw_message:
+        return jsonify({"ok": False, "error": "to_email y raw_message requeridos"}), 400
+
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+
+    if not smtp_user or not smtp_pass:
+        return jsonify({"ok": False, "error": "SMTP_USER/SMTP_PASS no configurados en PC local"}), 500
+
+    logger.info(f"[Email Local] Enviando a {to_email} desde {from_email}")
+
+    try:
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as s:
+            s.ehlo()
+            s.starttls(context=ctx)
+            s.login(smtp_user, smtp_pass)
+            refused = s.sendmail(from_email, to_email, raw_message)
+        if refused:
+            reason = str(refused.get(to_email, "unknown"))
+            logger.warning(f"[Email Local] Rebotado: {reason}")
+            return jsonify({"ok": False, "error": f"Rebotado: {reason}", "bounced": True})
+        logger.info(f"[Email Local] OK enviado a {to_email}")
+        return jsonify({"ok": True})
+    except smtplib.SMTPRecipientsRefused as e:
+        return jsonify({"ok": False, "error": f"Rechazado: {e}", "bounced": True})
+    except smtplib.SMTPAuthenticationError as e:
+        return jsonify({"ok": False, "error": f"Auth fallida: {e}"})
+    except Exception as e:
+        logger.error(f"[Email Local] Error: {e}", exc_info=True)
+        return jsonify({"ok": False, "error": str(e)[:300]})
+
+
 if __name__ == "__main__":
     port = int(os.getenv("FAST_LOCAL_PORT", 5050))
     print(f"\n=== Fast Local Server ===")

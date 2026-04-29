@@ -1382,6 +1382,38 @@ def _send_smtp(to_email: str, subject: str, body_text: str,
             result['tracking_token'] = tracking_token
         return result
 
+    # ── EMAIL_LOCAL_URL: proxy al servidor local de la PC (evita bloqueos
+    # de Context-Aware Access cuando Railway intenta SMTP desde IP no usual) ──
+    email_local_url = os.getenv('EMAIL_LOCAL_URL', '').strip()
+    email_local_token = os.getenv('EMAIL_LOCAL_TOKEN', '').strip() or os.getenv('FAST_LOCAL_TOKEN', '').strip()
+    if email_local_url and _smtp_conn is None:
+        try:
+            import requests as _req
+            msg_bytes = msg_root.as_string()
+            resp = _req.post(
+                email_local_url.rstrip('/') + '/send-email',
+                json={
+                    'to_email': to_email,
+                    'from_email': from_email,
+                    'subject': subject,
+                    'raw_message': msg_bytes,
+                },
+                headers={'X-Fast-Token': email_local_token},
+                timeout=120,
+            )
+            if resp.status_code == 401:
+                return {'ok': False, 'error': 'Token inválido en servidor local'}
+            data = resp.json()
+            if data.get('ok'):
+                return {'ok': True, 'tracking_token': tracking_token}
+            if data.get('bounced'):
+                _register_bounce(to_email, data.get('error', 'unknown'))
+            return {'ok': False, 'error': data.get('error', 'Error servidor local')[:300], 'bounced': data.get('bounced', False)}
+        except _req.exceptions.ConnectionError:
+            return {'ok': False, 'error': 'Servidor local de email no disponible (PC apagada o tunnel caído)'}
+        except Exception as e:
+            return {'ok': False, 'error': f'Error proxy local: {str(e)[:200]}'}
+
     # ── SMTP directo ─────────────────────────────────────────────────────────
     try:
         msg_bytes = msg_root.as_string()
