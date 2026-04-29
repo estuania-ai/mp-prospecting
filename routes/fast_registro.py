@@ -726,29 +726,63 @@ async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str)
             await asyncio.sleep(2)
             await page.screenshot(path="logs/fastupd_search.png")
 
-            # 4) Click en el primer resultado de la lista (priorizando match por nombre)
-            row_clicked = False
-            for sel in [
-                f'tr:has-text("{nombre}")',
-                f'[role="row"]:has-text("{nombre}")',
-                f'a:has-text("{nombre}")',
-                f'tr:has-text("{telefono_fmt[-8:]}")',
-                'tbody tr',
-            ]:
-                try:
-                    loc = page.locator(sel).first
-                    await loc.wait_for(state="visible", timeout=5_000)
-                    await loc.click()
-                    row_clicked = True
-                    logger.info(f"[FastUpd] Click fila OK via {sel}")
-                    break
-                except Exception:
-                    continue
+            # 4) Click en el primer resultado (card de Andes UI con el nombre)
+            # La UI muestra el resultado como una "card" con: estado | nombre | direccion | ultima atencion | chevron >
+            await asyncio.sleep(1.5)  # esperar render del resultado
 
-            if not row_clicked:
+            row_clicked = await page.evaluate("""
+                (nombre) => {
+                    const norm = (s) => (s||'').trim().toLowerCase();
+                    const target = norm(nombre);
+                    // Buscar elementos clickeables que contengan el nombre
+                    const candidates = [...document.querySelectorAll('a, button, [role="button"], [class*="card"], [class*="item"], li, article, div')];
+                    // Filtrar: tiene el nombre, es razonablemente pequeño (no el body)
+                    const matches = candidates.filter(el => {
+                        const t = norm(el.innerText);
+                        if (!t.includes(target)) return false;
+                        if (t.length > 600) return false;  // no es la pagina entera
+                        const r = el.getBoundingClientRect();
+                        return r.width > 200 && r.height > 40 && r.height < 250;
+                    });
+                    // Ordenar por tamaño ascendente: el match más pequeño es la card específica
+                    matches.sort((a, b) => {
+                        const ra = a.getBoundingClientRect();
+                        const rb = b.getBoundingClientRect();
+                        return (ra.width * ra.height) - (rb.width * rb.height);
+                    });
+                    if (matches.length === 0) return {ok: false, count: 0};
+                    const el = matches[0];
+                    el.scrollIntoView({block: 'center', behavior: 'instant'});
+                    el.click();
+                    return {ok: true, count: matches.length, tag: el.tagName, cls: el.className};
+                }
+            """, nombre)
+
+            if not (isinstance(row_clicked, dict) and row_clicked.get("ok")):
+                # Fallback: selectores tradicionales
+                for sel in [
+                    f'.andes-card:has-text("{nombre}")',
+                    f'[class*="card"]:has-text("{nombre}")',
+                    f'a:has-text("{nombre}")',
+                    f'tr:has-text("{nombre}")',
+                    f'li:has-text("{nombre}")',
+                ]:
+                    try:
+                        loc = page.locator(sel).first
+                        await loc.wait_for(state="visible", timeout=4_000)
+                        await loc.click()
+                        row_clicked = {"ok": True, "via": sel}
+                        logger.info(f"[FastUpd] Click card via fallback {sel}")
+                        break
+                    except Exception:
+                        continue
+
+            if not (isinstance(row_clicked, dict) and row_clicked.get("ok")):
                 await page.screenshot(path="logs/fastupd_no_row.png")
                 await browser.close()
-                return {"ok": False, "mensaje": f"Lead '{nombre}' (tel {telefono_fmt}) no encontrado en lista de comercios"}
+                return {"ok": False, "mensaje": f"Lead '{nombre}' encontrado en buscador pero no se pudo abrir su card"}
+
+            logger.info(f"[FastUpd] Card clickeada: {row_clicked}")
 
             await page.wait_for_load_state("networkidle", timeout=10_000)
             await asyncio.sleep(1.5)
