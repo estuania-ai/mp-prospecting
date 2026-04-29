@@ -68,13 +68,18 @@ def start_flask():
     pythonw = sys.executable.replace("python.exe", "pythonw.exe")
     if not Path(pythonw).exists():
         pythonw = "pythonw.exe"
+    # Loggear stdout/stderr a archivo para poder diagnosticar
+    log_dir = PROJECT_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    flask_log = open(log_dir / "fast_local_server.log", "a", encoding="utf-8", buffering=1)
+    flask_log.write(f"\n=== {datetime.now().isoformat(timespec='seconds')} - INICIO ===\n")
     subprocess.Popen(
         [pythonw, "fast_local_server.py"],
         cwd=str(PROJECT_DIR),
         env=env,
         creationflags=CREATE_NO_WINDOW,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=flask_log,
+        stderr=flask_log,
         close_fds=True,
     )
     log("Flask relanzado")

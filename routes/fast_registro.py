@@ -697,6 +697,10 @@ async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str)
             await asyncio.sleep(1.5)
 
             # 3) Buscar por NOMBRE (columna 'negocio' de la BD leads)
+            # Espera extra para que el input este completamente listo
+            await asyncio.sleep(2)
+            await page.screenshot(path="logs/fastupd_pre_search.png")
+
             buscado = nombre
             search_filled = False
             for sel in [
@@ -708,30 +712,43 @@ async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str)
                 try:
                     loc = page.locator(sel).first
                     await loc.wait_for(state="visible", timeout=4_000)
-                    await loc.click()
-                    await loc.fill(buscado)
-                    search_filled = True
-                    logger.info(f"[FastUpd] Búsqueda por NOMBRE '{buscado}' via {sel}")
-                    break
-                except Exception:
+                    # Triple click para seleccionar todo + click directo
+                    await loc.click(click_count=3, timeout=3_000)
+                    await asyncio.sleep(0.3)
+                    await page.keyboard.press("Delete")
+                    await asyncio.sleep(0.2)
+                    # Tipear caracter por caracter (mas confiable que fill en SPAs)
+                    await loc.press_sequentially(buscado, delay=50)
+                    # Verificar que el valor quedo
+                    actual = await loc.input_value()
+                    logger.info(f"[FastUpd] Tipeado en {sel}: esperado='{buscado}' actual='{actual}'")
+                    if buscado.lower() in actual.lower():
+                        search_filled = True
+                        break
+                except Exception as e:
+                    logger.debug(f"[FastUpd] Selector {sel} fallo: {e}")
                     continue
 
             if not search_filled:
-                # Fallback: buscar por teléfono
+                # Fallback: tipear con keyboard global tras focus
                 buscado = telefono_fmt
-                for sel in ['input[type="text"]', 'input[type="search"]']:
+                for sel in ['input[type="text"]', 'input[type="search"]', 'input']:
                     try:
                         loc = page.locator(sel).first
                         await loc.wait_for(state="visible", timeout=4_000)
-                        await loc.click()
-                        await loc.fill(buscado)
-                        search_filled = True
-                        logger.info(f"[FastUpd] Búsqueda por TELÉFONO (fallback) '{buscado}'")
-                        break
+                        await loc.focus()
+                        await page.keyboard.press("Control+a")
+                        await page.keyboard.press("Delete")
+                        await page.keyboard.type(buscado, delay=50)
+                        actual = await loc.input_value()
+                        if actual:
+                            search_filled = True
+                            logger.info(f"[FastUpd] Fallback keyboard.type OK: '{actual}'")
+                            break
                     except Exception:
                         continue
 
-            await asyncio.sleep(2)
+            await asyncio.sleep(2.5)
             await page.screenshot(path="logs/fastupd_search.png")
 
             # 4) Click en el card del resultado usando MOUSE REAL
