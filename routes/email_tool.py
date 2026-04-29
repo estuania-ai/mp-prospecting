@@ -800,7 +800,7 @@ def _render_header_frames(c: dict):
     bold_p, reg_p = _find_font(
         candidates_bold=[
             # Custom: si el usuario incluye fuentes en el proyecto
-            str(email_assets_dir / 'fonts' / 'proximanova-bold.otf'),
+            str(assets / 'fonts' / 'proximanova-bold.otf'),
             # Linux nixpacks (Railway) - DejaVu Sans Bold
             '/nix/store/*/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
             '/nix/store/*/share/fonts/dejavu/DejaVuSans-Bold.ttf',
@@ -812,7 +812,7 @@ def _render_header_frames(c: dict):
             'C:/Windows/Fonts/arialbd.ttf',
         ],
         candidates_reg=[
-            str(email_assets_dir / 'fonts' / 'proximanova-regular.otf'),
+            str(assets / 'fonts' / 'proximanova-regular.otf'),
             '/nix/store/*/share/fonts/truetype/dejavu/DejaVuSans.ttf',
             '/nix/store/*/share/fonts/dejavu/DejaVuSans.ttf',
             '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
