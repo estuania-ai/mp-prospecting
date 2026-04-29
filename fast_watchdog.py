@@ -3,7 +3,9 @@ Watchdog Fast: garantiza que servidor local + tunel cloudflared esten corriendo.
 Se ejecuta cada 1 minuto via Task Scheduler con pythonw.exe (sin ventana).
 
 Si alguno cae, lo relanza oculto.
-Tambien previene que Windows duerma usando SetThreadExecutionState.
+Tambien previene que Windows duerma con la tapa cerrada usando
+SetThreadExecutionState (necesario para que los emails sigan saliendo
+mientras el notebook esta cerrado).
 """
 import ctypes
 import os
@@ -15,10 +17,8 @@ from datetime import datetime
 from pathlib import Path
 
 # ── Prevenir suspension de Windows ─────────────────────────────────────────
-# SetThreadExecutionState API: marca el thread como "necesita estar activo"
-# ES_CONTINUOUS (0x80000000): mantener el flag hasta que se llame de nuevo
-# ES_SYSTEM_REQUIRED (0x00000001): impedir que el sistema duerma
-# Llamar en cada ejecucion del watchdog (cada 1 min) refresca el estado.
+# ES_CONTINUOUS (0x80000000) | ES_SYSTEM_REQUIRED (0x00000001)
+# Refresca el flag en cada ejecucion (cada 1 min) → Windows nunca duerme.
 try:
     ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
 except Exception:
