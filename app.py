@@ -1,4 +1,4 @@
-﻿"""
+"""
 MercadoPago POS Prospecting System
 Backend Flask - 3 lotes diarios L-V
 """
