@@ -151,6 +151,10 @@ async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict
             storage_state=SESSION_FILE,
             viewport={"width": 1280, "height": 800},
             locale="es-CL",
+            # Pre-otorgar permiso de geolocalizacion (evita popup de Chrome
+            # que bloquea la automatizacion). Coordenadas: Santiago de Chile.
+            permissions=["geolocation"],
+            geolocation={"latitude": -33.4489, "longitude": -70.6693},
         )
         # En Railway (headless) sí necesitamos UA explícito porque el chromium
         # de nix puede tener un UA distinto al de playwright local
@@ -647,6 +651,10 @@ async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str)
             storage_state=SESSION_FILE,
             viewport={"width": 1280, "height": 800},
             locale="es-CL",
+            # Pre-otorgar permiso de geolocalizacion (evita popup de Chrome
+            # que bloquea la automatizacion). Coordenadas: Santiago de Chile.
+            permissions=["geolocation"],
+            geolocation={"latitude": -33.4489, "longitude": -70.6693},
         )
         if _headless:
             context_kwargs["user_agent"] = (
