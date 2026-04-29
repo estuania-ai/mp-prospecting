@@ -799,10 +799,13 @@ def _render_header_frames(c: dict):
 
     bold_p, reg_p = _find_font(
         candidates_bold=[
-            # Custom: si el usuario incluye fuentes en el proyecto
+            # PRIORIDAD: fuentes en el repo (funcionan en Windows + Linux Railway)
+            str(assets / 'fonts' / 'Montserrat-Black.ttf'),    # mas impacto que Bold
+            str(assets / 'fonts' / 'Montserrat-Bold.ttf'),
             str(assets / 'fonts' / 'proximanova-bold.otf'),
-            # Linux nixpacks (Railway) - DejaVu Sans Bold
+            # Linux nixpacks - DejaVu paths posibles
             '/nix/store/*/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+            '/nix/store/*/share/fonts/truetype/DejaVuSans-Bold.ttf',
             '/nix/store/*/share/fonts/dejavu/DejaVuSans-Bold.ttf',
             '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
             # Linux Liberation Sans (similar a Arial)
@@ -812,8 +815,10 @@ def _render_header_frames(c: dict):
             'C:/Windows/Fonts/arialbd.ttf',
         ],
         candidates_reg=[
+            str(assets / 'fonts' / 'Montserrat-Regular.ttf'),
             str(assets / 'fonts' / 'proximanova-regular.otf'),
             '/nix/store/*/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+            '/nix/store/*/share/fonts/truetype/DejaVuSans.ttf',
             '/nix/store/*/share/fonts/dejavu/DejaVuSans.ttf',
             '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
             '/nix/store/*/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
