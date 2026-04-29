@@ -574,7 +574,8 @@ async def _registrar_en_fast(nombre: str, telefono: str, direccion: str) -> dict
 # ACTUALIZAR VISITA: cambia el estado de un lead ya registrado en Fast
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Mapeo de estados del dashboard → (Etapa visita Fast, Motivo Fast)
+# Mapeo de estados del dashboard → (Etapa visita Fast, Motivo Fast, TPV)
+# TPV siempre 5000000 (lo pide Fast en cualquier visita post-Calificación)
 STATUS_VISITA_MAPPING = {
     "interesado": {
         "etapa": "Negociación",
@@ -584,12 +585,12 @@ STATUS_VISITA_MAPPING = {
     "opt_out": {
         "etapa": "Rechazada",
         "motivo": "Competencia con mejores cargos",
-        "tpv": None,
+        "tpv": "5000000",
     },
     "no_interesado": {
         "etapa": "Rechazada",
         "motivo": "Competencia con mejores cargos",
-        "tpv": None,
+        "tpv": "5000000",
     },
 }
 
@@ -687,8 +688,8 @@ async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str)
             await page.wait_for_load_state("networkidle", timeout=15_000)
             await asyncio.sleep(1.5)
 
-            # 3) Buscar por teléfono o nombre
-            buscado = telefono_fmt
+            # 3) Buscar por NOMBRE (columna 'negocio' de la BD leads)
+            buscado = nombre
             search_filled = False
             for sel in [
                 'input[placeholder*="buscar" i]',
@@ -702,14 +703,14 @@ async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str)
                     await loc.click()
                     await loc.fill(buscado)
                     search_filled = True
-                    logger.info(f"[FastUpd] Búsqueda llenada '{buscado}' via {sel}")
+                    logger.info(f"[FastUpd] Búsqueda por NOMBRE '{buscado}' via {sel}")
                     break
                 except Exception:
                     continue
 
             if not search_filled:
-                # Fallback: buscar por nombre
-                buscado = nombre
+                # Fallback: buscar por teléfono
+                buscado = telefono_fmt
                 for sel in ['input[type="text"]', 'input[type="search"]']:
                     try:
                         loc = page.locator(sel).first
@@ -717,6 +718,7 @@ async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str)
                         await loc.click()
                         await loc.fill(buscado)
                         search_filled = True
+                        logger.info(f"[FastUpd] Búsqueda por TELÉFONO (fallback) '{buscado}'")
                         break
                     except Exception:
                         continue
@@ -724,13 +726,13 @@ async def _actualizar_visita_fast(nombre: str, telefono: str, nuevo_estado: str)
             await asyncio.sleep(2)
             await page.screenshot(path="logs/fastupd_search.png")
 
-            # 4) Click en el primer resultado de la lista
+            # 4) Click en el primer resultado de la lista (priorizando match por nombre)
             row_clicked = False
             for sel in [
-                f'tr:has-text("{telefono_fmt[-8:]}")',
                 f'tr:has-text("{nombre}")',
                 f'[role="row"]:has-text("{nombre}")',
                 f'a:has-text("{nombre}")',
+                f'tr:has-text("{telefono_fmt[-8:]}")',
                 'tbody tr',
             ]:
                 try:
