@@ -3242,7 +3242,12 @@ def _do_send_campaign(campaign_id, test_address='', contact_ids_filter=None):
     smtp_user = os.getenv('SMTP_USER', '')
     smtp_pass = os.getenv('SMTP_PASS', '')
     smtp_conn = None
-    if smtp_user and smtp_pass and contacts:
+    # Si EMAIL_LOCAL_URL esta seteado, NO abrir conexion SMTP en Railway
+    # Cada email va via proxy local
+    use_local_proxy = bool(os.getenv('EMAIL_LOCAL_URL', '').strip())
+    if use_local_proxy:
+        logger.info('[EmailTool] Modo proxy local activo (EMAIL_LOCAL_URL set)')
+    elif smtp_user and smtp_pass and contacts:
         try:
             ctx = ssl.create_default_context()
             smtp_conn = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
@@ -4011,11 +4016,18 @@ def _do_send_batch_auto_rubro(contact_ids: list, job_id: str):
 
     sent = errors = 0
     conn2 = get_db()
+
+    # Si hay EMAIL_LOCAL_URL → cada email va via proxy local, NO abrir SMTP en Railway
+    use_local_proxy = bool(os.getenv('EMAIL_LOCAL_URL', '').strip())
+    smtp = None
     try:
-        ctx  = ssl.create_default_context()
-        smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
-        smtp.ehlo(); smtp.starttls(context=ctx); smtp.login(smtp_user, smtp_pass)
-        logger.info('[BatchSend] Conexión SMTP abierta')
+        if not use_local_proxy:
+            ctx  = ssl.create_default_context()
+            smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
+            smtp.ehlo(); smtp.starttls(context=ctx); smtp.login(smtp_user, smtp_pass)
+            logger.info('[BatchSend] Conexión SMTP abierta (modo Railway directo)')
+        else:
+            logger.info('[BatchSend] Modo proxy local (EMAIL_LOCAL_URL set)')
 
         for tid, (tpl, group_contacts) in groups.items():
             rubro = (tpl.get('rubro') or '').lower().strip()
@@ -4046,7 +4058,7 @@ def _do_send_batch_auto_rubro(contact_ids: list, job_id: str):
                         rubro=rubro, contact_name=c.get('business_name', ''),
                         booking_url=booking_url,
                         _hdr_gif=hdr_gif, _pos_gif=pos_gif, _sig_bytes=sig_bytes,
-                        _smtp_conn=smtp,
+                        _smtp_conn=smtp,  # None si proxy local, conexion abierta si Railway directo
                     )
 
                     if res.get('ok'):
@@ -4084,7 +4096,8 @@ def _do_send_batch_auto_rubro(contact_ids: list, job_id: str):
                     'last_email': c.get('email', '')
                 })
 
-        smtp.quit()
+        if smtp is not None:
+            smtp.quit()
 
     except Exception as e:
         logger.error(f'[BatchSend] Error SMTP: {e}')
