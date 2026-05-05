@@ -123,10 +123,29 @@ def run_fidelizacion():
         logger.info("[FIDELIZACION] Sin sellers activos")
         return
 
-    from whatsapp.sender_desktop import get_sender
-    sender = get_sender()
-    if not sender._is_logged_in:
-        sender.start()
+    # Preferir Evolution API (sin popups en la PC del usuario)
+    from whatsapp import evolution_client as ev
+    use_evolution = ev.is_connected()
+
+    sender = None
+    if not use_evolution:
+        logger.warning("[FIDELIZACION] Evolution API no conectada — fallback sender_desktop (popup WhatsApp Web)")
+        try:
+            from whatsapp.sender_desktop import get_sender
+            sender = get_sender()
+            if not sender._is_logged_in:
+                sender.start()
+        except Exception as e:
+            logger.error(f"[FIDELIZACION] No se pudo iniciar sender de escritorio: {e}")
+            return
+    else:
+        logger.info("[FIDELIZACION] Usando Evolution API (envío silencioso)")
+
+    def _send(phone, msg):
+        if use_evolution:
+            r = ev.send_message(phone, msg, None)
+            return {'success': r.get('ok', False), 'error': r.get('error', '')}
+        return sender.send_message(phone, msg, None)
 
     enviados = 0
     for seller in sellers:
@@ -168,7 +187,7 @@ def run_fidelizacion():
 
         logger.info(f"[FIDELIZACION] {s['name']} | Dia {dias_e} | {etapa_nombre} | Cat: {categoria}")
 
-        result = sender.send_message(s['phone'], mensaje, None)
+        result = _send(s['phone'], mensaje)
         register_fidelizacion(s, dias_e, result['success'])
 
         if result['success']:

@@ -75,10 +75,35 @@ def register_seguimiento(lead: dict, tipo: str, success: bool):
 def run_seguimiento():
     logger.info(f"[SEGUIMIENTO] Iniciando - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
-    from whatsapp.sender_desktop import get_sender, human_delay
-    sender = get_sender()
-    if not sender._is_logged_in:
-        sender.start()
+    # Preferir Evolution API (Railway) - sin popups en la PC del usuario
+    from whatsapp import evolution_client as ev
+    use_evolution = ev.is_connected()
+
+    sender = None
+    human_delay = None
+    if not use_evolution:
+        logger.warning("[SEGUIMIENTO] Evolution API no conectada — fallback sender_desktop (popup WhatsApp Web)")
+        try:
+            from whatsapp.sender_desktop import get_sender, human_delay as _hd
+            human_delay = _hd
+            sender = get_sender()
+            if not sender._is_logged_in:
+                sender.start()
+        except Exception as e:
+            logger.error(f"[SEGUIMIENTO] No se pudo iniciar sender de escritorio: {e}")
+            return
+    else:
+        logger.info("[SEGUIMIENTO] Usando Evolution API (envío silencioso desde Railway)")
+        # Para los delays cuando usamos Evolution, hacemos sleep simple
+        import time as _time, random as _random
+        def human_delay():
+            _time.sleep(_random.uniform(30, 60))
+
+    def _send(phone, msg):
+        if use_evolution:
+            r = ev.send_message(phone, msg, None)
+            return {'success': r.get('ok', False)}
+        return sender.send_message(phone, msg, None)
 
     total_24h = 0
     total_72h = 0
@@ -88,7 +113,7 @@ def run_seguimiento():
     logger.info(f"[SEGUIMIENTO] 24h: {len(leads_24h)} leads pendientes")
     for lead in leads_24h:
         msg = MSG_24H.format(nombre=lead['name'])
-        result = sender.send_message(lead['phone'], msg, None)
+        result = _send(lead['phone'], msg)
         register_seguimiento(lead, '24h', result['success'])
         if result['success']:
             total_24h += 1
@@ -101,7 +126,7 @@ def run_seguimiento():
     logger.info(f"[SEGUIMIENTO] 72h: {len(leads_72h)} leads pendientes")
     for lead in leads_72h:
         msg = MSG_72H.format(nombre=lead['name'])
-        result = sender.send_message(lead['phone'], msg, None)
+        result = _send(lead['phone'], msg)
         register_seguimiento(lead, '72h', result['success'])
         if result['success']:
             total_72h += 1

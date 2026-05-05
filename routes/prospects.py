@@ -126,17 +126,25 @@ def send_message(pid):
     import threading
     def _send():
         try:
-            from whatsapp.sender_desktop import get_sender
             from database import get_db as _db
-            sender = get_sender()
-            if not sender._is_logged_in:
-                sender.start()
-            result = sender.send_message(prospect['phone'], msg, None)
+            # Preferir Evolution API (Railway) - sin popup WhatsApp Web
+            from whatsapp import evolution_client as ev
+            ok = False
+            if ev.is_connected():
+                r = ev.send_message(prospect['phone'], msg, None)
+                ok = r.get('ok', False)
+            else:
+                from whatsapp.sender_desktop import get_sender
+                sender = get_sender()
+                if not sender._is_logged_in:
+                    sender.start()
+                r = sender.send_message(prospect['phone'], msg, None)
+                ok = r.get('success', False)
             c = _db()
             c.execute(
                 "INSERT INTO messages (lead_id, phone, message_type, status, sent_at) VALUES (?,?,?,?,datetime('now','localtime'))",
                 (prospect.get('lead_id'), prospect['phone'],
-                 'prospecto_seguimiento', 'sent' if result['success'] else 'failed')
+                 'prospecto_seguimiento', 'sent' if ok else 'failed')
             )
             c.commit()
             c.close()

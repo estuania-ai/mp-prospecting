@@ -78,14 +78,29 @@ def broadcast_sellers():
 
     import threading
     def _send():
-        from whatsapp.sender_desktop import get_sender
         from database import get_db as _db
-        sender = get_sender()
-        if not sender._is_logged_in:
-            sender.start()
+        # Preferir Evolution API (sin popups en la PC)
+        from whatsapp import evolution_client as ev
+        use_evolution = ev.is_connected()
+        sender = None
+        if not use_evolution:
+            try:
+                from whatsapp.sender_desktop import get_sender
+                sender = get_sender()
+                if not sender._is_logged_in:
+                    sender.start()
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"[Sellers] sender_desktop fallo: {e}")
+                return
+
         for s in sellers:
             sd = dict(s)
-            result = sender.send_message(sd['phone'], mensaje, None)
+            if use_evolution:
+                r = ev.send_message(sd['phone'], mensaje, None)
+                result = {'success': r.get('ok', False)}
+            else:
+                result = sender.send_message(sd['phone'], mensaje, None)
             conn2 = _db()
             conn2.execute('''
                 INSERT INTO messages (lead_id, phone, message_type, status, sent_at, rubro, comuna)
