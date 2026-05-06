@@ -94,7 +94,8 @@ def require_login():
 
 @app.route('/')
 def index():
-    return render_template('dashboard.html')
+    # Servir el dashboard que usamos en producción (test14)
+    return render_template('dashboard_test14.html')
 
 
 @app.route('/health')
