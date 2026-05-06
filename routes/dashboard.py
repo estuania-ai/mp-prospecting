@@ -199,15 +199,18 @@ def kpis():
         GROUP BY comuna ORDER BY total DESC LIMIT 8
     ''').fetchall()
 
+    # Filtro WHERE para tabla leads l.id
+    leads_scope, leads_scope_params = _scope_clause(user_lead_ids, 'l.id')
+
     top_rubros = conn.execute(f'''
         SELECT l.rubro, COUNT(*) as total,
                COUNT(CASE WHEN ls.status='interesado' THEN 1 END) as interesados,
                COUNT(CASE WHEN ls.status='cerrado' THEN 1 END) as cerrados
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
-        WHERE l.rubro IS NOT NULL AND l.rubro != '' {_date_clause('ls.updated_at', from_date, to_date)}
+        WHERE l.rubro IS NOT NULL AND l.rubro != '' {_date_clause('ls.updated_at', from_date, to_date)} {leads_scope}
         GROUP BY l.rubro ORDER BY total DESC
-    ''').fetchall()
+    ''', leads_scope_params).fetchall()
 
     categoria_stats = conn.execute(f'''
         SELECT l.categoria,
@@ -218,81 +221,117 @@ def kpis():
                COUNT(DISTINCT CASE WHEN ls.status='enviado' THEN l.id END) as enviados
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
-        WHERE l.categoria IS NOT NULL AND l.categoria != '' {_date_clause('ls.updated_at', from_date, to_date)}
+        WHERE l.categoria IS NOT NULL AND l.categoria != '' {_date_clause('ls.updated_at', from_date, to_date)} {leads_scope}
         GROUP BY l.categoria ORDER BY total DESC
-    ''').fetchall()
+    ''', leads_scope_params).fetchall()
 
     optout_motivos = conn.execute(
-        "SELECT optout_motivo as motivo, COUNT(*) as total FROM lead_status "
-        "WHERE optout_motivo IS NOT NULL AND optout_motivo != '' "
-        "GROUP BY optout_motivo ORDER BY total DESC"
+        f"SELECT optout_motivo as motivo, COUNT(*) as total FROM lead_status "
+        f"WHERE optout_motivo IS NOT NULL AND optout_motivo != '' {scope_ls} "
+        f"GROUP BY optout_motivo ORDER BY total DESC",
+        scope_ls_params
     ).fetchall()
 
-    opt_out  = conn.execute('SELECT COUNT(*) FROM opt_out').fetchone()[0]
-    sellers  = conn.execute('SELECT COUNT(*) FROM sellers WHERE active=1').fetchone()[0]
+    # opt_out: tabla opt_out tiene phone, no lead_id directo
+    if user_lead_ids is None:
+        opt_out  = conn.execute('SELECT COUNT(*) FROM opt_out').fetchone()[0]
+    elif user_lead_ids:
+        ph = ','.join('?'*len(user_lead_ids))
+        opt_out = conn.execute(
+            f"SELECT COUNT(*) FROM opt_out WHERE phone IN (SELECT phone FROM leads WHERE id IN ({ph}))",
+            list(user_lead_ids)
+        ).fetchone()[0]
+    else:
+        opt_out = 0
 
-    # ── Métricas prospects (Gestión > Interesados) ───────────────────
+    # Sellers: solo Owner y TLs ven su contador real (no es lead-scoped, son sellers ganados)
+    if current_user.role == 'sales':
+        sellers = 0  # Sales no ve sellers
+    else:
+        sellers = conn.execute('SELECT COUNT(*) FROM sellers WHERE active=1').fetchone()[0]
+
+    # ── Métricas prospects (filtrado por lead_id en pool del usuario) ──
+    if user_lead_ids is None:
+        prospects_filter = ''
+        prospects_params = []
+    elif user_lead_ids:
+        ph = ','.join('?'*len(user_lead_ids))
+        prospects_filter = f' AND lead_id IN ({ph})'
+        prospects_params = list(user_lead_ids)
+    else:
+        prospects_filter = ' AND 1=0'
+        prospects_params = []
+
     try:
         prospects_total = conn.execute(
-            "SELECT COUNT(*) FROM prospects"
+            f"SELECT COUNT(*) FROM prospects WHERE 1=1 {prospects_filter}",
+            prospects_params
         ).fetchone()[0]
         prospects_cerrados = conn.execute(
-            f"SELECT COUNT(*) FROM prospects WHERE estado='cerrado' {df_pro}"
+            f"SELECT COUNT(*) FROM prospects WHERE estado='cerrado' {df_pro} {prospects_filter}",
+            prospects_params
         ).fetchone()[0]
         prospects_no_logrado = conn.execute(
-            f"SELECT COUNT(*) FROM prospects WHERE estado='no_logrado' {df_pro}"
+            f"SELECT COUNT(*) FROM prospects WHERE estado='no_logrado' {df_pro} {prospects_filter}",
+            prospects_params
         ).fetchone()[0]
-        # En seguimiento = estado activo distinto de cerrado/no_logrado (estado actual)
         prospects_seguimiento = conn.execute(
-            "SELECT COUNT(*) FROM prospects WHERE estado NOT IN ('cerrado','no_logrado')"
+            f"SELECT COUNT(*) FROM prospects WHERE estado NOT IN ('cerrado','no_logrado') {prospects_filter}",
+            prospects_params
         ).fetchone()[0]
-        # Interesados: prospects en estado 'en_seguimiento' (fuente de verdad desde Gestión)
         prospects_interesados = conn.execute(
-            "SELECT COUNT(*) FROM prospects WHERE estado='en_seguimiento'"
+            f"SELECT COUNT(*) FROM prospects WHERE estado='en_seguimiento' {prospects_filter}",
+            prospects_params
         ).fetchone()[0]
-        # Quiere reunión: prospects en estado 'reunion_agendada'
         prospects_reunion = conn.execute(
-            "SELECT COUNT(*) FROM prospects WHERE estado='reunion_agendada'"
+            f"SELECT COUNT(*) FROM prospects WHERE estado='reunion_agendada' {prospects_filter}",
+            prospects_params
         ).fetchone()[0]
     except Exception:
         prospects_total = prospects_cerrados = prospects_no_logrado = prospects_seguimiento = 0
         prospects_interesados = prospects_reunion = 0
 
-    # ── Métricas canal Email (et_contacts) ──────────────────────────
-    try:
-        email_enviados    = conn.execute(
-            f"SELECT COUNT(*) FROM et_contacts "
-            f"WHERE campaign_status IN ('enviado','seguimiento_48h','no_responde') {df_email}"
-        ).fetchone()[0]
-        email_interesados = conn.execute(
-            f"SELECT COUNT(*) FROM et_contacts "
-            f"WHERE estado_interes IN ('interesado','quiere_reunion','en_negociacion','followup_wa_enviado') {df_email}"
-        ).fetchone()[0]
-        email_respondidos = conn.execute(
-            f"SELECT COUNT(*) FROM et_contacts "
-            f"WHERE estado_interes IN ('respondido','interesado','quiere_reunion','en_negociacion','cerrado') {df_email}"
-        ).fetchone()[0]
-        email_cerrados    = conn.execute(
-            f"SELECT COUNT(*) FROM et_contacts WHERE estado_interes='cerrado' {df_email}"
-        ).fetchone()[0]
-        email_reuniones   = conn.execute(
-            f"SELECT COUNT(*) FROM et_contacts WHERE estado_interes='quiere_reunion' {df_email}"
-        ).fetchone()[0]
-        email_no_responde = conn.execute(
-            f"SELECT COUNT(*) FROM et_contacts WHERE campaign_status='no_responde' {df_email}"
-        ).fetchone()[0]
-        email_pendientes  = conn.execute(
-            "SELECT COUNT(*) FROM et_contacts WHERE campaign_status IN ('pendiente','no_enviado')"
-        ).fetchone()[0]
-        email_total       = conn.execute(
-            "SELECT COUNT(*) FROM et_contacts"
-        ).fetchone()[0]
-        email_tasa_resp   = round(email_respondidos / email_enviados * 100, 1) if email_enviados else 0
-    except Exception:
+    # ── Métricas canal Email — solo Owner/TL ven (Sales: 0, email pendiente para fase 4) ──
+    if current_user.role == 'sales':
         email_enviados = email_interesados = email_respondidos = 0
         email_cerrados = email_reuniones = email_no_responde = 0
         email_pendientes = email_total = 0
         email_tasa_resp = 0
+    else:
+        try:
+            email_enviados    = conn.execute(
+                f"SELECT COUNT(*) FROM et_contacts "
+                f"WHERE campaign_status IN ('enviado','seguimiento_48h','no_responde') {df_email}"
+            ).fetchone()[0]
+            email_interesados = conn.execute(
+                f"SELECT COUNT(*) FROM et_contacts "
+                f"WHERE estado_interes IN ('interesado','quiere_reunion','en_negociacion','followup_wa_enviado') {df_email}"
+            ).fetchone()[0]
+            email_respondidos = conn.execute(
+                f"SELECT COUNT(*) FROM et_contacts "
+                f"WHERE estado_interes IN ('respondido','interesado','quiere_reunion','en_negociacion','cerrado') {df_email}"
+            ).fetchone()[0]
+            email_cerrados    = conn.execute(
+                f"SELECT COUNT(*) FROM et_contacts WHERE estado_interes='cerrado' {df_email}"
+            ).fetchone()[0]
+            email_reuniones   = conn.execute(
+                f"SELECT COUNT(*) FROM et_contacts WHERE estado_interes='quiere_reunion' {df_email}"
+            ).fetchone()[0]
+            email_no_responde = conn.execute(
+                f"SELECT COUNT(*) FROM et_contacts WHERE campaign_status='no_responde' {df_email}"
+            ).fetchone()[0]
+            email_pendientes  = conn.execute(
+                "SELECT COUNT(*) FROM et_contacts WHERE campaign_status IN ('pendiente','no_enviado')"
+            ).fetchone()[0]
+            email_total       = conn.execute(
+                "SELECT COUNT(*) FROM et_contacts"
+            ).fetchone()[0]
+            email_tasa_resp   = round(email_respondidos / email_enviados * 100, 1) if email_enviados else 0
+        except Exception:
+            email_enviados = email_interesados = email_respondidos = 0
+            email_cerrados = email_reuniones = email_no_responde = 0
+            email_pendientes = email_total = 0
+            email_tasa_resp = 0
 
     conn.close()
 
