@@ -100,24 +100,15 @@ def _send_manual_batch(lead_ids: list, batch_name: str = "Manual"):
 
     logger.info(f"[{batch_name}] Iniciando envio de {len(valid_leads)}/{len(leads)} mensajes válidos")
 
-    # ── Usar Evolution API si está conectada, sino fallback a sender_desktop ──
+    # ── Solo Evolution API. Si está desconectada, saltar (no abrir WhatsApp Web).
     import time, random
     from whatsapp import evolution_client as ev
-    use_evolution = ev.is_connected()
-
+    if not ev.is_connected():
+        logger.warning(f"[{batch_name}] Evolution API desconectada — saltando envío")
+        return
+    use_evolution = True
     sender = None
-    if use_evolution:
-        logger.info(f"[{batch_name}] Usando Evolution API")
-    else:
-        logger.info(f"[{batch_name}] Evolution API no disponible — usando sender de escritorio")
-        try:
-            from whatsapp.sender_desktop import get_sender
-            sender = get_sender()
-            if not sender._is_logged_in:
-                sender.start()
-        except Exception as e:
-            logger.error(f"[{batch_name}] No se pudo iniciar sender de escritorio: {e}")
-            return
+    logger.info(f"[{batch_name}] Usando Evolution API")
 
     conn_cfg = get_db()
     delay_min = int(conn_cfg.execute("SELECT value FROM config WHERE key='wa_delay_min_sec'").fetchone()[0] or 15)

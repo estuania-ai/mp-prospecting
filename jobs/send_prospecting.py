@@ -138,39 +138,11 @@ def run_prospecting_batch(limit: int, batch_name: str = ""):
 
     logger.info(f"[{batch_name}] {len(leads)} leads encontrados (validados)")
 
-    # ── Usar Evolution API (servidor) si está conectado,
-    #    si no, intentar sender de escritorio como fallback ──────────
+    # ── Usar SOLO Evolution API. Si está desconectada, NO ejecutar.
+    # No abrimos WhatsApp Web automáticamente — es spam visual y bloquea la PC.
     from whatsapp import evolution_client as ev
-    use_evolution = ev.is_connected()
-
-    if not use_evolution:
-        logger.warning(f"[{batch_name}] Evolution API no conectada — intentando sender de escritorio")
-        try:
-            from whatsapp.sender_desktop import get_sender
-            sender = get_sender()
-            if not sender._is_logged_in:
-                sender.start()
-            results = sender.send_batch(
-                contacts=leads,
-                get_message_fn=build_message,
-                get_image_fn=build_image_url
-            )
-            sent = failed = no_phone = 0
-            for r in results:
-                contact = r.get('contact', {})
-                error   = r.get('error', '')
-                if r.get('success'):
-                    register_send(contact, True)
-                    sent += 1
-                elif 'phone' in str(error).lower() or error == 'phone_not_exists':
-                    register_send(contact, False, 'phone_not_exists')
-                    no_phone += 1
-                else:
-                    register_send(contact, False, error)
-                    failed += 1
-            logger.info(f"[{batch_name}] (desktop) Completado: {sent} enviados, {no_phone} sin tel, {failed} fallidos")
-        except Exception as e:
-            logger.error(f"[{batch_name}] Sender de escritorio falló: {e}")
+    if not ev.is_connected():
+        logger.warning(f"[{batch_name}] Evolution API desconectada — saltando job (NO abrimos WA Web)")
         return
 
     # ── Evolution API ─────────────────────────────────────────────

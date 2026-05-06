@@ -118,7 +118,7 @@ def update_status(lead_id):
                 "con tus equipos o tu cuenta, no dudes en escribirme. "
                 "¡Mucho éxito y excelentes ventas!"
             )
-            # ── Usar Evolution API si está conectada, sino fallback a sender_desktop ──
+            # ── Solo Evolution API. Sin fallback a WhatsApp Web (no abrimos popups).
             ok = False
             try:
                 from whatsapp import evolution_client as ev
@@ -126,18 +126,13 @@ def update_status(lead_id):
                     result = ev.send_message(lead['phone'], msg, None)
                     ok = result.get('ok', False)
                 else:
-                    raise Exception("Evolution no conectada")
-            except Exception:
-                try:
-                    from whatsapp.sender_desktop import get_sender
-                    sender = get_sender()
-                    if not sender._is_logged_in:
-                        sender.start()
-                    result = sender.send_message(lead['phone'], msg, None)
-                    ok = result.get('success', False)
-                except Exception as e:
                     import logging
-                    logging.getLogger(__name__).error(f"[TIENE_MP] Error enviando a {lead['phone']}: {e}")
+                    logging.getLogger(__name__).warning(
+                        f"[TIENE_MP] Evolution desconectada — no se envía mensaje a {lead['phone']}"
+                    )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"[TIENE_MP] Error enviando a {lead['phone']}: {e}")
 
             conn2 = _db()
             conn2.execute('''
