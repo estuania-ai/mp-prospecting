@@ -8555,24 +8555,87 @@ async function loadAssignPage() {
   if (!wrap) return;
   wrap.innerHTML = '<div style="padding:20px;color:#888">Cargando...</div>';
   try {
-    const [r1, r2] = await Promise.all([
-      fetch('/api/leads/unassigned', { credentials: 'same-origin' }),
-      fetch('/auth/admin/users', { credentials: 'same-origin' })
+    const filterAssigned = document.getElementById('flt-assigned')?.value || 'all';
+    const filterRubro    = document.getElementById('flt-rubro')?.value || '';
+    const filterComuna   = document.getElementById('flt-comuna')?.value || '';
+    const filterUser     = document.getElementById('flt-user')?.value || '';
+
+    let url = `/api/leads/unassigned?assigned_filter=${filterAssigned}`;
+    if (filterRubro) url += `&rubro=${encodeURIComponent(filterRubro)}`;
+    if (filterComuna) url += `&comuna=${encodeURIComponent(filterComuna)}`;
+    if (filterUser) url += `&assigned_user_id=${filterUser}`;
+
+    const [r1, r2, r3] = await Promise.all([
+      fetch(url, { credentials: 'same-origin' }),
+      fetch('/auth/admin/users', { credentials: 'same-origin' }),
+      fetch('/api/leads/assignment-stats', { credentials: 'same-origin' })
     ]);
     UNASSIGNED_LEADS = await r1.json();
     const allUsers = await r2.json();
+    const stats = await r3.json();
     TEAM_USERS = allUsers.filter(u => u.status === 'active' && (u.role === 'sales' || u.role === 'tl' || u.role === 'owner'));
 
+    // Listas únicas para filtros
+    const rubrosSet = new Set(UNASSIGNED_LEADS.map(l => l.rubro).filter(Boolean));
+    const comunasSet = new Set(UNASSIGNED_LEADS.map(l => l.comuna).filter(Boolean));
+
+    // Métricas
     let html = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px">
+        <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);border-left:3px solid #009EE3">
+          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em">Total leads</div>
+          <div style="font-size:24px;font-weight:700">${stats.total}</div>
+        </div>
+        <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);border-left:3px solid #27AE60">
+          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em">Asignados</div>
+          <div style="font-size:24px;font-weight:700;color:#27AE60">${stats.assigned} <span style="font-size:13px;color:#888">(${stats.pct_assigned}%)</span></div>
+        </div>
+        <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);border-left:3px solid #F1C40F">
+          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em">Sin asignar</div>
+          <div style="font-size:24px;font-weight:700;color:#F1C40F">${stats.unassigned}</div>
+        </div>
+        <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em">Por usuario</div>
+          <div style="font-size:11px;line-height:1.5;margin-top:4px">
+            ${stats.by_user.filter(u=>u.leads>0).slice(0,4).map(u=>`<div>${u.name}: <strong>${u.leads}</strong></div>`).join('') || '<div style="color:#aaa">Sin asignaciones</div>'}
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;background:#f8f9fa;padding:12px;border-radius:10px">
+        <strong style="font-size:12px;color:#666">FILTROS:</strong>
+        <select id="flt-assigned" onchange="loadAssignPage()" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:13px">
+          <option value="all" ${filterAssigned==='all'?'selected':''}>Todos</option>
+          <option value="no" ${filterAssigned==='no'?'selected':''}>Sin asignar</option>
+          <option value="yes" ${filterAssigned==='yes'?'selected':''}>Asignados</option>
+        </select>
+        <select id="flt-rubro" onchange="loadAssignPage()" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:13px">
+          <option value="">Todos los rubros</option>
+          ${[...rubrosSet].sort().map(r => `<option value="${r}" ${filterRubro===r?'selected':''}>${r}</option>`).join('')}
+        </select>
+        <select id="flt-comuna" onchange="loadAssignPage()" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:13px">
+          <option value="">Todas las comunas</option>
+          ${[...comunasSet].sort().map(c => `<option value="${c}" ${filterComuna===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+        <select id="flt-user" onchange="loadAssignPage()" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:13px">
+          <option value="">Cualquier asignado</option>
+          ${TEAM_USERS.map(u => `<option value="${u.id}" ${filterUser==String(u.id)?'selected':''}>${u.name} (${u.role})</option>`).join('')}
+        </select>
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn btn-ghost" onclick="window.open('/api/leads/assignments-export','_blank')" style="font-size:12px;padding:6px 12px">📊 Exportar Excel</button>
+          <button class="btn btn-ghost" onclick="loadAssignmentsHistory()" style="font-size:12px;padding:6px 12px">📜 Historial</button>
+        </span>
+      </div>
+
       <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
-        <div style="font-size:14px;color:#1A1A2E"><strong>${UNASSIGNED_LEADS.length}</strong> leads sin asignar</div>
         <select id="assignTo" style="padding:7px 12px;border-radius:8px;border:1px solid #ddd">
           <option value="">— Asignar a —</option>
           ${TEAM_USERS.map(u => `<option value="${u.id}">${u.name} (${u.role})</option>`).join('')}
         </select>
-        <input id="assignReason" placeholder="Motivo (opcional, obligatorio si reasigna)" style="padding:7px 12px;border-radius:8px;border:1px solid #ddd;flex:1;min-width:200px">
+        <input id="assignReason" placeholder="Motivo (oblig. si reasignás)" style="padding:7px 12px;border-radius:8px;border:1px solid #ddd;flex:1;min-width:200px">
         <button class="btn btn-primary" onclick="doAssignSelected()">Asignar seleccionados</button>
       </div>
+
       <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)">
         <thead>
           <tr style="background:#f8f9fa;text-align:left">
@@ -8581,24 +8644,68 @@ async function loadAssignPage() {
             <th style="padding:10px 14px;font-size:12px">Comuna</th>
             <th style="padding:10px 14px;font-size:12px">Rubro</th>
             <th style="padding:10px 14px;font-size:12px">Teléfono</th>
+            <th style="padding:10px 14px;font-size:12px">Asignado a</th>
+            <th style="padding:10px 14px;font-size:12px">Fecha asign.</th>
             <th style="padding:10px 14px;font-size:12px">Creado</th>
           </tr>
         </thead>
         <tbody>`;
     UNASSIGNED_LEADS.forEach(l => {
+      const assignedBadge = l.assigned_to_name
+        ? `<span style="background:#E8F5E9;color:#1B5E20;font-size:11px;padding:2px 8px;border-radius:10px">${l.assigned_to_name}</span>`
+        : '<span style="color:#aaa;font-size:11px">— sin asignar —</span>';
       html += `<tr style="border-top:1px solid #eee">
         <td style="padding:8px 14px"><input type="checkbox" class="assign-cb" value="${l.id}"></td>
         <td style="padding:8px 14px;font-size:13px">${l.name || ''}</td>
         <td style="padding:8px 14px;font-size:12px;color:#666">${l.comuna || ''}</td>
         <td style="padding:8px 14px;font-size:12px;color:#666">${l.rubro || ''}</td>
         <td style="padding:8px 14px;font-size:12px;color:#666">${l.phone || ''}</td>
+        <td style="padding:8px 14px;font-size:12px">${assignedBadge}</td>
+        <td style="padding:8px 14px;font-size:11px;color:#999">${l.assigned_at || '—'}</td>
         <td style="padding:8px 14px;font-size:11px;color:#999">${l.created_at || ''}</td>
       </tr>`;
     });
-    html += '</tbody></table>';
+    html += `</tbody></table>
+      <div style="text-align:right;font-size:11px;color:#888;margin-top:8px">${UNASSIGNED_LEADS.length} resultados</div>
+      <div id="assignments-history-area" style="margin-top:24px"></div>`;
     wrap.innerHTML = html;
   } catch(e) {
     wrap.innerHTML = '<div style="padding:20px;color:#C0392B">Error: ' + e.message + '</div>';
+  }
+}
+
+async function loadAssignmentsHistory() {
+  const area = document.getElementById('assignments-history-area');
+  if (!area) return;
+  area.innerHTML = '<div style="padding:14px;color:#888">Cargando historial...</div>';
+  try {
+    const r = await fetch('/api/leads/assignments-log?limit=100', { credentials: 'same-origin' });
+    const data = await r.json();
+    let html = `<h3 style="margin:0 0 10px 0;color:#1A1A2E">📜 Historial de asignaciones (${data.total} total, mostrando últimas ${data.items.length})</h3>
+      <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+        <thead><tr style="background:#FFF8E1;text-align:left">
+          <th style="padding:10px 14px;font-size:12px">Fecha y hora</th>
+          <th style="padding:10px 14px;font-size:12px">Negocio</th>
+          <th style="padding:10px 14px;font-size:12px">Rubro</th>
+          <th style="padding:10px 14px;font-size:12px">Sales</th>
+          <th style="padding:10px 14px;font-size:12px">Asignó</th>
+          <th style="padding:10px 14px;font-size:12px">Motivo</th>
+        </tr></thead><tbody>`;
+    data.items.forEach(it => {
+      const tipo = it.from_user_id ? `<span style="background:#FFE0B2;color:#E65100;font-size:10px;padding:2px 6px;border-radius:8px">REASIGN</span>` : '';
+      html += `<tr style="border-top:1px solid #eee">
+        <td style="padding:8px 14px;font-size:11px;color:#666;font-family:monospace">${it.assigned_at}</td>
+        <td style="padding:8px 14px;font-size:13px">${it.lead_name || '—'} ${tipo}</td>
+        <td style="padding:8px 14px;font-size:12px;color:#666">${it.lead_rubro || ''}</td>
+        <td style="padding:8px 14px;font-size:12px">${it.from_name ? `<s style="color:#999">${it.from_name}</s> → ` : ''}<strong>${it.to_name}</strong></td>
+        <td style="padding:8px 14px;font-size:11px;color:#666">${it.by_name || '—'}</td>
+        <td style="padding:8px 14px;font-size:11px;color:#999">${it.reason || ''}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    area.innerHTML = html;
+  } catch(e) {
+    area.innerHTML = '<div style="padding:14px;color:#C0392B">Error: ' + e.message + '</div>';
   }
 }
 

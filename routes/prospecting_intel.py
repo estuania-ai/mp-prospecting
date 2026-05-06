@@ -3,12 +3,30 @@ Herramienta de inteligencia de prospeccion
 Analiza leads enviados y sugiere que rubros/comunas buscar para alimentar la BD
 """
 from flask import Blueprint, jsonify
+from flask_login import current_user, login_required
 from database import get_db
 from rubros_config import RUBROS
 
 intel_bp = Blueprint('intel', __name__)
 
+
+def _scope_clause():
+    """Filtro WHERE por rol - sobre tabla leads (l)."""
+    if not current_user or not current_user.is_authenticated:
+        return ' AND 1=0', []
+    if current_user.role == 'owner':
+        return '', []
+    if current_user.role == 'tl':
+        return (' AND (l.assigned_to = ? OR l.assigned_to IN '
+                '(SELECT id FROM users WHERE team_lead_id = ? AND status="active"))',
+                [current_user.id, current_user.id])
+    if current_user.role == 'sales':
+        return ' AND l.assigned_to = ?', [current_user.id]
+    return ' AND 1=0', []
+
+
 @intel_bp.route('/suggestions', methods=['GET'])
+@login_required
 def get_suggestions():
     """
     Analiza el estado actual de leads y sugiere:
@@ -18,9 +36,10 @@ def get_suggestions():
     4. Proximas busquedas recomendadas
     """
     conn = get_db()
+    where_role, params_role = _scope_clause()
 
-    # Leads por rubro con tasas
-    rubro_stats = conn.execute('''
+    # Leads por rubro con tasas (filtrados por rol)
+    rubro_stats = conn.execute(f'''
         SELECT
             l.rubro,
             COUNT(DISTINCT l.id) as total_leads,
@@ -31,9 +50,10 @@ def get_suggestions():
             COUNT(DISTINCT CASE WHEN ls.status IS NULL THEN l.id END) as pendientes
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
+        WHERE 1=1 {where_role}
         GROUP BY l.rubro
         ORDER BY total_leads DESC
-    ''').fetchall()
+    ''', params_role).fetchall()
 
     # Comunas por cobertura con tasa de respuesta
     comuna_stats = conn.execute('''
@@ -47,13 +67,13 @@ def get_suggestions():
             COUNT(DISTINCT CASE WHEN ls.status = 'enviado' THEN l.id END) as enviados
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
-        WHERE l.comuna IS NOT NULL AND l.comuna != ''
+        WHERE l.comuna IS NOT NULL AND l.comuna != '' {where_role}
         GROUP BY l.comuna
         ORDER BY interesados DESC, total_leads DESC
-    ''').fetchall()
+    ''', params_role).fetchall()
 
     # Rubros con mejor tasa de interes
-    best_rubros = conn.execute('''
+    best_rubros = conn.execute(f'''
         SELECT
             l.rubro,
             COUNT(DISTINCT l.id) as total,
@@ -62,11 +82,12 @@ def get_suggestions():
                 NULLIF(COUNT(DISTINCT CASE WHEN ls.status IS NOT NULL THEN l.id END), 0), 1) as tasa_interes
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
+        WHERE 1=1 {where_role}
         GROUP BY l.rubro
         HAVING total > 3
         ORDER BY tasa_interes DESC
         LIMIT 5
-    ''').fetchall()
+    ''', params_role).fetchall()
 
     # Rubros sin leads (necesitan scraping urgente)
     rubros_con_leads = {r['rubro'] for r in rubro_stats}

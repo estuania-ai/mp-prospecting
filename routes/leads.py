@@ -745,29 +745,152 @@ def update_lead_address(lead_id):
 @leads_bp.route("/unassigned", methods=["GET"])
 @requires_tl
 def get_unassigned_leads():
-    """Lista de leads sin asignar — visible solo a TL/Owner."""
+    """
+    Lista de leads para asignar — visible solo a TL/Owner.
+    Devuelve TODOS los leads (asignados y no asignados) con info de asignación.
+    Filtros opcionales: comuna, rubro, assigned_filter (yes|no|all), assigned_user_id
+    """
     comuna = request.args.get("comuna")
     rubro = request.args.get("rubro")
+    assigned_filter = (request.args.get("assigned_filter") or "all").lower()
+    assigned_user_id = request.args.get("assigned_user_id")
+
     q = """
-        SELECT l.id, l.name, l.phone, l.comuna, l.rubro, l.address, l.created_at,
+        SELECT l.id, l.name, l.phone, l.comuna, l.rubro, l.address,
+               l.created_at, l.assigned_to, l.assigned_at,
+               u.name AS assigned_to_name,
                ls.status
         FROM leads l
+        LEFT JOIN users u ON l.assigned_to = u.id
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
-        WHERE l.assigned_to IS NULL
-          AND NOT (l.phone LIKE \"562%\" OR l.phone LIKE \"+562%\")
+        WHERE NOT (l.phone LIKE "562%" OR l.phone LIKE "+562%")
     """
     params = []
+    if assigned_filter == "no":
+        q += " AND l.assigned_to IS NULL"
+    elif assigned_filter == "yes":
+        q += " AND l.assigned_to IS NOT NULL"
+        if assigned_user_id:
+            q += " AND l.assigned_to = ?"
+            params.append(int(assigned_user_id))
     if comuna:
         q += " AND l.comuna = ?"
         params.append(comuna)
     if rubro:
         q += " AND l.rubro = ?"
         params.append(rubro)
-    q += " ORDER BY l.created_at DESC LIMIT 1000"
+    q += " ORDER BY l.created_at DESC LIMIT 5000"
     conn = get_db()
     rows = conn.execute(q, params).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+
+@leads_bp.route("/assignment-stats", methods=["GET"])
+@requires_tl
+def assignment_stats():
+    """Métricas globales de asignación + breakdown por Sales y por rubro."""
+    conn = get_db()
+    total = conn.execute(
+        "SELECT COUNT(*) AS c FROM leads WHERE NOT (phone LIKE '562%' OR phone LIKE '+562%')"
+    ).fetchone()['c']
+    assigned = conn.execute(
+        "SELECT COUNT(*) AS c FROM leads WHERE assigned_to IS NOT NULL "
+        "AND NOT (phone LIKE '562%' OR phone LIKE '+562%')"
+    ).fetchone()['c']
+    unassigned = total - assigned
+
+    by_user = conn.execute("""
+        SELECT u.id, u.name, u.role, COUNT(l.id) AS leads
+        FROM users u
+        LEFT JOIN leads l ON l.assigned_to = u.id
+            AND NOT (l.phone LIKE '562%' OR l.phone LIKE '+562%')
+        WHERE u.status='active' AND u.role IN ('owner','tl','sales')
+        GROUP BY u.id
+        ORDER BY leads DESC
+    """).fetchall()
+
+    by_rubro = conn.execute("""
+        SELECT rubro,
+               COUNT(*) AS total,
+               SUM(CASE WHEN assigned_to IS NOT NULL THEN 1 ELSE 0 END) AS asignados
+        FROM leads
+        WHERE NOT (phone LIKE '562%' OR phone LIKE '+562%')
+        GROUP BY rubro
+        ORDER BY total DESC
+    """).fetchall()
+
+    conn.close()
+    return jsonify({
+        'total': total,
+        'assigned': assigned,
+        'unassigned': unassigned,
+        'pct_assigned': round((assigned/total*100), 1) if total else 0,
+        'by_user': [dict(r) for r in by_user],
+        'by_rubro': [dict(r) for r in by_rubro],
+    })
+
+
+@leads_bp.route("/assignments-log", methods=["GET"])
+@requires_tl
+def assignments_log():
+    """Historial completo de asignaciones (paginado)."""
+    limit = int(request.args.get('limit', 200))
+    offset = int(request.args.get('offset', 0))
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT al.id, al.lead_id, al.from_user_id, al.to_user_id, al.assigned_by,
+               al.reason, al.assigned_at,
+               l.name AS lead_name, l.rubro AS lead_rubro, l.comuna AS lead_comuna,
+               fu.name AS from_name, tu.name AS to_name, ab.name AS by_name
+        FROM lead_assignments_log al
+        LEFT JOIN leads l ON al.lead_id = l.id
+        LEFT JOIN users fu ON al.from_user_id = fu.id
+        LEFT JOIN users tu ON al.to_user_id = tu.id
+        LEFT JOIN users ab ON al.assigned_by = ab.id
+        ORDER BY al.assigned_at DESC
+        LIMIT ? OFFSET ?
+    """, (limit, offset)).fetchall()
+    total = conn.execute("SELECT COUNT(*) AS c FROM lead_assignments_log").fetchone()['c']
+    conn.close()
+    return jsonify({'total': total, 'items': [dict(r) for r in rows]})
+
+
+@leads_bp.route("/assignments-export", methods=["GET"])
+@requires_tl
+def assignments_export():
+    """Exporta el log de asignaciones como Excel (.xlsx)."""
+    from openpyxl import Workbook
+    from io import BytesIO
+    from flask import send_file
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT al.assigned_at, l.name AS negocio, l.rubro, l.comuna, l.phone,
+               fu.name AS from_name, tu.name AS to_name, ab.name AS by_name, al.reason
+        FROM lead_assignments_log al
+        LEFT JOIN leads l ON al.lead_id = l.id
+        LEFT JOIN users fu ON al.from_user_id = fu.id
+        LEFT JOIN users tu ON al.to_user_id = tu.id
+        LEFT JOIN users ab ON al.assigned_by = ab.id
+        ORDER BY al.assigned_at DESC
+    """).fetchall()
+    conn.close()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Asignaciones"
+    ws.append(["Fecha", "Negocio", "Rubro", "Comuna", "Teléfono",
+               "De", "A", "Asignado por", "Motivo"])
+    for r in rows:
+        ws.append([r['assigned_at'], r['negocio'], r['rubro'], r['comuna'],
+                   r['phone'], r['from_name'] or '—', r['to_name'],
+                   r['by_name'], r['reason'] or ''])
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    from datetime import datetime as _dt
+    fn = f"asignaciones_{_dt.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=fn)
 
 
 @leads_bp.route("/assign", methods=["POST"])

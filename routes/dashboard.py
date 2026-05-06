@@ -357,16 +357,20 @@ def kpis():
 
 
 @dashboard_bp.route('/preview', methods=['GET'])
+@login_required
 def get_preview():
     from fidelizacion_config import ETAPAS
     conn = get_db()
-    leads_pendientes = conn.execute("""
+    # Filtro por rol
+    user_lead_ids = _user_lead_ids(current_user, conn)
+    scope_q, scope_p = _scope_clause(user_lead_ids, 'l.id')
+    leads_pendientes = conn.execute(f"""
         SELECT l.name, l.rubro, l.comuna, ls.status
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
-        WHERE ls.status = 'no_enviado' AND l.phone IS NOT NULL
+        WHERE ls.status = 'no_enviado' AND l.phone IS NOT NULL {scope_q}
         ORDER BY ls.updated_at ASC LIMIT 40
-    """).fetchall()
+    """, scope_p).fetchall()
 
     rubros_count = {}
     for l in leads_pendientes:
