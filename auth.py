@@ -13,6 +13,7 @@ Decisiones de seguridad:
 - CSRF token en forms POST via Flask-WTF
 - Session-id se regenera al login (anti session fixation)
 """
+import os
 import re
 import bcrypt
 from datetime import datetime, timedelta
@@ -29,6 +30,9 @@ LOCKOUT_MINUTES = 15
 PASSWORD_MIN_LEN = 8
 GMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+\-]+@gmail\.com$', re.IGNORECASE)
 
+# Email del Owner (creador). Se asigna rol 'owner' automáticamente al registrarse.
+OWNER_EMAIL = os.getenv('OWNER_EMAIL', 'juansebastian.pinto.mp@gmail.com').strip().lower()
+
 
 # ── Modelo User ─────────────────────────────────────────────────
 class User(UserMixin):
@@ -44,14 +48,46 @@ class User(UserMixin):
         self.whatsapp_number = row['whatsapp_number']
         self.fast_local_url = row['fast_local_url']
         self.smtp_user = row['smtp_user']
+        # Equipo: a qué TL pertenece este usuario (NULL si es Owner o TL)
+        try:
+            self.team_lead_id = row['team_lead_id']
+        except (KeyError, IndexError):
+            self.team_lead_id = None
+        # Firma personalizada
+        try:
+            self.sig_title = row['sig_title']
+            self.sig_phone = row['sig_phone']
+            self.sig_photo_path = row['sig_photo_path']
+        except (KeyError, IndexError):
+            self.sig_title = self.sig_phone = self.sig_photo_path = None
+
+    @property
+    def is_owner(self):
+        return self.role == 'owner'
 
     @property
     def is_tl(self):
+        # Owner también tiene capacidades de TL
+        return self.role in ('tl', 'owner')
+
+    @property
+    def is_only_tl(self):
+        """True solo si es TL (no owner). Útil para distinguir."""
         return self.role == 'tl'
 
     @property
     def is_sales(self):
         return self.role == 'sales'
+
+    @property
+    def can_manage_team(self):
+        """Puede asignar leads, ver métricas de equipo."""
+        return self.role in ('tl', 'owner')
+
+    @property
+    def can_send_with_own_signature(self):
+        """Owner, TL y Sales — todos pueden tener su firma. Solo Sales asignados envían."""
+        return self.role in ('owner', 'tl', 'sales')
 
     @property
     def is_active(self):
@@ -143,6 +179,9 @@ def requires_role(*allowed_roles):
     """
     Decorador para endpoints que requieren rol específico.
     Uso:  @requires_role('tl')  o  @requires_role('tl', 'sales')
+
+    Owner SIEMPRE pasa (super-admin). Esto evita tener que listar 'owner'
+    en cada decorador.
     """
     def decorator(fn):
         @wraps(fn)
@@ -150,6 +189,9 @@ def requires_role(*allowed_roles):
         def wrapper(*args, **kwargs):
             if current_user.status != 'active':
                 return jsonify({'error': 'Cuenta no activa'}), 403
+            # Owner = super-admin, acceso a todo
+            if current_user.role == 'owner':
+                return fn(*args, **kwargs)
             if current_user.role not in allowed_roles:
                 # 403 con mensaje genérico — no revelar info sobre roles
                 return jsonify({'error': 'No tienes permiso para esta acción'}), 403
@@ -159,7 +201,21 @@ def requires_role(*allowed_roles):
 
 
 def requires_tl(fn):
+    """TL o Owner."""
     return requires_role('tl')(fn)
+
+
+def requires_owner(fn):
+    """Solo Owner — acciones súper-admin (cambiar config global, etc.)."""
+    def decorator(fn):
+        @wraps(fn)
+        @login_required
+        def wrapper(*args, **kwargs):
+            if current_user.role != 'owner' or current_user.status != 'active':
+                return jsonify({'error': 'Solo el owner del sistema puede hacer esto'}), 403
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator(fn)
 
 
 def requires_sales(fn):

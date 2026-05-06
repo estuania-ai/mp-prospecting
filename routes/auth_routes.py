@@ -11,7 +11,7 @@ from auth import (
     User, hash_password, verify_password,
     validate_password_strength, validate_gmail,
     is_user_locked, register_failed_login, clear_failed_logins,
-    requires_tl, MAX_FAILED_LOGINS, LOCKOUT_MINUTES
+    requires_tl, MAX_FAILED_LOGINS, LOCKOUT_MINUTES, OWNER_EMAIL
 )
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -121,22 +121,36 @@ def register():
             flash('No se pudo crear la cuenta. Verifica los datos.', 'error')
             return render_template('auth/register.html')
 
-        # Si es el primer usuario del sistema → bootstrap como TL aprobado
+        # ── Lógica de roles iniciales ──
+        # 1. Si el email es el OWNER_EMAIL configurado → automáticamente OWNER + activo
+        # 2. Si es el primer usuario del sistema (bootstrap sin owner email) → TL activo
+        # 3. Cualquier otro caso → pending, espera aprobación
+        is_owner_email = (email == OWNER_EMAIL)
         first_user = conn.execute('SELECT COUNT(*) AS c FROM users').fetchone()['c'] == 0
+
+        if is_owner_email:
+            initial_role = 'owner'
+            initial_status = 'active'
+            password_changed = 1   # owner ya viene con su pwd que él mismo eligió
+        elif first_user:
+            initial_role = 'tl'
+            initial_status = 'active'
+            password_changed = 1
+        else:
+            initial_role = None
+            initial_status = 'pending'
+            password_changed = 0
 
         conn.execute('''
             INSERT INTO users (email, username, password_hash, name, role, status, password_changed)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            email, username, hash_password(password), name,
-            'tl' if first_user else None,
-            'active' if first_user else 'pending',
-            1 if first_user else 0
-        ))
+        ''', (email, username, hash_password(password), name, initial_role, initial_status, password_changed))
         conn.commit()
         conn.close()
 
-        if first_user:
+        if is_owner_email:
+            flash('Cuenta de Owner creada. Ya puedes iniciar sesión.', 'success')
+        elif first_user:
             flash('Cuenta creada como TL inicial. Ya puedes iniciar sesión.', 'success')
         else:
             flash('Registro exitoso. Tu cuenta queda pendiente de aprobación por un Team Leader.', 'success')
@@ -224,11 +238,16 @@ def admin_list_users():
 @auth_bp.route('/admin/users/<int:user_id>/approve', methods=['POST'])
 @requires_tl
 def admin_approve_user(user_id):
-    """Aprueba un usuario pendiente y le asigna rol."""
+    """
+    Aprueba un usuario pendiente, asigna rol y (si es Sales) team_lead_id.
+    Body: {role: 'tl'|'sales', team_lead_id: int? (requerido si role=sales)}
+    """
     data = request.get_json() or {}
     role = (data.get('role') or '').strip().lower()
+    team_lead_id = data.get('team_lead_id')
+
     if role not in ('tl', 'sales'):
-        return jsonify({'error': 'Rol inválido'}), 400
+        return jsonify({'error': 'Rol inválido (debe ser tl o sales)'}), 400
 
     conn = get_db()
     row = conn.execute('SELECT id, status FROM users WHERE id=?', (user_id,)).fetchone()
@@ -239,10 +258,30 @@ def admin_approve_user(user_id):
         conn.close()
         return jsonify({'error': f'Usuario ya está en estado: {row["status"]}'}), 400
 
-    conn.execute('UPDATE users SET role=?, status="active" WHERE id=?', (role, user_id))
+    # Validar team_lead si es Sales
+    if role == 'sales':
+        if not team_lead_id:
+            # Default: el TL/Owner que está aprobando
+            team_lead_id = current_user.id
+        else:
+            # Verificar que team_lead_id corresponde a un TL u Owner activo
+            tl_row = conn.execute(
+                "SELECT id, role FROM users WHERE id=? AND status='active' AND role IN ('tl','owner')",
+                (team_lead_id,)
+            ).fetchone()
+            if not tl_row:
+                conn.close()
+                return jsonify({'error': 'team_lead_id no corresponde a un TL/Owner activo'}), 400
+    else:
+        team_lead_id = None  # TLs no tienen team_lead
+
+    conn.execute(
+        'UPDATE users SET role=?, status="active", team_lead_id=? WHERE id=?',
+        (role, team_lead_id, user_id)
+    )
     conn.commit()
     conn.close()
-    return jsonify({'ok': True, 'role': role})
+    return jsonify({'ok': True, 'role': role, 'team_lead_id': team_lead_id})
 
 
 @auth_bp.route('/admin/users/<int:user_id>/disable', methods=['POST'])
@@ -285,7 +324,11 @@ def me():
         'username': current_user.username,
         'name': current_user.name,
         'role': current_user.role,
-        'is_tl': current_user.is_tl,
+        'is_owner': current_user.is_owner,
+        'is_tl': current_user.is_tl,             # True si tl O owner
+        'is_only_tl': current_user.is_only_tl,   # True solo si tl puro
         'is_sales': current_user.is_sales,
+        'can_manage_team': current_user.can_manage_team,
+        'team_lead_id': current_user.team_lead_id,
         'password_changed': current_user.password_changed,
     })

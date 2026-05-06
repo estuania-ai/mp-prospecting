@@ -50,21 +50,26 @@ def init_db():
 
     c.execute('CREATE INDEX IF NOT EXISTS idx_leads_assigned_to ON leads(assigned_to)')
 
-    # ─── USUARIOS (TL y Sales) ─────────────────────────────────
+    # ─── USUARIOS (Owner, TL y Sales) ──────────────────────────
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             email           TEXT NOT NULL UNIQUE,
             username        TEXT NOT NULL UNIQUE,
             password_hash   TEXT NOT NULL,
-            role            TEXT,                            -- 'tl' | 'sales' | NULL=pending
+            role            TEXT,                            -- 'owner' | 'tl' | 'sales' | NULL=pending
             name            TEXT,
+            team_lead_id    INTEGER,                         -- TL al que pertenece (si rol=sales)
             evolution_instance TEXT,                         -- nombre de instancia Evolution API
             whatsapp_number TEXT,                            -- numero del Sales (informativo)
             fast_local_url  TEXT,                            -- URL del tunnel del Sales para Fast
             fast_local_token TEXT,                           -- token compartido con su servidor local
             smtp_user       TEXT,                            -- email del Sales para SMTP
-            smtp_pass_enc   TEXT,                            -- App password (encriptado)
+            smtp_pass_enc   TEXT,                            -- App password (encriptado en reposo)
+            -- Firma personalizada por usuario (cada Sales tiene su propia)
+            sig_title       TEXT,                            -- ej: "Sales Executive"
+            sig_phone       TEXT,                            -- ej: "+569 1234 5678"
+            sig_photo_path  TEXT,                            -- path relativo a static/ o URL
             status          TEXT DEFAULT 'pending'           -- 'pending' | 'active' | 'disabled'
                             CHECK(status IN ('pending','active','disabled')),
             password_changed INTEGER DEFAULT 0,              -- 0 hasta que cambie su password inicial
@@ -74,6 +79,18 @@ def init_db():
             locked_until    TEXT                             -- bloqueo por intentos fallidos
         )
     ''')
+
+    # Migración no-destructiva: agregar columnas nuevas si la tabla ya existía
+    for col, decl in [
+        ('team_lead_id', 'INTEGER'),
+        ('sig_title', 'TEXT'),
+        ('sig_phone', 'TEXT'),
+        ('sig_photo_path', 'TEXT'),
+    ]:
+        try:
+            c.execute(f'ALTER TABLE users ADD COLUMN {col} {decl}')
+        except sqlite3.OperationalError:
+            pass
     c.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)')
 
