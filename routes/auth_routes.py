@@ -23,7 +23,7 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('index'))
 
     if request.method == 'POST':
         email = (request.form.get('email') or '').strip().lower()
@@ -68,7 +68,7 @@ def login():
         if not user.password_changed:
             return redirect(url_for('auth.change_password'))
 
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('index'))
 
     return render_template('auth/login.html')
 
@@ -79,7 +79,7 @@ def login():
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('index'))
 
     if request.method == 'POST':
         email    = (request.form.get('email') or '').strip().lower()
@@ -212,7 +212,7 @@ def change_password():
         conn.close()
 
         flash('Contraseña actualizada correctamente.', 'success')
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('index'))
 
     return render_template('auth/change_password.html')
 
