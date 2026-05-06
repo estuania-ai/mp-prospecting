@@ -404,6 +404,72 @@ def kpis():
     })
 
 
+# ═══════════════════════════════════════════════════════════════
+# SCHEDULER CONFIG por usuario (Sales/TL/Owner ve la suya)
+# ═══════════════════════════════════════════════════════════════
+SCHEDULER_FIELDS = [
+    'prospeccion_0930_active', 'prospeccion_1500_active', 'prospeccion_1730_active',
+    'seguimiento_24h_active', 'seguimiento_72h_active', 'fidelizacion_active'
+]
+
+
+@dashboard_bp.route('/scheduler/user-config', methods=['GET'])
+@login_required
+def get_user_scheduler():
+    """Devuelve la configuración personal del scheduler del usuario actual."""
+    conn = get_db()
+    row = conn.execute(
+        'SELECT * FROM user_scheduler_config WHERE user_id=?', (current_user.id,)
+    ).fetchone()
+    if not row:
+        # Crear con defaults (todos OFF)
+        conn.execute('INSERT INTO user_scheduler_config (user_id) VALUES (?)', (current_user.id,))
+        conn.commit()
+        row = conn.execute(
+            'SELECT * FROM user_scheduler_config WHERE user_id=?', (current_user.id,)
+        ).fetchone()
+    conn.close()
+    return jsonify(dict(row))
+
+
+@dashboard_bp.route('/scheduler/user-config', methods=['POST'])
+@login_required
+def set_user_scheduler():
+    """Permite al usuario activar/desactivar sus jobs."""
+    data = request.get_json() or {}
+    conn = get_db()
+    # Asegurar que el row existe
+    conn.execute(
+        'INSERT OR IGNORE INTO user_scheduler_config (user_id) VALUES (?)', (current_user.id,)
+    )
+    # Actualizar solo los campos válidos
+    set_pairs, params = [], []
+    for f in SCHEDULER_FIELDS:
+        if f in data:
+            set_pairs.append(f"{f}=?")
+            params.append(1 if data[f] else 0)
+    if 'daily_limit' in data:
+        try:
+            limit = max(0, min(int(data['daily_limit']), 1000))
+            set_pairs.append('daily_limit=?')
+            params.append(limit)
+        except Exception:
+            pass
+    if set_pairs:
+        params.append(current_user.id)
+        conn.execute(
+            f"UPDATE user_scheduler_config SET {', '.join(set_pairs)}, "
+            f"updated_at=datetime('now','localtime') WHERE user_id=?",
+            params
+        )
+        conn.commit()
+    row = conn.execute(
+        'SELECT * FROM user_scheduler_config WHERE user_id=?', (current_user.id,)
+    ).fetchone()
+    conn.close()
+    return jsonify({'ok': True, 'config': dict(row)})
+
+
 @dashboard_bp.route('/preview', methods=['GET'])
 @login_required
 def get_preview():

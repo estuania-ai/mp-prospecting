@@ -109,6 +109,23 @@ def init_db():
     c.execute('CREATE INDEX IF NOT EXISTS idx_assign_log_lead ON lead_assignments_log(lead_id)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_assign_log_to ON lead_assignments_log(to_user_id)')
 
+    # ─── CONFIGURACIÓN DE SCHEDULER POR USUARIO ────────────────
+    # Cada Sales/TL/Owner tiene sus toggles. Owner activa o desactiva
+    # cuando quiera ejecutar los jobs sobre los leads asignados.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS user_scheduler_config (
+            user_id                  INTEGER PRIMARY KEY REFERENCES users(id),
+            prospeccion_0930_active  INTEGER DEFAULT 0,
+            prospeccion_1500_active  INTEGER DEFAULT 0,
+            prospeccion_1730_active  INTEGER DEFAULT 0,
+            seguimiento_24h_active   INTEGER DEFAULT 0,
+            seguimiento_72h_active   INTEGER DEFAULT 0,
+            fidelizacion_active      INTEGER DEFAULT 0,
+            daily_limit              INTEGER DEFAULT 50,
+            updated_at               TEXT DEFAULT (datetime('now','localtime'))
+        )
+    ''')
+
     # ─── LOG DE ACCESO TL A LEADS (auditoría de coaching) ──────
     # Cuando el TL abre un lead específico, queda registrado.
     c.execute('''

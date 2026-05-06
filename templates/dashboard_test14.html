@@ -651,7 +651,7 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     <span class="nav-icon">👥</span> Leads
     <span class="nav-badge" id="badgeLeads">—</span>
   </div>
-  <div class="nav-item" data-roles="owner,tl" onclick="showPage('envios',this,'Historial de envíos')">
+  <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('envios',this,'Historial de envíos')">
     <span class="nav-icon">📨</span> Envíos
   </div>
 
@@ -4034,8 +4034,115 @@ function exportLeads(){
   toast('CSV exportado','success');
 }
 
+// ─── ENVÍOS PARA SALES (vista personal, scheduler inactivo) ─────────
+async function loadEnviosSales(){
+  const page = document.getElementById('page-envios');
+  if (!page) return;
+  // Reemplazar contenido por vista personal
+  let cfg = {};
+  try {
+    const r = await fetch('/api/dashboard/scheduler/user-config', { credentials: 'same-origin' });
+    cfg = await r.json();
+  } catch(e) {}
+
+  const jobs = [
+    { key: 'prospeccion_0930_active', label: '🚀 Prospección 09:30 AM', desc: '15 mensajes a leads no enviados' },
+    { key: 'prospeccion_1500_active', label: '🚀 Prospección 15:00 PM', desc: '10 mensajes a leads no enviados' },
+    { key: 'prospeccion_1730_active', label: '🚀 Prospección 17:30 PM', desc: '15 mensajes a leads no enviados' },
+    { key: 'seguimiento_24h_active', label: '⏰ Seguimiento 24h', desc: 'Re-contactar leads sin respuesta tras 24h' },
+    { key: 'seguimiento_72h_active', label: '⏰ Seguimiento 72h', desc: 'Re-contactar leads sin respuesta tras 72h' },
+    { key: 'fidelizacion_active', label: '💖 Fidelización Sellers', desc: 'Mensajes a sellers cerrados (etapas 7,14,15,30,35)' },
+  ];
+
+  let html = `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Mi scheduler</div>
+        <div class="page-sub">Tareas automáticas que correrán sobre tus leads asignados — actualmente <strong>inactivas</strong></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#1A1A2E">⚙️ Configuración del scheduler</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">El owner del sistema te avisará cuando se activen estos jobs</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <label style="font-size:11px;color:#666">Límite diario</label>
+          <input type="number" id="cfg-daily-limit" value="${cfg.daily_limit || 50}" min="0" max="1000"
+                 style="width:80px;padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:13px"
+                 onchange="saveSchedulerConfig()">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">`;
+
+  jobs.forEach(j => {
+    const active = !!cfg[j.key];
+    html += `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:${active?'#E8F5E9':'#f8f9fa'};border-radius:8px;border:1px solid ${active?'#A5D6A7':'#e5e7eb'}">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;color:#1A1A2E">${j.label}</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">${j.desc}</div>
+          <div style="margin-top:6px">
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${active?'#27AE60':'#9CA3AF'};color:#fff">
+              ${active ? 'ACTIVO' : 'INACTIVO'}
+            </span>
+          </div>
+        </div>
+        <label style="position:relative;display:inline-block;width:42px;height:24px;cursor:pointer">
+          <input type="checkbox" id="cfg-${j.key}" ${active?'checked':''} onchange="saveSchedulerConfig()"
+                 style="opacity:0;width:0;height:0">
+          <span style="position:absolute;inset:0;background:${active?'#27AE60':'#ccc'};border-radius:12px;transition:.2s">
+            <span style="position:absolute;height:18px;width:18px;left:${active?'21px':'3px'};top:3px;background:#fff;border-radius:50%;transition:.2s"></span>
+          </span>
+        </label>
+      </div>`;
+  });
+
+  html += `</div></div>
+
+    <div class="card">
+      <div style="font-size:14px;font-weight:700;color:#1A1A2E;margin-bottom:8px">📊 Tu actividad</div>
+      <div style="font-size:12px;color:#666">Cuando se activen los jobs, acá verás los mensajes enviados, seguimientos y conversaciones con tus leads asignados.</div>
+      <div style="margin-top:14px;text-align:center;color:#aaa;font-size:13px;padding:24px">
+        Sin actividad todavía
+      </div>
+    </div>`;
+
+  page.innerHTML = html;
+}
+
+async function saveSchedulerConfig() {
+  const fields = ['prospeccion_0930_active','prospeccion_1500_active','prospeccion_1730_active',
+                  'seguimiento_24h_active','seguimiento_72h_active','fidelizacion_active'];
+  const body = {};
+  fields.forEach(f => {
+    const el = document.getElementById('cfg-' + f);
+    if (el) body[f] = el.checked;
+  });
+  const lim = document.getElementById('cfg-daily-limit');
+  if (lim) body.daily_limit = parseInt(lim.value) || 50;
+  try {
+    const r = await fetch('/api/dashboard/scheduler/user-config', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (d.ok) {
+      toast('Configuración guardada','success');
+      loadEnviosSales();  // re-render
+    }
+  } catch(e) { toast('Error guardando: ' + e.message, 'error'); }
+}
+
 // ─── ENVÍOS ─────────────────────────────────────────
 async function loadEnvios(){
+  // Para Sales: mostrar vista personal con su scheduler programado pero inactivo
+  if (CURRENT_USER && CURRENT_USER.role === 'sales') {
+    return loadEnviosSales();
+  }
   const [kpis, campaigns, waStatus] = await Promise.all([
     api('/api/dashboard/kpis'),
     api('/api/campaigns/'),
