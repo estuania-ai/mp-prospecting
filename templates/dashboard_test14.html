@@ -8527,7 +8527,7 @@ async function approveUser(userId) {
       body: JSON.stringify({ role, team_lead_id })
     });
     const d = await r.json();
-    if (d.ok) { showToast('Usuario aprobado'); loadAdminUsers(); loadPendingUsersBadge(); }
+    if (d.ok) { toast('Usuario aprobado'); loadAdminUsers(); loadPendingUsersBadge(); }
     else { alert('Error: ' + (d.error || 'desconocido')); }
   } catch(e) { alert('Error: ' + e.message); }
 }
@@ -8539,7 +8539,7 @@ async function disableUser(userId) {
       method: 'POST', credentials: 'same-origin'
     });
     const d = await r.json();
-    if (d.ok) { showToast('Usuario deshabilitado'); loadAdminUsers(); }
+    if (d.ok) { toast('Usuario deshabilitado'); loadAdminUsers(); }
     else { alert('Error: ' + (d.error || 'desconocido')); }
   } catch(e) { alert('Error: ' + e.message); }
 }
@@ -8616,7 +8616,7 @@ async function doAssignSelected() {
     });
     const d = await r.json();
     if (d.ok) {
-      showToast(`Asignados ${d.assigned}, reasignados ${d.reassigned}, errores ${d.errors}`);
+      toast(`Asignados ${d.assigned}, reasignados ${d.reassigned}, errores ${d.errors}`);
       loadAssignPage();
     } else {
       alert('Error: ' + (d.error || 'desconocido'));

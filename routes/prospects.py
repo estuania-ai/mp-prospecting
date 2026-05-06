@@ -2,10 +2,32 @@
 Rutas Flask: Prospectos Interesados + Agenda de Tareas
 """
 from flask import Blueprint, request, jsonify
+from flask_login import current_user, login_required
 from database import get_db
 from datetime import datetime
 
 prospects_bp = Blueprint('prospects', __name__)
+
+
+def _user_lead_filter(alias='p'):
+    """
+    Devuelve (sql_fragment, params) para filtrar prospects por rol.
+    Usa la columna lead_id que linkea con leads.assigned_to.
+    """
+    if not current_user or not current_user.is_authenticated:
+        return ' AND 1=0', []
+    role = current_user.role
+    if role == 'owner':
+        return '', []
+    if role == 'tl':
+        return (f' AND ({alias}.lead_id IS NULL OR {alias}.lead_id IN '
+                f'(SELECT id FROM leads WHERE assigned_to = ? OR assigned_to IN '
+                f'(SELECT id FROM users WHERE team_lead_id = ? AND status="active")))',
+                [current_user.id, current_user.id])
+    if role == 'sales':
+        return (f' AND {alias}.lead_id IN (SELECT id FROM leads WHERE assigned_to = ?)',
+                [current_user.id])
+    return ' AND 1=0', []
 
 COMPETENCIA = ['Tbk', 'Sumup', 'Getnet', 'BCI', 'Banco Chile', 'Compra Aqui', 'TUU', 'Otra', 'Sin competencia']
 
@@ -16,17 +38,20 @@ MSG_SEGUIMIENTO = "Hola, como estas? Te escribo cortito porque de la ultima vez 
 # ── PROSPECTS ─────────────────────────────────────────
 
 @prospects_bp.route('/', methods=['GET'])
+@login_required
 def get_prospects():
     conn = get_db()
-    rows = conn.execute("""
-        SELECT p.*, 
+    where_role, params = _user_lead_filter('p')
+    rows = conn.execute(f"""
+        SELECT p.*,
                COUNT(CASE WHEN t.completada=0 THEN 1 END) as tareas_pendientes,
                COUNT(t.id) as total_tareas
         FROM prospects p
         LEFT JOIN tasks t ON p.id = t.prospect_id
+        WHERE 1=1 {where_role}
         GROUP BY p.id
         ORDER BY p.updated_at DESC
-    """).fetchall()
+    """, params).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 

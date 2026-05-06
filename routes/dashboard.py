@@ -1,5 +1,6 @@
 """Rutas Flask: Dashboard KPIs — con soporte de filtro mensual"""
 from flask import Blueprint, jsonify, request
+from flask_login import current_user, login_required
 from database import get_db
 
 dashboard_bp = Blueprint('dashboard', __name__)
@@ -16,7 +17,44 @@ def _date_clause(col, from_date, to_date, prefix='AND'):
     return ''
 
 
+def _user_lead_ids(user, conn):
+    """
+    Devuelve lista de IDs de leads visibles al usuario.
+    Owner: todos los leads (devuelve None = sin filtro)
+    TL: leads asignados a su equipo (él + sus Sales)
+    Sales: leads asignados solo a él
+    """
+    if not user or not user.is_authenticated or user.status != 'active':
+        return []
+    if user.role == 'owner':
+        return None  # sin filtro
+    if user.role == 'tl':
+        rows = conn.execute(
+            "SELECT id FROM leads WHERE assigned_to = ? OR assigned_to IN "
+            "(SELECT id FROM users WHERE team_lead_id = ? AND status='active')",
+            (user.id, user.id)
+        ).fetchall()
+        return [r['id'] for r in rows] or [-1]  # -1 si no tiene leads (para evitar IN ())
+    if user.role == 'sales':
+        rows = conn.execute(
+            "SELECT id FROM leads WHERE assigned_to = ?", (user.id,)
+        ).fetchall()
+        return [r['id'] for r in rows] or [-1]
+    return [-1]
+
+
+def _scope_clause(lead_ids, col='lead_id'):
+    """Construye AND lead_id IN (...) o '' si no aplica."""
+    if lead_ids is None:
+        return '', []
+    if not lead_ids:
+        return f' AND {col} IN (-1)', []
+    placeholders = ','.join('?' * len(lead_ids))
+    return f' AND {col} IN ({placeholders})', list(lead_ids)
+
+
 @dashboard_bp.route('/kpis', methods=['GET'])
+@login_required
 def kpis():
     from_date = request.args.get('from', '').strip()
     to_date   = request.args.get('to', '').strip()
@@ -28,26 +66,35 @@ def kpis():
 
     conn = get_db()
 
+    # ── Filtro por rol: lista de leads visibles al usuario actual ──
+    user_lead_ids = _user_lead_ids(current_user, conn)
+    scope_msg, scope_msg_params = _scope_clause(user_lead_ids, 'lead_id')
+    scope_ls,  scope_ls_params  = _scope_clause(user_lead_ids, 'lead_id')
+
     # Totales leads (pool acumulado — sin filtro de fecha)
-    total_leads  = conn.execute('SELECT COUNT(*) FROM leads').fetchone()[0]
+    if user_lead_ids is None:
+        total_leads = conn.execute('SELECT COUNT(*) FROM leads').fetchone()[0]
+    else:
+        total_leads = len(user_lead_ids) if -1 not in user_lead_ids else 0
 
     # ── Enviados: SOLO prospección, EXCLUYENDO números fijos (562XXXXXXX)
-    # 562 = números fijos/landlines que no soportan WhatsApp
     total_sent   = conn.execute(
         f"SELECT COUNT(DISTINCT lead_id) FROM messages WHERE message_type='prospecting' AND status='sent' "
-        f"AND NOT (phone LIKE '562%' OR phone LIKE '+562%') {df_msg}"
+        f"AND NOT (phone LIKE '562%' OR phone LIKE '+562%') {df_msg} {scope_msg}",
+        scope_msg_params
     ).fetchone()[0]
     total_opened = conn.execute(
         f"SELECT COUNT(DISTINCT lead_id) FROM messages WHERE message_type='prospecting' AND opened_at IS NOT NULL "
-        f"AND NOT (phone LIKE '562%' OR phone LIKE '+562%') {df_msg}"
+        f"AND NOT (phone LIKE '562%' OR phone LIKE '+562%') {df_msg} {scope_msg}",
+        scope_msg_params
     ).fetchone()[0]
 
     # Estados lead_status en el periodo
     by_status = conn.execute(f'''
         SELECT status, COUNT(*) as cnt FROM lead_status
-        WHERE 1=1 {df_ls}
+        WHERE 1=1 {df_ls} {scope_ls}
         GROUP BY status
-    ''').fetchall()
+    ''', scope_ls_params).fetchall()
     by_status = {r['status']: r['cnt'] for r in by_status}
 
     # Pendientes (no_enviado) — siempre estado actual, sin filtro fecha
