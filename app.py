@@ -43,6 +43,14 @@ app = Flask(__name__)
 import os
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'mp_prospecting_2025_secret_DEV_ONLY_change_in_prod')
 
+# IMPORTANTE: init_db debe ejecutarse al cargar el modulo (no solo en __main__)
+# porque gunicorn importa app.py sin ejecutar el bloque __main__.
+try:
+    init_db()
+    logger.info("init_db() ejecutado correctamente")
+except Exception as _e:
+    logger.error(f"init_db() falló: {_e}", exc_info=True)
+
 # Inicializar Flask-Login + cookies seguras
 init_login_manager(app)
 
