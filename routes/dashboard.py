@@ -99,8 +99,18 @@ def kpis():
 
     # Pendientes (no_enviado) — siempre estado actual, sin filtro fecha
     no_enviado = conn.execute(
-        "SELECT COUNT(*) FROM lead_status WHERE status='no_enviado'"
+        f"SELECT COUNT(*) FROM lead_status WHERE status='no_enviado' {scope_ls}",
+        scope_ls_params
     ).fetchone()[0]
+
+    # Filtro de prospects por rol
+    if user_lead_ids is None:
+        prospects_where_extra, prospects_extra_params = '', []
+    elif user_lead_ids:
+        prospects_where_extra = f' AND lead_id IN ({",".join("?"*len(user_lead_ids))})'
+        prospects_extra_params = list(user_lead_ids)
+    else:
+        prospects_where_extra, prospects_extra_params = ' AND 1=0', []
 
     # ── Enviados por semana: SOLO prospección, EXCLUYENDO números fijos (562)
     weekly_raw = conn.execute(f'''
@@ -110,51 +120,50 @@ def kpis():
         FROM messages
         WHERE message_type='prospecting' AND status='sent'
           AND NOT (phone LIKE '562%' OR phone LIKE '+562%')
-          {df_msg}
+          {df_msg} {scope_msg}
         GROUP BY week, year ORDER BY year DESC, week DESC LIMIT 8
-    ''').fetchall()
+    ''', scope_msg_params).fetchall()
 
     # Interesados por semana = Prospects creados en Gestión (fuente de verdad)
-    # Cuando se agrega un prospect a Gestión, ese lead se vuelve "interesado"
     _wk_inter = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
         SELECT strftime('%W', created_at) as week, strftime('%Y', created_at) as year,
                COUNT(*) as cnt
         FROM prospects
-        WHERE 1=1 {_date_clause('created_at', from_date, to_date)}
+        WHERE 1=1 {_date_clause('created_at', from_date, to_date)} {prospects_where_extra}
         GROUP BY week, year
-    ''').fetchall()}
+    ''', prospects_extra_params).fetchall()}
 
-    # Cerrados por semana — prospects es fuente de verdad
+    # Cerrados por semana
     _wk_cerr = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
         SELECT strftime('%W', updated_at) as week, strftime('%Y', updated_at) as year,
                COUNT(*) as cnt
-        FROM prospects WHERE estado='cerrado' {df_pro}
+        FROM prospects WHERE estado='cerrado' {df_pro} {prospects_where_extra}
         GROUP BY week, year
-    ''').fetchall()}
+    ''', prospects_extra_params).fetchall()}
 
     # Opt-out por semana
     _wk_opto = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
         SELECT strftime('%W', updated_at) as week, strftime('%Y', updated_at) as year,
                COUNT(*) as cnt
-        FROM lead_status WHERE status='opt_out' {df_ls}
+        FROM lead_status WHERE status='opt_out' {df_ls} {scope_ls}
         GROUP BY week, year
-    ''').fetchall()}
+    ''', scope_ls_params).fetchall()}
 
     # Quiere reunión por semana
     _wk_reunion = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
         SELECT strftime('%W', updated_at) as week, strftime('%Y', updated_at) as year,
                COUNT(*) as cnt
-        FROM lead_status WHERE status='quiere_reunion' {df_ls}
+        FROM lead_status WHERE status='quiere_reunion' {df_ls} {scope_ls}
         GROUP BY week, year
-    ''').fetchall()}
+    ''', scope_ls_params).fetchall()}
 
     # No interesado por semana
     _wk_no_int = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
         SELECT strftime('%W', updated_at) as week, strftime('%Y', updated_at) as year,
                COUNT(*) as cnt
-        FROM lead_status WHERE status='no_interesado' {df_ls}
+        FROM lead_status WHERE status='no_interesado' {df_ls} {scope_ls}
         GROUP BY week, year
-    ''').fetchall()}
+    ''', scope_ls_params).fetchall()}
 
     # Combinar en lista final
     weekly = []

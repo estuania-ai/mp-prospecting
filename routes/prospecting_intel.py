@@ -157,34 +157,38 @@ def get_suggestions():
 
 
 @intel_bp.route('/next-searches', methods=['GET'])
+@login_required
 def next_searches():
     """Genera lista priorizada de proximas busquedas Google Maps"""
     conn = get_db()
+    where_role, params_role = _scope_clause()
 
     # Comunas con mas interesados (expandir ahi)
-    top_comunas = conn.execute('''
+    top_comunas = conn.execute(f'''
         SELECT l.comuna,
                COUNT(DISTINCT CASE WHEN ls.status='interesado' THEN l.id END) as interesados,
                COUNT(DISTINCT l.rubro) as rubros_actuales
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
+        WHERE 1=1 {where_role}
         GROUP BY l.comuna
         ORDER BY interesados DESC
         LIMIT 10
-    ''').fetchall()
+    ''', params_role).fetchall()
 
     # Rubros con mejor conversion
-    top_rubros = conn.execute('''
+    top_rubros = conn.execute(f'''
         SELECT l.rubro,
                COUNT(DISTINCT CASE WHEN ls.status='interesado' THEN l.id END) as interesados,
                COUNT(DISTINCT l.id) as total
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
+        WHERE 1=1 {where_role}
         GROUP BY l.rubro
         HAVING interesados > 0
         ORDER BY interesados DESC
         LIMIT 5
-    ''').fetchall()
+    ''', params_role).fetchall()
 
     conn.close()
 
