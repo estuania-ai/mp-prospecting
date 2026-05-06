@@ -31,9 +31,80 @@ def init_db():
             rubro       TEXT NOT NULL,
             source      TEXT DEFAULT 'google_maps',
             created_at  TEXT DEFAULT (datetime('now','localtime')),
-            updated_at  TEXT DEFAULT (datetime('now','localtime'))
+            updated_at  TEXT DEFAULT (datetime('now','localtime')),
+            assigned_to INTEGER,
+            assigned_at TEXT,
+            assigned_by INTEGER
         )
     ''')
+    # Migración no-destructiva: si la tabla ya existía sin las columnas nuevas, agregarlas
+    for col, decl in [
+        ('assigned_to', 'INTEGER'),
+        ('assigned_at', 'TEXT'),
+        ('assigned_by', 'INTEGER'),
+    ]:
+        try:
+            c.execute(f'ALTER TABLE leads ADD COLUMN {col} {decl}')
+        except sqlite3.OperationalError:
+            pass  # ya existe
+
+    c.execute('CREATE INDEX IF NOT EXISTS idx_leads_assigned_to ON leads(assigned_to)')
+
+    # ─── USUARIOS (TL y Sales) ─────────────────────────────────
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            email           TEXT NOT NULL UNIQUE,
+            username        TEXT NOT NULL UNIQUE,
+            password_hash   TEXT NOT NULL,
+            role            TEXT,                            -- 'tl' | 'sales' | NULL=pending
+            name            TEXT,
+            evolution_instance TEXT,                         -- nombre de instancia Evolution API
+            whatsapp_number TEXT,                            -- numero del Sales (informativo)
+            fast_local_url  TEXT,                            -- URL del tunnel del Sales para Fast
+            fast_local_token TEXT,                           -- token compartido con su servidor local
+            smtp_user       TEXT,                            -- email del Sales para SMTP
+            smtp_pass_enc   TEXT,                            -- App password (encriptado)
+            status          TEXT DEFAULT 'pending'           -- 'pending' | 'active' | 'disabled'
+                            CHECK(status IN ('pending','active','disabled')),
+            password_changed INTEGER DEFAULT 0,              -- 0 hasta que cambie su password inicial
+            created_at      TEXT DEFAULT (datetime('now','localtime')),
+            last_login      TEXT,
+            failed_logins   INTEGER DEFAULT 0,               -- contador para rate-limit por usuario
+            locked_until    TEXT                             -- bloqueo por intentos fallidos
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)')
+
+    # ─── LOG DE ASIGNACIONES (auditoría) ───────────────────────
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS lead_assignments_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            lead_id         INTEGER NOT NULL,
+            from_user_id    INTEGER,                         -- NULL si es asignación inicial
+            to_user_id      INTEGER NOT NULL,
+            assigned_by     INTEGER NOT NULL,
+            reason          TEXT,                            -- obligatorio en reasignaciones
+            assigned_at     TEXT DEFAULT (datetime('now','localtime'))
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_assign_log_lead ON lead_assignments_log(lead_id)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_assign_log_to ON lead_assignments_log(to_user_id)')
+
+    # ─── LOG DE ACCESO TL A LEADS (auditoría de coaching) ──────
+    # Cuando el TL abre un lead específico, queda registrado.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS tl_lead_access_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,                   -- TL que ingresó
+            lead_id     INTEGER NOT NULL,
+            accessed_at TEXT DEFAULT (datetime('now','localtime')),
+            view_type   TEXT                                -- 'detail' | 'whatsapp_log' | 'metrics'
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_tl_access_lead ON tl_lead_access_log(lead_id)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_tl_access_user ON tl_lead_access_log(user_id)')
 
     # ─── MENSAJES ENVIADOS ─────────────────────────────────────
     c.execute('''

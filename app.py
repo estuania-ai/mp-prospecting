@@ -24,6 +24,8 @@ from routes.manual_send import manual_bp
 from routes.fast_registro import fast_bp
 from routes.email_tool import email_bp
 from routes.whatsapp_routes import bp as whatsapp_bp
+from routes.auth_routes import auth_bp
+from auth import init_login_manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,8 +38,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = 'mp_prospecting_2025_secret'
 
+# SECRET_KEY desde env (en producción) — el default solo para dev local
+import os
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'mp_prospecting_2025_secret_DEV_ONLY_change_in_prod')
+
+# Inicializar Flask-Login + cookies seguras
+init_login_manager(app)
+
+app.register_blueprint(auth_bp)  # /auth/login, /auth/register, etc.
 app.register_blueprint(leads_bp,      url_prefix='/api/leads')
 app.register_blueprint(prospects_bp, url_prefix='/api/prospects')
 app.register_blueprint(campaigns_bp,  url_prefix='/api/campaigns')
@@ -51,9 +60,47 @@ app.register_blueprint(email_bp,      url_prefix='/api/email-tool')
 app.register_blueprint(whatsapp_bp)
 
 
+# ── Middleware: forzar login en todas las rutas no-publicas ──
+from flask import redirect, url_for, request
+from flask_login import current_user
+
+PUBLIC_PATHS = {'/auth/login', '/auth/register', '/health', '/favicon.ico'}
+PUBLIC_PREFIXES = ('/static/',)
+
+@app.before_request
+def require_login():
+    p = request.path
+    if p in PUBLIC_PATHS or p.startswith(PUBLIC_PREFIXES):
+        return None
+    if current_user.is_authenticated:
+        # Forzar cambio de password si nunca lo hizo
+        if not current_user.password_changed and p != '/auth/change-password' and not p.startswith('/auth/'):
+            return redirect(url_for('auth.change_password'))
+        return None
+    # No autenticado — devolver 401 si es API, redirigir si es UI
+    if p.startswith('/api/'):
+        from flask import jsonify
+        return jsonify({'error': 'Autenticación requerida'}), 401
+    return redirect(url_for('auth.login'))
+
+
 @app.route('/')
 def index():
     return render_template('dashboard.html')
+
+
+@app.route('/health')
+def health():
+    return {'ok': True}
+
+
+# Endpoint público para cabeceras de seguridad básicas
+@app.after_request
+def security_headers(resp):
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    resp.headers.setdefault('Referrer-Policy', 'same-origin')
+    return resp
 
 
 # â”€â”€ SCHEDULER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
