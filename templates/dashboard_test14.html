@@ -644,53 +644,72 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
 <!-- ══════════════ SIDEBAR ══════════════ -->
 <div class="sidebar">
   <div class="nav-section">Principal</div>
-  <div class="nav-item active" onclick="showPage('overview',this,'Resumen general')">
+  <div class="nav-item active" data-roles="owner,tl,sales" onclick="showPage('overview',this,'Resumen general')">
     <span class="nav-icon">📊</span> Resumen
   </div>
-  <div class="nav-item" onclick="showPage('leads',this,'Leads & Pipeline')">
+  <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('leads',this,'Leads & Pipeline')">
     <span class="nav-icon">👥</span> Leads
     <span class="nav-badge" id="badgeLeads">—</span>
   </div>
-  <div class="nav-item" onclick="showPage('envios',this,'Historial de envíos')">
+  <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('envios',this,'Historial de envíos')">
     <span class="nav-icon">📨</span> Envíos
   </div>
-  <div class="nav-section">Gestión</div>
-  <div class="nav-item" onclick="showPage('sellers',this,'Sellers activos')">
+
+  <!-- Admin: solo Owner y TL -->
+  <div class="nav-section" data-roles="owner,tl">Administración</div>
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('admin-users',this,'Gestión de usuarios')" style="position:relative">
+    <span class="nav-icon">👤</span> Usuarios
+    <span id="badgeUsersPending" style="position:absolute;top:6px;right:8px;background:#F1C40F;color:#1A1A2E;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;display:none">0</span>
+  </div>
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('admin-assign',this,'Asignar leads')">
+    <span class="nav-icon">📋</span> Asignar leads
+  </div>
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('admin-metrics',this,'Métricas por Sales')">
+    <span class="nav-icon">📈</span> Métricas equipo
+  </div>
+
+  <div class="nav-section" data-roles="owner,tl,sales">Gestión</div>
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('sellers',this,'Sellers activos')">
     <span class="nav-icon">🤝</span> Sellers
     <span class="nav-badge" id="badgeSellers">—</span>
   </div>
-  <div class="nav-item" onclick="showPage('scraping',this,'Scraping Google Maps')">
+  <!-- Scraping: solo Owner y TL -->
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('scraping',this,'Scraping Google Maps')">
     <span class="nav-icon">🗺️</span> Scraping
   </div>
-  <div class="nav-item" onclick="showPage('interesados',this,'Interesados')" style="position:relative"><span class="nav-icon">⭐</span> Interesados<span id="badgeInteresados" style="position:absolute;top:6px;right:8px;background:var(--mp-warn);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;display:none">0</span></div>
-  <div class="nav-item" onclick="showPage('intel',this,'Inteligencia')"><span class="nav-icon">🧠</span> Inteligencia</div>
+  <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('interesados',this,'Interesados')" style="position:relative"><span class="nav-icon">⭐</span> Interesados<span id="badgeInteresados" style="position:absolute;top:6px;right:8px;background:var(--mp-warn);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;display:none">0</span></div>
+  <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('intel',this,'Inteligencia')"><span class="nav-icon">🧠</span> Inteligencia</div>
 
-  <div class="nav-section">📧 Email</div>
-  <div class="nav-item" onclick="showPage('email-contactos',this,'Email · Leads')">
+  <!-- Email: por ahora solo Owner y TL (en pausa para Sales) -->
+  <div class="nav-section" data-roles="owner,tl">📧 Email</div>
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-contactos',this,'Email · Leads')">
     <span class="nav-icon">📋</span> Leads email
     <span class="nav-badge" id="badgeEmailPend" style="background:#6b7280">—</span>
   </div>
-  <div class="nav-item" onclick="showPage('email-interesados',this,'Email · Interesados')" style="position:relative">
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-interesados',this,'Email · Interesados')" style="position:relative">
     <span class="nav-icon">⭐</span> Interesados email
     <span id="badgeEmailInt" style="position:absolute;top:6px;right:8px;background:#856404;color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;display:none">0</span>
   </div>
-  <div class="nav-item" onclick="showPage('email-campanas',this,'Email · Campañas')">
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-campanas',this,'Email · Campañas')">
     <span class="nav-icon">📤</span> Campañas
   </div>
-  <div class="nav-item" onclick="showPage('email-scheduler',this,'Email · Automatización')">
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-scheduler',this,'Email · Automatización')">
     <span class="nav-icon">⏰</span> Automatización
   </div>
-  <div class="nav-item" onclick="showPage('email-inteligencia',this,'Email · Inteligencia')">
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-inteligencia',this,'Email · Inteligencia')">
     <span class="nav-icon">📊</span> Analítica email
   </div>
 
-  <div class="nav-section">💬 WhatsApp</div>
-  <div class="nav-item" onclick="showPage('whatsapp',this,'WhatsApp')" style="position:relative">
+  <div class="nav-section" data-roles="owner,tl,sales">💬 WhatsApp</div>
+  <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('whatsapp',this,'WhatsApp')" style="position:relative">
     <span class="nav-icon">💬</span> WhatsApp
     <span id="badgeWaStatus" style="position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:#9CA3AF;display:inline-block" title="Desconectado"></span>
   </div>
-  <div class="nav-item" onclick="showPage('config',this,'Configuración')">
+  <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('config',this,'Configuración')">
     <span class="nav-icon">⚙️</span> Configuración
+  </div>
+  <div class="nav-item" data-roles="owner,tl,sales" onclick="window.location.href='/auth/logout'" style="color:#C0392B">
+    <span class="nav-icon">🚪</span> Cerrar sesión
   </div>
 
   <div style="padding:20px;margin-top:auto">
@@ -2187,6 +2206,45 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
 </div>
 
 <!-- ─── EMAIL · CAMPAÑAS ──────────────────────── -->
+<!-- ══════════════ PAGE: ADMIN USERS ══════════════ -->
+<div class="page" id="page-admin-users">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Gestión de usuarios</div>
+      <div class="page-sub">Aprobá registros pendientes y administrá roles del equipo</div>
+    </div>
+  </div>
+  <div class="card">
+    <div id="admin-users-content"></div>
+  </div>
+</div>
+
+<!-- ══════════════ PAGE: ADMIN ASSIGN ══════════════ -->
+<div class="page" id="page-admin-assign">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Asignar leads</div>
+      <div class="page-sub">Distribuí los leads sin asignar entre los Sales del equipo</div>
+    </div>
+  </div>
+  <div class="card">
+    <div id="admin-assign-content"></div>
+  </div>
+</div>
+
+<!-- ══════════════ PAGE: ADMIN METRICS ══════════════ -->
+<div class="page" id="page-admin-metrics">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Métricas por Sales</div>
+      <div class="page-sub">Conversión y actividad de cada miembro del equipo · solo agregados de otros equipos</div>
+    </div>
+  </div>
+  <div class="card">
+    <div id="admin-metrics-content"></div>
+  </div>
+</div>
+
 <div class="page" id="page-email-campanas">
   <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
     <div>
@@ -8321,6 +8379,333 @@ async function waSyncToLeads() {
 // ══════════════════════════════════════════════════════
 // END WHATSAPP FUNCTIONS
 // ══════════════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════════════════
+// AUTH / ROLES — control de visibilidad del sidebar
+// ══════════════════════════════════════════════════════
+let CURRENT_USER = null;
+
+async function loadCurrentUser() {
+  try {
+    const r = await fetch('/auth/me', { credentials: 'same-origin' });
+    if (r.status === 401) { window.location.href = '/auth/login'; return; }
+    CURRENT_USER = await r.json();
+    applyRoleVisibility();
+    showUserBadge();
+    if (CURRENT_USER.is_tl) loadPendingUsersBadge();
+  } catch(e) {
+    console.error('No se pudo cargar usuario actual', e);
+  }
+}
+
+function applyRoleVisibility() {
+  const role = CURRENT_USER && CURRENT_USER.role;
+  if (!role) return;
+  // Mostrar/ocultar items del sidebar según data-roles
+  document.querySelectorAll('[data-roles]').forEach(el => {
+    const allowed = (el.getAttribute('data-roles') || '').split(',').map(s => s.trim());
+    el.style.display = allowed.includes(role) ? '' : 'none';
+  });
+}
+
+function showUserBadge() {
+  if (!CURRENT_USER) return;
+  // Reemplazar el avatar JSP con la inicial del usuario actual
+  const avatar = document.querySelector('.avatar');
+  if (avatar) {
+    const initials = (CURRENT_USER.name || CURRENT_USER.username || 'U')
+      .split(' ').map(s => s[0]).slice(0,2).join('').toUpperCase();
+    avatar.textContent = initials;
+    avatar.title = `${CURRENT_USER.name} (${CURRENT_USER.role})`;
+  }
+}
+
+async function loadPendingUsersBadge() {
+  try {
+    const r = await fetch('/auth/admin/users', { credentials: 'same-origin' });
+    if (!r.ok) return;
+    const users = await r.json();
+    const pending = users.filter(u => u.status === 'pending').length;
+    const badge = document.getElementById('badgeUsersPending');
+    if (badge) {
+      if (pending > 0) {
+        badge.textContent = pending;
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+  } catch(e) {}
+}
+
+// ══════════════════════════════════════════════════════
+// PAGE: ADMIN USERS — aprobar pendientes, gestionar roles
+// ══════════════════════════════════════════════════════
+async function loadAdminUsers() {
+  const wrap = document.getElementById('admin-users-content');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="padding:20px;color:#888">Cargando usuarios...</div>';
+  try {
+    const r = await fetch('/auth/admin/users', { credentials: 'same-origin' });
+    const users = await r.json();
+    const pending = users.filter(u => u.status === 'pending');
+    const active  = users.filter(u => u.status === 'active');
+    const disabled = users.filter(u => u.status === 'disabled');
+
+    let html = '';
+    // Sección pending
+    html += '<h3 style="margin:0 0 12px 0;color:#1A1A2E">Pendientes de aprobación (' + pending.length + ')</h3>';
+    if (pending.length === 0) {
+      html += '<div style="padding:14px;background:#f7f7f7;border-radius:8px;color:#888;font-size:13px">No hay usuarios pendientes.</div>';
+    } else {
+      html += '<table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)"><thead><tr style="background:#FFF8E1;text-align:left"><th style="padding:10px 14px;font-size:12px;color:#5D4E00">Nombre</th><th style="padding:10px 14px;font-size:12px;color:#5D4E00">Email</th><th style="padding:10px 14px;font-size:12px;color:#5D4E00">Username</th><th style="padding:10px 14px;font-size:12px;color:#5D4E00">Registrado</th><th style="padding:10px 14px;font-size:12px;color:#5D4E00">Acción</th></tr></thead><tbody>';
+      const tlOptions = active.filter(u => u.role === 'tl' || u.role === 'owner')
+        .map(u => `<option value="${u.id}">${u.name} (${u.role})</option>`).join('');
+      pending.forEach(u => {
+        html += `<tr style="border-top:1px solid #eee">
+          <td style="padding:10px 14px;font-size:13px">${u.name || ''}</td>
+          <td style="padding:10px 14px;font-size:12px;color:#666">${u.email}</td>
+          <td style="padding:10px 14px;font-size:12px;color:#666">${u.username}</td>
+          <td style="padding:10px 14px;font-size:11px;color:#999">${u.created_at || ''}</td>
+          <td style="padding:8px 14px;white-space:nowrap">
+            <select id="role-${u.id}" style="padding:5px 8px;font-size:12px;border-radius:6px;border:1px solid #ddd">
+              <option value="sales">Sales</option>
+              <option value="tl">TL</option>
+            </select>
+            <select id="tl-${u.id}" style="padding:5px 8px;font-size:12px;border-radius:6px;border:1px solid #ddd;margin-left:4px">
+              <option value="">— TL del Sales —</option>${tlOptions}
+            </select>
+            <button class="btn btn-primary" style="padding:5px 12px;font-size:12px;margin-left:6px" onclick="approveUser(${u.id})">Aprobar</button>
+          </td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+    }
+
+    // Sección activos
+    html += '<h3 style="margin:24px 0 12px 0;color:#1A1A2E">Usuarios activos (' + active.length + ')</h3>';
+    html += '<table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)"><thead><tr style="background:#E8F5E9;text-align:left"><th style="padding:10px 14px;font-size:12px;color:#1B5E20">Nombre</th><th style="padding:10px 14px;font-size:12px;color:#1B5E20">Email</th><th style="padding:10px 14px;font-size:12px;color:#1B5E20">Rol</th><th style="padding:10px 14px;font-size:12px;color:#1B5E20">Último login</th><th style="padding:10px 14px;font-size:12px;color:#1B5E20">Acción</th></tr></thead><tbody>';
+    active.forEach(u => {
+      const roleBadge = u.role === 'owner' ? '<span style="background:#FFE600;color:#1A1A2E;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">OWNER</span>'
+                      : u.role === 'tl' ? '<span style="background:#3498DB;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">TL</span>'
+                      : '<span style="background:#27AE60;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">SALES</span>';
+      const canDisable = u.role !== 'owner' && (CURRENT_USER && CURRENT_USER.id !== u.id);
+      html += `<tr style="border-top:1px solid #eee">
+        <td style="padding:10px 14px;font-size:13px">${u.name || ''}</td>
+        <td style="padding:10px 14px;font-size:12px;color:#666">${u.email}</td>
+        <td style="padding:10px 14px">${roleBadge}</td>
+        <td style="padding:10px 14px;font-size:11px;color:#999">${u.last_login || '—'}</td>
+        <td style="padding:8px 14px">${canDisable ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px;color:#C0392B" onclick="disableUser(${u.id})">Deshabilitar</button>` : '—'}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+
+    if (disabled.length > 0) {
+      html += '<h3 style="margin:24px 0 12px 0;color:#888">Deshabilitados (' + disabled.length + ')</h3>';
+      html += '<div style="font-size:12px;color:#999">' + disabled.map(u => u.email).join(', ') + '</div>';
+    }
+
+    wrap.innerHTML = html;
+  } catch(e) {
+    wrap.innerHTML = '<div style="padding:20px;color:#C0392B">Error: ' + e.message + '</div>';
+  }
+}
+
+async function approveUser(userId) {
+  const role = document.getElementById('role-' + userId).value;
+  const tlSel = document.getElementById('tl-' + userId);
+  const team_lead_id = tlSel && tlSel.value ? parseInt(tlSel.value) : null;
+  if (role === 'sales' && !team_lead_id) {
+    alert('Para aprobar un Sales debés elegir el TL al que pertenece.');
+    return;
+  }
+  try {
+    const r = await fetch('/auth/admin/users/' + userId + '/approve', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ role, team_lead_id })
+    });
+    const d = await r.json();
+    if (d.ok) { showToast('Usuario aprobado'); loadAdminUsers(); loadPendingUsersBadge(); }
+    else { alert('Error: ' + (d.error || 'desconocido')); }
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function disableUser(userId) {
+  if (!confirm('¿Deshabilitar este usuario? No podrá iniciar sesión.')) return;
+  try {
+    const r = await fetch('/auth/admin/users/' + userId + '/disable', {
+      method: 'POST', credentials: 'same-origin'
+    });
+    const d = await r.json();
+    if (d.ok) { showToast('Usuario deshabilitado'); loadAdminUsers(); }
+    else { alert('Error: ' + (d.error || 'desconocido')); }
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════════
+// PAGE: ASIGNAR LEADS
+// ══════════════════════════════════════════════════════
+let UNASSIGNED_LEADS = [];
+let TEAM_USERS = [];
+
+async function loadAssignPage() {
+  const wrap = document.getElementById('admin-assign-content');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="padding:20px;color:#888">Cargando...</div>';
+  try {
+    const [r1, r2] = await Promise.all([
+      fetch('/api/leads/unassigned', { credentials: 'same-origin' }),
+      fetch('/auth/admin/users', { credentials: 'same-origin' })
+    ]);
+    UNASSIGNED_LEADS = await r1.json();
+    const allUsers = await r2.json();
+    TEAM_USERS = allUsers.filter(u => u.status === 'active' && (u.role === 'sales' || u.role === 'tl' || u.role === 'owner'));
+
+    let html = `
+      <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+        <div style="font-size:14px;color:#1A1A2E"><strong>${UNASSIGNED_LEADS.length}</strong> leads sin asignar</div>
+        <select id="assignTo" style="padding:7px 12px;border-radius:8px;border:1px solid #ddd">
+          <option value="">— Asignar a —</option>
+          ${TEAM_USERS.map(u => `<option value="${u.id}">${u.name} (${u.role})</option>`).join('')}
+        </select>
+        <input id="assignReason" placeholder="Motivo (opcional, obligatorio si reasigna)" style="padding:7px 12px;border-radius:8px;border:1px solid #ddd;flex:1;min-width:200px">
+        <button class="btn btn-primary" onclick="doAssignSelected()">Asignar seleccionados</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+        <thead>
+          <tr style="background:#f8f9fa;text-align:left">
+            <th style="padding:10px 14px;width:32px"><input type="checkbox" onclick="document.querySelectorAll('.assign-cb').forEach(c=>c.checked=this.checked)"></th>
+            <th style="padding:10px 14px;font-size:12px">Negocio</th>
+            <th style="padding:10px 14px;font-size:12px">Comuna</th>
+            <th style="padding:10px 14px;font-size:12px">Rubro</th>
+            <th style="padding:10px 14px;font-size:12px">Teléfono</th>
+            <th style="padding:10px 14px;font-size:12px">Creado</th>
+          </tr>
+        </thead>
+        <tbody>`;
+    UNASSIGNED_LEADS.forEach(l => {
+      html += `<tr style="border-top:1px solid #eee">
+        <td style="padding:8px 14px"><input type="checkbox" class="assign-cb" value="${l.id}"></td>
+        <td style="padding:8px 14px;font-size:13px">${l.name || ''}</td>
+        <td style="padding:8px 14px;font-size:12px;color:#666">${l.comuna || ''}</td>
+        <td style="padding:8px 14px;font-size:12px;color:#666">${l.rubro || ''}</td>
+        <td style="padding:8px 14px;font-size:12px;color:#666">${l.phone || ''}</td>
+        <td style="padding:8px 14px;font-size:11px;color:#999">${l.created_at || ''}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+  } catch(e) {
+    wrap.innerHTML = '<div style="padding:20px;color:#C0392B">Error: ' + e.message + '</div>';
+  }
+}
+
+async function doAssignSelected() {
+  const userId = parseInt(document.getElementById('assignTo').value);
+  if (!userId) { alert('Elegí a quién asignar'); return; }
+  const reason = (document.getElementById('assignReason').value || '').trim();
+  const ids = Array.from(document.querySelectorAll('.assign-cb:checked')).map(c => parseInt(c.value));
+  if (!ids.length) { alert('Seleccioná al menos un lead'); return; }
+  try {
+    const r = await fetch('/api/leads/assign', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ lead_ids: ids, user_id: userId, reason })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      showToast(`Asignados ${d.assigned}, reasignados ${d.reassigned}, errores ${d.errors}`);
+      loadAssignPage();
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════════
+// PAGE: MÉTRICAS POR SALES (panel TL)
+// ══════════════════════════════════════════════════════
+async function loadTeamMetrics() {
+  const wrap = document.getElementById('admin-metrics-content');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="padding:20px;color:#888">Cargando métricas...</div>';
+  try {
+    const r = await fetch('/api/dashboard/team-metrics', { credentials: 'same-origin' });
+    if (!r.ok) {
+      wrap.innerHTML = '<div style="padding:20px;color:#C0392B">No autorizado</div>';
+      return;
+    }
+    const data = await r.json();
+    let html = '<h3 style="margin:0 0 12px 0">Mi equipo (detalle)</h3>';
+    if (!data.team_detail.length) {
+      html += '<div style="padding:14px;background:#f7f7f7;border-radius:8px;color:#888">Aún no hay Sales asignados a tu equipo.</div>';
+    } else {
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">';
+      data.team_detail.forEach(u => {
+        const roleColor = u.role === 'owner' ? '#FFE600' : u.role === 'tl' ? '#3498DB' : '#27AE60';
+        html += `
+          <div style="background:#fff;border-radius:12px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,.06);border-left:4px solid ${roleColor}">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <div>
+                <div style="font-weight:700;font-size:15px;color:#1A1A2E">${u.name}</div>
+                <div style="font-size:11px;color:#888">${u.email}</div>
+              </div>
+              <span style="background:${roleColor};color:${u.role==='owner'?'#1A1A2E':'#fff'};font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">${(u.role||'').toUpperCase()}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+              <div><div style="color:#888">Total leads</div><div style="font-size:20px;font-weight:700">${u.leads_total}</div></div>
+              <div><div style="color:#888">Conversión</div><div style="font-size:20px;font-weight:700;color:${u.conversion_pct>=10?'#27AE60':'#666'}">${u.conversion_pct}%</div></div>
+              <div><div style="color:#888">Enviados</div><div style="font-weight:700">${u.enviados}</div></div>
+              <div><div style="color:#888">Interesados</div><div style="font-weight:700;color:#F1C40F">${u.interesados}</div></div>
+              <div><div style="color:#888">Cerrados</div><div style="font-weight:700;color:#27AE60">${u.cerrados}</div></div>
+              <div><div style="color:#888">Opt-out</div><div style="font-weight:700;color:#C0392B">${u.opt_out}</div></div>
+            </div>
+          </div>`;
+      });
+      html += '</div>';
+    }
+
+    // Otros equipos (Option B)
+    if (data.other_teams_summary && data.other_teams_summary.length > 0) {
+      html += '<h3 style="margin:24px 0 12px 0">Otros equipos (resumen)</h3>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">';
+      data.other_teams_summary.forEach(t => {
+        html += `
+          <div style="background:#f8f9fa;border-radius:10px;padding:14px;border:1px dashed #ddd">
+            <div style="font-weight:700;font-size:14px;color:#1A1A2E">Equipo ${t.tl_name}</div>
+            <div style="font-size:11px;color:#888;margin-bottom:8px">${t.team_size} miembros</div>
+            <div style="display:flex;gap:14px;font-size:12px">
+              <div><div style="color:#888">Leads</div><div style="font-weight:700">${t.leads_total}</div></div>
+              <div><div style="color:#888">Interesados</div><div style="font-weight:700">${t.interesados}</div></div>
+              <div><div style="color:#888">Cerrados</div><div style="font-weight:700">${t.cerrados}</div></div>
+            </div>
+          </div>`;
+      });
+      html += '</div>';
+    }
+
+    wrap.innerHTML = html;
+  } catch(e) {
+    wrap.innerHTML = '<div style="padding:20px;color:#C0392B">Error: ' + e.message + '</div>';
+  }
+}
+
+// Hook: cuando se cambia de página, cargar contenido si corresponde
+const _origShowPage = typeof showPage !== 'undefined' ? showPage : null;
+if (_origShowPage) {
+  window.showPage = function(id, el, title) {
+    _origShowPage(id, el, title);
+    if (id === 'admin-users') loadAdminUsers();
+    if (id === 'admin-assign') loadAssignPage();
+    if (id === 'admin-metrics') loadTeamMetrics();
+  };
+}
+
+// Cargar usuario actual al iniciar
+document.addEventListener('DOMContentLoaded', loadCurrentUser);
+if (document.readyState !== 'loading') loadCurrentUser();
 
 </script>
 <div id="toast" class="toast"></div>
