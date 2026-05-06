@@ -227,6 +227,53 @@ def requires_authenticated(fn):
     return requires_role('tl', 'sales')(fn)
 
 
+# ── Helper para filtrar leads por rol ─────────────────────────
+def get_user_leads_filter(user, alias='l'):
+    """
+    Devuelve (sql_where, params) para filtrar la tabla leads según el rol del usuario.
+
+    - Owner: ve todos los leads (incluso sin asignar) → '1=1'
+    - TL:    ve leads asignados a su equipo (sus Sales + él mismo)
+    - Sales: solo leads asignados a él (assigned_to = user.id)
+
+    Esto es CRÍTICO para evitar IDOR — si un Sales pide /api/leads, el SQL
+    siempre incluye su filtro y nunca puede ver leads de otros usuarios.
+    """
+    if not user or not user.status == 'active':
+        return '0=1', []
+    if user.role == 'owner':
+        return '1=1', []
+    if user.role == 'tl':
+        # Su equipo = él mismo + sus Sales (donde team_lead_id = su id)
+        return (
+            f'({alias}.assigned_to = ? OR {alias}.assigned_to IN '
+            f'(SELECT id FROM users WHERE team_lead_id = ? AND status="active"))',
+            [user.id, user.id]
+        )
+    if user.role == 'sales':
+        return f'{alias}.assigned_to = ?', [user.id]
+    return '0=1', []
+
+
+def get_team_user_ids(user, conn):
+    """
+    Devuelve los IDs de usuarios visibles para este usuario.
+    Útil para queries de mensajes, prospects, etc. que se filtran por usuario.
+    """
+    if user.role == 'owner':
+        rows = conn.execute('SELECT id FROM users WHERE status="active"').fetchall()
+        return [r['id'] for r in rows]
+    if user.role == 'tl':
+        rows = conn.execute(
+            'SELECT id FROM users WHERE status="active" AND (id = ? OR team_lead_id = ?)',
+            (user.id, user.id)
+        ).fetchall()
+        return [r['id'] for r in rows]
+    if user.role == 'sales':
+        return [user.id]
+    return []
+
+
 # ── Init Flask-Login ────────────────────────────────────────────
 def init_login_manager(app):
     login_manager = LoginManager()

@@ -2,12 +2,15 @@
 Rutas Flask: Leads
 """
 from flask import Blueprint, request, jsonify
+from flask_login import current_user, login_required
 from database import get_db, update_lead_status, add_opt_out, clean_phone
+from auth import get_user_leads_filter, requires_tl, requires_role
 
 leads_bp = Blueprint('leads', __name__)
 
 
 @leads_bp.route('/', methods=['GET'])
+@login_required
 def get_leads():
     conn = get_db()
     status_filter = request.args.get('status')
@@ -15,9 +18,14 @@ def get_leads():
     rubro_filter = request.args.get('rubro')
     search = request.args.get('q')
 
-    query = '''
+    # Filtro por rol — Sales solo ve sus leads, TL ve los de su equipo, Owner todo
+    role_where, role_params = get_user_leads_filter(current_user, alias='l')
+
+    query = f'''
         SELECT l.id, l.name, l.phone, l.comuna, l.rubro, l.categoria, l.address,
                l.fast_ok, l.created_at, l.updated_at, l.source,
+               l.assigned_to, l.assigned_at,
+               u.name AS assigned_to_name,
                ls.status, ls.notes, ls.optout_motivo,
                m.sent_at, m.opened_at,
                seg24.sent_at as seguimiento_24h_fecha,
@@ -25,6 +33,7 @@ def get_leads():
                seg72.sent_at as seguimiento_72h_fecha,
                CASE WHEN seg72.lead_id IS NOT NULL THEN 1 ELSE 0 END as seguimiento_72h
         FROM leads l
+        LEFT JOIN users u ON l.assigned_to = u.id
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
         LEFT JOIN (
             SELECT lead_id, sent_at, opened_at, message_type
@@ -42,10 +51,10 @@ def get_leads():
             WHERE message_type = 'seguimiento_72h' AND status = 'sent'
             GROUP BY lead_id
         ) seg72 ON l.id = seg72.lead_id
-        WHERE 1=1
+        WHERE {role_where}
           AND NOT (l.phone LIKE '562%' OR l.phone LIKE '+562%')
     '''
-    params = []
+    params = list(role_params)
 
     if status_filter and status_filter != 'todos':
         query += ' AND ls.status = ?'
@@ -732,3 +741,129 @@ def update_lead_address(lead_id):
     conn.commit()
     conn.close()
     return jsonify({'ok': True, 'address': address})
+
+
+# ═══════════════════════════════════════════════════════════════
+# ASIGNACIÓN DE LEADS (TL/Owner → Sales)
+# ═══════════════════════════════════════════════════════════════
+
+@leads_bp.route("/unassigned", methods=["GET"])
+@requires_tl
+def get_unassigned_leads():
+    """Lista de leads sin asignar — visible solo a TL/Owner."""
+    comuna = request.args.get("comuna")
+    rubro = request.args.get("rubro")
+    q = """
+        SELECT l.id, l.name, l.phone, l.comuna, l.rubro, l.address, l.created_at,
+               ls.status
+        FROM leads l
+        LEFT JOIN lead_status ls ON l.id = ls.lead_id
+        WHERE l.assigned_to IS NULL
+          AND NOT (l.phone LIKE \"562%\" OR l.phone LIKE \"+562%\")
+    """
+    params = []
+    if comuna:
+        q += " AND l.comuna = ?"
+        params.append(comuna)
+    if rubro:
+        q += " AND l.rubro = ?"
+        params.append(rubro)
+    q += " ORDER BY l.created_at DESC LIMIT 1000"
+    conn = get_db()
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@leads_bp.route("/assign", methods=["POST"])
+@requires_tl
+def assign_leads():
+    """
+    Asigna múltiples leads a un Sales.
+    Body: {"lead_ids": [1,2,3], "user_id": 5, "reason": "texto"}
+    Si es reasignación, reason es obligatorio.
+    """
+    data = request.get_json() or {}
+    lead_ids = data.get("lead_ids") or []
+    user_id = data.get("user_id")
+    reason = (data.get("reason") or "").strip()
+
+    if not lead_ids or not user_id:
+        return jsonify({"error": "lead_ids y user_id requeridos"}), 400
+
+    conn = get_db()
+    # Validar que el destinatario es Sales activo
+    target = conn.execute(
+        "SELECT id, role FROM users WHERE id=? AND status=\"active\"", (user_id,)
+    ).fetchone()
+    if not target:
+        conn.close()
+        return jsonify({"error": "Usuario destino no existe o no está activo"}), 400
+    if target["role"] not in ("sales", "tl", "owner"):
+        conn.close()
+        return jsonify({"error": "Solo se puede asignar a Sales, TL u Owner"}), 400
+
+    # Procesar uno por uno para registrar log y verificar reasignación
+    assigned = reassigned = errors = 0
+    for lid in lead_ids:
+        try:
+            row = conn.execute(
+                "SELECT id, assigned_to FROM leads WHERE id=?", (lid,)
+            ).fetchone()
+            if not row:
+                errors += 1
+                continue
+            prev_user = row["assigned_to"]
+
+            # Si está siendo reasignado y no hay motivo → error
+            if prev_user is not None and prev_user != user_id and not reason:
+                errors += 1
+                continue
+
+            conn.execute(
+                "UPDATE leads SET assigned_to=?, assigned_at=datetime(\"now\",\"localtime\"), assigned_by=? WHERE id=?",
+                (user_id, current_user.id, lid)
+            )
+            conn.execute(
+                """INSERT INTO lead_assignments_log
+                   (lead_id, from_user_id, to_user_id, assigned_by, reason)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (lid, prev_user, user_id, current_user.id, reason or None)
+            )
+            if prev_user is None:
+                assigned += 1
+            elif prev_user != user_id:
+                reassigned += 1
+        except Exception as e:
+            errors += 1
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "assigned": assigned,
+        "reassigned": reassigned,
+        "errors": errors,
+        "total": len(lead_ids)
+    })
+
+
+@leads_bp.route("/<int:lead_id>/assignment-history", methods=["GET"])
+@login_required
+def lead_assignment_history(lead_id):
+    """Historial de asignaciones de un lead — solo TL/Owner ven el detalle completo."""
+    if current_user.role not in ("tl", "owner"):
+        return jsonify({"error": "Solo TL/Owner pueden ver el historial"}), 403
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT al.*, fu.name AS from_name, tu.name AS to_name, ab.name AS by_name
+        FROM lead_assignments_log al
+        LEFT JOIN users fu ON al.from_user_id = fu.id
+        LEFT JOIN users tu ON al.to_user_id = tu.id
+        LEFT JOIN users ab ON al.assigned_by = ab.id
+        WHERE al.lead_id = ?
+        ORDER BY al.assigned_at DESC
+    """, (lead_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+

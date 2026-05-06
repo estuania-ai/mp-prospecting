@@ -350,3 +350,137 @@ def get_preview():
         'fidelizacion_pendiente': len(sellers_etapas),
         'sellers_etapas': sellers_etapas[:5],
     })
+
+
+# ═══════════════════════════════════════════════════════════════
+# MÉTRICAS POR SALES — Panel del TL
+# ═══════════════════════════════════════════════════════════════
+
+@dashboard_bp.route('/team-metrics', methods=['GET'])
+def team_metrics():
+    """
+    Métricas agregadas por Sales del equipo del TL/Owner que llama.
+    Owner: ve TODOS los Sales y TODOS los TLs (con su equipo)
+    TL:    solo sus Sales + agregado total de OTROS TLs (sin detalle)
+    Sales: 403
+    """
+    from flask_login import current_user
+    if not current_user.is_authenticated or current_user.status != 'active':
+        return jsonify({'error': 'No autorizado'}), 401
+    if current_user.role not in ('tl', 'owner'):
+        return jsonify({'error': 'Solo TL/Owner'}), 403
+
+    conn = get_db()
+
+    # Determinar qué Sales son visibles en detalle
+    if current_user.role == 'owner':
+        # Owner ve todos los usuarios del sistema (Sales + TLs)
+        users_rows = conn.execute("""
+            SELECT id, name, email, role, team_lead_id
+            FROM users
+            WHERE status='active' AND role IN ('sales','tl','owner')
+            ORDER BY role DESC, name
+        """).fetchall()
+    else:
+        # TL ve a sí mismo + sus Sales
+        users_rows = conn.execute("""
+            SELECT id, name, email, role, team_lead_id
+            FROM users
+            WHERE status='active' AND (id = ? OR team_lead_id = ?)
+            ORDER BY role DESC, name
+        """, (current_user.id, current_user.id)).fetchall()
+
+    visible_user_ids = [u['id'] for u in users_rows]
+
+    # Métricas por usuario visible
+    detail_rows = []
+    for u in users_rows:
+        uid = u['id']
+        # Leads asignados
+        total = conn.execute(
+            'SELECT COUNT(*) AS c FROM leads WHERE assigned_to=?', (uid,)
+        ).fetchone()['c']
+        # Por estado
+        by_status = conn.execute("""
+            SELECT ls.status, COUNT(*) AS c
+            FROM leads l
+            LEFT JOIN lead_status ls ON l.id = ls.lead_id
+            WHERE l.assigned_to=?
+            GROUP BY ls.status
+        """, (uid,)).fetchall()
+        st = {r['status'] or 'sin_estado': r['c'] for r in by_status}
+
+        enviados = (st.get('enviado',0) + st.get('abierto',0)
+                    + st.get('interesado',0) + st.get('quiere_reunion',0)
+                    + st.get('cerrado',0) + st.get('no_interesado',0)
+                    + st.get('opt_out',0))
+        interesados = st.get('interesado',0)
+        cerrados = st.get('cerrado',0)
+        opt_out = st.get('opt_out',0) + st.get('no_interesado',0)
+        sin_enviar = st.get('no_enviado',0) + st.get('sin_estado',0)
+        conv = round((interesados / total * 100), 1) if total else 0.0
+
+        detail_rows.append({
+            'user_id': uid,
+            'name': u['name'],
+            'email': u['email'],
+            'role': u['role'],
+            'team_lead_id': u['team_lead_id'],
+            'leads_total': total,
+            'sin_enviar': sin_enviar,
+            'enviados': enviados,
+            'interesados': interesados,
+            'cerrados': cerrados,
+            'opt_out': opt_out,
+            'conversion_pct': conv,
+        })
+
+    # Si es TL (no owner), agregar resumen agregado de OTROS TLs (Option B)
+    other_teams = []
+    if current_user.role == 'tl':
+        # Otros TLs distintos a current_user
+        other_tls = conn.execute("""
+            SELECT id, name FROM users
+            WHERE status='active' AND role IN ('tl','owner') AND id != ?
+        """, (current_user.id,)).fetchall()
+        for t in other_tls:
+            tl_id = t['id']
+            # Obtener IDs del equipo de ese TL
+            team_ids_rows = conn.execute(
+                "SELECT id FROM users WHERE status='active' AND (id=? OR team_lead_id=?)",
+                (tl_id, tl_id)
+            ).fetchall()
+            team_ids = [r['id'] for r in team_ids_rows]
+            if not team_ids:
+                continue
+            placeholders = ','.join('?' * len(team_ids))
+            total_team = conn.execute(
+                f'SELECT COUNT(*) AS c FROM leads WHERE assigned_to IN ({placeholders})',
+                team_ids
+            ).fetchone()['c']
+            interesados_team = conn.execute(f"""
+                SELECT COUNT(*) AS c
+                FROM leads l LEFT JOIN lead_status ls ON l.id=ls.lead_id
+                WHERE l.assigned_to IN ({placeholders}) AND ls.status='interesado'
+            """, team_ids).fetchone()['c']
+            cerrados_team = conn.execute(f"""
+                SELECT COUNT(*) AS c
+                FROM leads l LEFT JOIN lead_status ls ON l.id=ls.lead_id
+                WHERE l.assigned_to IN ({placeholders}) AND ls.status='cerrado'
+            """, team_ids).fetchone()['c']
+            other_teams.append({
+                'tl_id': tl_id,
+                'tl_name': t['name'],
+                'team_size': len(team_ids),
+                'leads_total': total_team,
+                'interesados': interesados_team,
+                'cerrados': cerrados_team,
+            })
+
+    conn.close()
+
+    return jsonify({
+        'role': current_user.role,
+        'team_detail': detail_rows,
+        'other_teams_summary': other_teams,
+    })
