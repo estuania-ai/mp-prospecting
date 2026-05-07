@@ -521,6 +521,140 @@ def get_preview():
 # MÉTRICAS POR SALES — Panel del TL
 # ═══════════════════════════════════════════════════════════════
 
+@dashboard_bp.route('/tl-overview', methods=['GET'])
+def tl_overview():
+    """
+    Resumen avanzado para TL — métricas estadísticas para gestión.
+    """
+    if not current_user.is_authenticated or current_user.status != 'active':
+        return jsonify({'error': 'No autorizado'}), 401
+    if current_user.role not in ('tl', 'owner'):
+        return jsonify({'error': 'Solo TL/Owner'}), 403
+
+    conn = get_db()
+
+    # Pool sales (lo que el Owner alimenta)
+    pool_total = conn.execute(
+        "SELECT COUNT(*) AS c FROM leads WHERE lead_pool='sales_pool' "
+        "AND NOT (phone LIKE '562%' OR phone LIKE '+562%')"
+    ).fetchone()['c']
+    pool_assigned = conn.execute(
+        "SELECT COUNT(*) AS c FROM leads WHERE lead_pool='sales_pool' AND assigned_to IS NOT NULL "
+        "AND NOT (phone LIKE '562%' OR phone LIKE '+562%')"
+    ).fetchone()['c']
+
+    # Métricas globales del equipo (suma de todos)
+    total_enviados = conn.execute(
+        "SELECT COUNT(DISTINCT lead_id) AS c FROM messages WHERE message_type='prospecting' AND status='sent' "
+        "AND NOT (phone LIKE '562%' OR phone LIKE '+562%')"
+    ).fetchone()['c']
+    total_interesados = conn.execute(
+        "SELECT COUNT(*) AS c FROM lead_status WHERE status='interesado'"
+    ).fetchone()['c']
+    total_cerrados = conn.execute(
+        "SELECT COUNT(*) AS c FROM lead_status WHERE status='cerrado'"
+    ).fetchone()['c']
+    total_optout = conn.execute(
+        "SELECT COUNT(*) AS c FROM lead_status WHERE status IN ('opt_out','no_interesado')"
+    ).fetchone()['c']
+    total_reunion = conn.execute(
+        "SELECT COUNT(*) AS c FROM lead_status WHERE status='quiere_reunion'"
+    ).fetchone()['c']
+    total_no_enviado = conn.execute(
+        "SELECT COUNT(*) AS c FROM lead_status WHERE status='no_enviado'"
+    ).fetchone()['c']
+    sellers_total = conn.execute(
+        "SELECT COUNT(*) AS c FROM sellers WHERE active=1"
+    ).fetchone()['c']
+
+    # Ranking de Sales por conversión
+    sales_ranking = conn.execute("""
+        SELECT u.id, u.name, u.role, u.email,
+               COUNT(DISTINCT l.id) AS total,
+               COUNT(DISTINCT CASE WHEN ls.status='enviado' THEN l.id END) AS enviados,
+               COUNT(DISTINCT CASE WHEN ls.status='interesado' THEN l.id END) AS interesados,
+               COUNT(DISTINCT CASE WHEN ls.status='cerrado' THEN l.id END) AS cerrados,
+               COUNT(DISTINCT CASE WHEN ls.status IN ('opt_out','no_interesado') THEN l.id END) AS optout
+        FROM users u
+        LEFT JOIN leads l ON l.assigned_to = u.id
+        LEFT JOIN lead_status ls ON l.id = ls.lead_id
+        WHERE u.status='active' AND u.role IN ('owner','tl','sales')
+        GROUP BY u.id
+        ORDER BY cerrados DESC, interesados DESC
+    """).fetchall()
+
+    # Actividad por día (últimos 14)
+    actividad_dias = conn.execute("""
+        SELECT date(sent_at) AS dia,
+               COUNT(DISTINCT lead_id) AS enviados
+        FROM messages
+        WHERE message_type='prospecting' AND status='sent'
+          AND sent_at >= date('now','localtime','-14 days')
+        GROUP BY date(sent_at) ORDER BY dia
+    """).fetchall()
+
+    # Distribución por rubro (top 8 con más interesados)
+    top_rubros = conn.execute("""
+        SELECT l.rubro,
+               COUNT(DISTINCT l.id) AS total,
+               COUNT(DISTINCT CASE WHEN ls.status='interesado' THEN l.id END) AS interesados,
+               COUNT(DISTINCT CASE WHEN ls.status='cerrado' THEN l.id END) AS cerrados
+        FROM leads l
+        LEFT JOIN lead_status ls ON l.id = ls.lead_id
+        WHERE l.rubro IS NOT NULL AND l.lead_pool='sales_pool'
+        GROUP BY l.rubro
+        HAVING total > 0
+        ORDER BY interesados DESC, total DESC
+        LIMIT 8
+    """).fetchall()
+
+    # Tareas pendientes en el sistema
+    tareas_pendientes = conn.execute(
+        "SELECT COUNT(*) AS c FROM tasks WHERE completada=0"
+    ).fetchone()['c']
+
+    # Usuarios pending de aprobación
+    pending_users = conn.execute(
+        "SELECT COUNT(*) AS c FROM users WHERE status='pending'"
+    ).fetchone()['c']
+
+    conn.close()
+
+    # Cálculos de tasas
+    tasa_envio = round((total_enviados / pool_total * 100), 1) if pool_total else 0
+    tasa_respuesta = round((total_interesados + total_cerrados + total_optout + total_reunion) / total_enviados * 100, 1) if total_enviados else 0
+    tasa_conversion = round((total_cerrados / total_interesados * 100), 1) if total_interesados else 0
+    tasa_asignacion = round((pool_assigned / pool_total * 100), 1) if pool_total else 0
+
+    return jsonify({
+        'pool': {
+            'total': pool_total,
+            'assigned': pool_assigned,
+            'unassigned': pool_total - pool_assigned,
+            'pct_assigned': tasa_asignacion,
+        },
+        'equipo': {
+            'enviados': total_enviados,
+            'interesados': total_interesados,
+            'cerrados': total_cerrados,
+            'optout': total_optout,
+            'reunion': total_reunion,
+            'no_enviado': total_no_enviado,
+            'sellers': sellers_total,
+            'tasa_envio': tasa_envio,
+            'tasa_respuesta': tasa_respuesta,
+            'tasa_conversion': tasa_conversion,
+        },
+        'ranking': [dict(r) for r in sales_ranking],
+        'actividad_14d': [dict(r) for r in actividad_dias],
+        'top_rubros': [dict(r) for r in top_rubros],
+        'sistema': {
+            'tareas_pendientes': tareas_pendientes,
+            'usuarios_pending': pending_users,
+        }
+    })
+
+
 @dashboard_bp.route('/team-metrics', methods=['GET'])
 def team_metrics():
     """
@@ -538,22 +672,14 @@ def team_metrics():
     conn = get_db()
 
     # Determinar qué Sales son visibles en detalle
-    if current_user.role == 'owner':
-        # Owner ve todos los usuarios del sistema (Sales + TLs)
-        users_rows = conn.execute("""
-            SELECT id, name, email, role, team_lead_id
-            FROM users
-            WHERE status='active' AND role IN ('sales','tl','owner')
-            ORDER BY role DESC, name
-        """).fetchall()
-    else:
-        # TL ve a sí mismo + sus Sales
-        users_rows = conn.execute("""
-            SELECT id, name, email, role, team_lead_id
-            FROM users
-            WHERE status='active' AND (id = ? OR team_lead_id = ?)
-            ORDER BY role DESC, name
-        """, (current_user.id, current_user.id)).fetchall()
+    # CAMBIO: Tanto Owner como TL ven TODOS los Sales del sistema
+    # (TL Josema gestiona todos los Sales, incluso al Owner como Sales)
+    users_rows = conn.execute("""
+        SELECT id, name, email, role, team_lead_id
+        FROM users
+        WHERE status='active' AND role IN ('sales','tl','owner')
+        ORDER BY role DESC, name
+    """).fetchall()
 
     visible_user_ids = [u['id'] for u in users_rows]
 
@@ -600,52 +726,12 @@ def team_metrics():
             'conversion_pct': conv,
         })
 
-    # Si es TL (no owner), agregar resumen agregado de OTROS TLs (Option B)
-    other_teams = []
-    if current_user.role == 'tl':
-        # Otros TLs distintos a current_user
-        other_tls = conn.execute("""
-            SELECT id, name FROM users
-            WHERE status='active' AND role IN ('tl','owner') AND id != ?
-        """, (current_user.id,)).fetchall()
-        for t in other_tls:
-            tl_id = t['id']
-            # Obtener IDs del equipo de ese TL
-            team_ids_rows = conn.execute(
-                "SELECT id FROM users WHERE status='active' AND (id=? OR team_lead_id=?)",
-                (tl_id, tl_id)
-            ).fetchall()
-            team_ids = [r['id'] for r in team_ids_rows]
-            if not team_ids:
-                continue
-            placeholders = ','.join('?' * len(team_ids))
-            total_team = conn.execute(
-                f'SELECT COUNT(*) AS c FROM leads WHERE assigned_to IN ({placeholders})',
-                team_ids
-            ).fetchone()['c']
-            interesados_team = conn.execute(f"""
-                SELECT COUNT(*) AS c
-                FROM leads l LEFT JOIN lead_status ls ON l.id=ls.lead_id
-                WHERE l.assigned_to IN ({placeholders}) AND ls.status='interesado'
-            """, team_ids).fetchone()['c']
-            cerrados_team = conn.execute(f"""
-                SELECT COUNT(*) AS c
-                FROM leads l LEFT JOIN lead_status ls ON l.id=ls.lead_id
-                WHERE l.assigned_to IN ({placeholders}) AND ls.status='cerrado'
-            """, team_ids).fetchone()['c']
-            other_teams.append({
-                'tl_id': tl_id,
-                'tl_name': t['name'],
-                'team_size': len(team_ids),
-                'leads_total': total_team,
-                'interesados': interesados_team,
-                'cerrados': cerrados_team,
-            })
-
+    # CAMBIO: Eliminamos "Otros equipos" — Josema (TL) ahora gestiona TODOS,
+    # no necesita ver resumen agregado de otros equipos.
     conn.close()
 
     return jsonify({
         'role': current_user.role,
         'team_detail': detail_rows,
-        'other_teams_summary': other_teams,
+        'other_teams_summary': [],
     })

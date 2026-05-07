@@ -90,6 +90,8 @@ def init_db():
         ('sig_title', 'TEXT'),
         ('sig_phone', 'TEXT'),
         ('sig_photo_path', 'TEXT'),
+        # Apify token personal por usuario (Owner y TL pueden tener su propio)
+        ('apify_token', 'TEXT'),
     ]:
         try:
             c.execute(f'ALTER TABLE users ADD COLUMN {col} {decl}')

@@ -1,10 +1,34 @@
 """Rutas Flask: Scraping via Apify"""
 from flask import Blueprint, request, jsonify
-from database import get_config, set_config
+from flask_login import current_user
+from database import get_config, set_config, get_db
 from apify_scraper import ApifyScraper, COMUNAS_RM, RUBRO_QUERIES
 import threading
 
 scraping_bp = Blueprint('scraping', __name__)
+
+
+def _get_apify_token_for_current_user():
+    """
+    Devuelve el token de Apify a usar:
+    1. Si el usuario logueado tiene apify_token propio, ese.
+    2. Si no, fallback al global (config 'apify_token').
+
+    Esto permite que cada Owner/TL tenga su propio token sin compartir.
+    """
+    try:
+        if current_user and current_user.is_authenticated:
+            conn = get_db()
+            row = conn.execute(
+                "SELECT apify_token FROM users WHERE id=?", (current_user.id,)
+            ).fetchone()
+            conn.close()
+            if row and row['apify_token']:
+                return row['apify_token']
+    except Exception:
+        pass
+    # Fallback global
+    return get_config('apify_token')
 
 
 def _mark_recent_leads_pool(start_iso: str, lead_pool: str):
@@ -21,10 +45,12 @@ def _mark_recent_leads_pool(start_iso: str, lead_pool: str):
     conn.close()
 
 
-def _run_url_async(maps_url: str, rubro: str, comuna: str, lead_pool: str = 'owner_personal'):
+def _run_url_async(maps_url: str, rubro: str, comuna: str, lead_pool: str = 'owner_personal', token: str = None):
     from database import get_db
     from datetime import datetime as _dt
-    token = get_config('apify_token')
+    # token viene del endpoint que lo resolvió con current_user; fallback a global
+    if not token:
+        token = get_config('apify_token')
     if not token:
         return
 
@@ -68,9 +94,10 @@ def _run_url_async(maps_url: str, rubro: str, comuna: str, lead_pool: str = 'own
         conn3.close()
 
 
-def _run_search_async(rubro_key: str, comuna: str, max_items: int, lead_pool: str = 'owner_personal'):
+def _run_search_async(rubro_key: str, comuna: str, max_items: int, lead_pool: str = 'owner_personal', token: str = None):
     from datetime import datetime as _dt
-    token = get_config('apify_token')
+    if not token:
+        token = get_config('apify_token')
     if not token:
         return
     start_iso = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -93,7 +120,7 @@ def run_scraping():
     if lead_pool not in ('owner_personal', 'sales_pool'):
         return jsonify({'error': "Debes elegir el destino de los leads: 'Mi base' (owner_personal) o 'Prospectos Leads' (sales_pool)"}), 400
 
-    token = get_config('apify_token')
+    token = _get_apify_token_for_current_user()
     if not token:
         return jsonify({'error': 'Apify token no configurado. Ve a Configuracion.'}), 400
 
@@ -101,7 +128,7 @@ def run_scraping():
 
     # MODO 1: URL directa de Google Maps
     if maps_url:
-        t = threading.Thread(target=_run_url_async, args=(maps_url, rubro, comuna, lead_pool))
+        t = threading.Thread(target=_run_url_async, args=(maps_url, rubro, comuna, lead_pool, token))
         t.daemon = True
         t.start()
         return jsonify({'ok': True, 'message': f'Scraping iniciado [{pool_label}] con URL de Google Maps', 'modo': 'url'})
@@ -109,7 +136,7 @@ def run_scraping():
     # MODO 2: rubro + comuna
     if rubro and comuna:
         max_items = int(d.get('max_items', 40))
-        t = threading.Thread(target=_run_search_async, args=(rubro, comuna, max_items, lead_pool))
+        t = threading.Thread(target=_run_search_async, args=(rubro, comuna, max_items, lead_pool, token))
         t.daemon = True
         t.start()
         return jsonify({'ok': True, 'message': f'Scraping iniciado [{pool_label}]: {rubro} en {comuna}', 'modo': 'search'})
@@ -203,7 +230,7 @@ def get_metrics():
 def validate_token():
     """Valida token Apify, verifica actor y alerta si hay problemas"""
     import requests as req
-    token = get_config('apify_token')
+    token = _get_apify_token_for_current_user()
     if not token:
         return jsonify({'ok': False, 'error': 'Token no configurado'})
     
@@ -277,7 +304,7 @@ def set_actor():
 def detect_actor():
     """Detecta el actor de Google Maps desde el historial de runs de Apify"""
     import requests as req
-    token = get_config('apify_token')
+    token = _get_apify_token_for_current_user()
     if not token:
         return jsonify({'error': 'Token no configurado'})
     
@@ -305,7 +332,7 @@ def detect_actor():
 def get_apify_runs():
     """Obtiene lista de runs recientes desde Apify"""
     import requests as req
-    token = get_config('apify_token')
+    token = _get_apify_token_for_current_user()
     if not token:
         return jsonify({'error': 'Token no configurado'})
     
@@ -356,7 +383,7 @@ def cargar_leads_manual():
     if not run_id or not rubro:
         return jsonify({'error': 'run_id y rubro son requeridos'}), 400
     
-    token = get_config('apify_token')
+    token = _get_apify_token_for_current_user()
     if not token:
         return jsonify({'error': 'Token Apify no configurado'}), 400
     

@@ -647,11 +647,11 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   <div class="nav-item active" data-roles="owner,tl,sales" onclick="showPage('overview',this,'Resumen general')">
     <span class="nav-icon">📊</span> Resumen
   </div>
-  <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('leads',this,'Leads & Pipeline')">
+  <div class="nav-item" data-roles="owner,sales" onclick="showPage('leads',this,'Leads & Pipeline')">
     <span class="nav-icon">👥</span> Leads
     <span class="nav-badge" id="badgeLeads">—</span>
   </div>
-  <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('envios',this,'Historial de envíos')">
+  <div class="nav-item" data-roles="owner,sales" onclick="showPage('envios',this,'Historial de envíos')">
     <span class="nav-icon">📨</span> Envíos
   </div>
 
@@ -683,32 +683,32 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('interesados',this,'Interesados')" style="position:relative"><span class="nav-icon">⭐</span> Interesados<span id="badgeInteresados" style="position:absolute;top:6px;right:8px;background:var(--mp-warn);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;display:none">0</span></div>
   <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('intel',this,'Inteligencia')"><span class="nav-icon">🧠</span> Inteligencia</div>
 
-  <!-- Email: por ahora solo Owner y TL (en pausa para Sales) -->
-  <div class="nav-section" data-roles="owner,tl">📧 Email</div>
-  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-contactos',this,'Email · Leads')">
+  <!-- Email: solo Owner (TL no lo usa hasta tener API Gmail) -->
+  <div class="nav-section" data-roles="owner">📧 Email</div>
+  <div class="nav-item" data-roles="owner" onclick="showPage('email-contactos',this,'Email · Leads')">
     <span class="nav-icon">📋</span> Leads email
     <span class="nav-badge" id="badgeEmailPend" style="background:#6b7280">—</span>
   </div>
-  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-interesados',this,'Email · Interesados')" style="position:relative">
+  <div class="nav-item" data-roles="owner" onclick="showPage('email-interesados',this,'Email · Interesados')" style="position:relative">
     <span class="nav-icon">⭐</span> Interesados email
     <span id="badgeEmailInt" style="position:absolute;top:6px;right:8px;background:#856404;color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;display:none">0</span>
   </div>
-  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-campanas',this,'Email · Campañas')">
+  <div class="nav-item" data-roles="owner" onclick="showPage('email-campanas',this,'Email · Campañas')">
     <span class="nav-icon">📤</span> Campañas
   </div>
-  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-scheduler',this,'Email · Automatización')">
+  <div class="nav-item" data-roles="owner" onclick="showPage('email-scheduler',this,'Email · Automatización')">
     <span class="nav-icon">⏰</span> Automatización
   </div>
-  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-inteligencia',this,'Email · Inteligencia')">
+  <div class="nav-item" data-roles="owner" onclick="showPage('email-inteligencia',this,'Email · Inteligencia')">
     <span class="nav-icon">📊</span> Analítica email
   </div>
 
-  <div class="nav-section" data-roles="owner,tl,sales">💬 WhatsApp</div>
-  <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('whatsapp',this,'WhatsApp')" style="position:relative">
+  <div class="nav-section" data-roles="owner,sales">💬 WhatsApp</div>
+  <div class="nav-item" data-roles="owner,sales" onclick="showPage('whatsapp',this,'WhatsApp')" style="position:relative">
     <span class="nav-icon">💬</span> WhatsApp
     <span id="badgeWaStatus" style="position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:#9CA3AF;display:inline-block" title="Desconectado"></span>
   </div>
-  <div class="nav-item" data-roles="owner,tl" onclick="showPage('config',this,'Configuración')">
+  <div class="nav-item" data-roles="owner" onclick="showPage('config',this,'Configuración')">
     <span class="nav-icon">⚙️</span> Configuración
   </div>
   <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('profile',this,'Mi Perfil')">
@@ -3254,7 +3254,176 @@ function applyMonthFilter(val){
   loadOverview(from, to);
 }
 
+// ─── DASHBOARD TL — vista avanzada de gestión ─────────
+async function loadOverviewTL() {
+  const overviewPage = document.getElementById('page-overview');
+  if (!overviewPage) return;
+  overviewPage.innerHTML = '<div style="padding:40px;text-align:center;color:#888">Cargando dashboard de gestión...</div>';
+  try {
+    const r = await fetch('/api/dashboard/tl-overview', { credentials:'same-origin' });
+    const d = await r.json();
+
+    let html = `
+      <div class="page-header">
+        <div>
+          <div class="page-title">📊 Dashboard de gestión · ${CURRENT_USER.name}</div>
+          <div class="page-sub">Métricas para tomar decisiones · todo el equipo</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="loadOverviewTL()">↻ Actualizar</button>
+      </div>
+
+      <!-- BLOQUE 1: Pool de Prospecto Leads -->
+      <div style="margin-bottom:20px">
+        <h3 style="font-size:14px;color:#1A1A2E;margin:0 0 10px 0">🎯 Pool de Prospecto Leads (alimentado por el Owner)</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px">
+          <div style="background:linear-gradient(135deg,#FFE600 0%,#FFA500 100%);border-radius:12px;padding:16px;color:#1A1A2E">
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Pool total</div>
+            <div style="font-size:28px;font-weight:800">${d.pool.total}</div>
+          </div>
+          <div style="background:#fff;border-radius:12px;padding:16px;border-left:4px solid #27AE60;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+            <div style="font-size:11px;color:#888">Asignados</div>
+            <div style="font-size:24px;font-weight:700;color:#27AE60">${d.pool.assigned} <span style="font-size:13px;color:#666">(${d.pool.pct_assigned}%)</span></div>
+          </div>
+          <div style="background:#fff;border-radius:12px;padding:16px;border-left:4px solid #F1C40F;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+            <div style="font-size:11px;color:#888">Por asignar</div>
+            <div style="font-size:24px;font-weight:700;color:#F1C40F">${d.pool.unassigned}</div>
+          </div>
+          <div style="background:#fff;border-radius:12px;padding:16px;border-left:4px solid #009EE3;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+            <div style="font-size:11px;color:#888">Tasa asignación</div>
+            <div style="font-size:24px;font-weight:700;color:#009EE3">${d.pool.pct_assigned}%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOQUE 2: Métricas globales del equipo -->
+      <div style="margin-bottom:20px">
+        <h3 style="font-size:14px;color:#1A1A2E;margin:0 0 10px 0">👥 Métricas globales del equipo</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+          <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+            <div style="font-size:10px;color:#888;text-transform:uppercase">Enviados WA</div>
+            <div style="font-size:22px;font-weight:700">${d.equipo.enviados}</div>
+          </div>
+          <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);border-top:3px solid #856404">
+            <div style="font-size:10px;color:#888;text-transform:uppercase">Interesados</div>
+            <div style="font-size:22px;font-weight:700;color:#856404">${d.equipo.interesados}</div>
+          </div>
+          <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);border-top:3px solid #6f42c1">
+            <div style="font-size:10px;color:#888;text-transform:uppercase">Quieren reunión</div>
+            <div style="font-size:22px;font-weight:700;color:#6f42c1">${d.equipo.reunion}</div>
+          </div>
+          <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);border-top:3px solid #27AE60">
+            <div style="font-size:10px;color:#888;text-transform:uppercase">Cerrados</div>
+            <div style="font-size:22px;font-weight:700;color:#27AE60">${d.equipo.cerrados}</div>
+          </div>
+          <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);border-top:3px solid #C0392B">
+            <div style="font-size:10px;color:#888;text-transform:uppercase">Opt-out / No int</div>
+            <div style="font-size:22px;font-weight:700;color:#C0392B">${d.equipo.optout}</div>
+          </div>
+          <div style="background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);border-top:3px solid #009EE3">
+            <div style="font-size:10px;color:#888;text-transform:uppercase">Sellers activos</div>
+            <div style="font-size:22px;font-weight:700;color:#009EE3">${d.equipo.sellers}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOQUE 3: Tasas de conversión -->
+      <div style="margin-bottom:20px">
+        <h3 style="font-size:14px;color:#1A1A2E;margin:0 0 10px 0">📈 Tasas clave</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+          <div style="background:linear-gradient(135deg,#E3F2FD 0%,#BBDEFB 100%);border-radius:12px;padding:18px">
+            <div style="font-size:11px;color:#0D47A1;text-transform:uppercase;font-weight:600">Tasa de envío</div>
+            <div style="font-size:30px;font-weight:800;color:#0D47A1;margin-top:4px">${d.equipo.tasa_envio}%</div>
+            <div style="font-size:10px;color:#1565C0;margin-top:2px">enviados / pool</div>
+          </div>
+          <div style="background:linear-gradient(135deg,#FFF8E1 0%,#FFE082 100%);border-radius:12px;padding:18px">
+            <div style="font-size:11px;color:#5D4E00;text-transform:uppercase;font-weight:600">Tasa de respuesta</div>
+            <div style="font-size:30px;font-weight:800;color:#5D4E00;margin-top:4px">${d.equipo.tasa_respuesta}%</div>
+            <div style="font-size:10px;color:#856404;margin-top:2px">respuestas / enviados</div>
+          </div>
+          <div style="background:linear-gradient(135deg,#E8F5E9 0%,#A5D6A7 100%);border-radius:12px;padding:18px">
+            <div style="font-size:11px;color:#1B5E20;text-transform:uppercase;font-weight:600">Tasa de cierre</div>
+            <div style="font-size:30px;font-weight:800;color:#1B5E20;margin-top:4px">${d.equipo.tasa_conversion}%</div>
+            <div style="font-size:10px;color:#2E7D32;margin-top:2px">cerrados / interesados</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOQUE 4: Ranking de Sales + Top rubros -->
+      <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:18px;margin-bottom:20px">
+        <div>
+          <h3 style="font-size:14px;color:#1A1A2E;margin:0 0 10px 0">🏆 Ranking del equipo</h3>
+          <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+            <thead><tr style="background:#f8f9fa;text-align:left">
+              <th style="padding:8px 12px;font-size:11px">#</th>
+              <th style="padding:8px 12px;font-size:11px">Sales</th>
+              <th style="padding:8px 12px;font-size:11px;text-align:right">Total</th>
+              <th style="padding:8px 12px;font-size:11px;text-align:right">Interes.</th>
+              <th style="padding:8px 12px;font-size:11px;text-align:right">Cierres</th>
+              <th style="padding:8px 12px;font-size:11px;text-align:right">Conv.</th>
+            </tr></thead><tbody>
+            ${d.ranking.map((u, i) => {
+              const conv = u.total ? Math.round(u.cerrados/u.total*100) : 0;
+              const roleColor = u.role==='owner'?'#FFE600':u.role==='tl'?'#3498DB':'#27AE60';
+              const roleTxt = u.role==='owner'?'OWN':u.role==='tl'?'TL':'';
+              return `<tr style="border-top:1px solid #eee">
+                <td style="padding:8px 12px;font-size:13px;font-weight:700;color:#888">${i+1}</td>
+                <td style="padding:8px 12px;font-size:12px">${u.name}${roleTxt?` <span style="font-size:9px;background:${roleColor};padding:1px 5px;border-radius:6px;color:${u.role==='owner'?'#1A1A2E':'#fff'}">${roleTxt}</span>`:''}</td>
+                <td style="padding:8px 12px;font-size:12px;text-align:right">${u.total}</td>
+                <td style="padding:8px 12px;font-size:12px;text-align:right;color:#856404">${u.interesados}</td>
+                <td style="padding:8px 12px;font-size:12px;text-align:right;font-weight:700;color:#27AE60">${u.cerrados}</td>
+                <td style="padding:8px 12px;font-size:12px;text-align:right;font-weight:700;color:${conv>=10?'#27AE60':'#666'}">${conv}%</td>
+              </tr>`;
+            }).join('')}
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="font-size:14px;color:#1A1A2E;margin:0 0 10px 0">📊 Top rubros (Pool)</h3>
+          <div style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+            ${d.top_rubros.map(r => {
+              const pct = r.total ? Math.round(r.interesados/r.total*100) : 0;
+              return `<div style="padding:10px 14px;border-bottom:1px solid #f0f0f0">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
+                  <strong>${r.rubro || '—'}</strong>
+                  <span style="color:#856404">${r.interesados}/${r.total} (${pct}%)</span>
+                </div>
+                <div style="height:4px;background:#eee;border-radius:2px;margin-top:4px;overflow:hidden">
+                  <div style="height:100%;width:${pct}%;background:#856404"></div>
+                </div>
+              </div>`;
+            }).join('') || '<div style="padding:14px;color:#aaa;font-size:12px">Sin datos</div>'}
+          </div>
+        </div>
+      </div>
+
+      <!-- BLOQUE 5: Alertas del sistema -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        ${d.sistema.usuarios_pending > 0 ? `
+          <div style="background:#FFF8E1;border-left:4px solid #F1C40F;padding:14px 18px;border-radius:8px">
+            <div style="font-size:13px;font-weight:700;color:#5D4E00">⚠️ ${d.sistema.usuarios_pending} usuario${d.sistema.usuarios_pending>1?'s':''} pendiente${d.sistema.usuarios_pending>1?'s':''} de aprobación</div>
+            <a href="javascript:showPage('admin-users', document.querySelector('[onclick*=admin-users]'), 'Gestión de usuarios')" style="font-size:12px;color:#856404;font-weight:600">→ Ir a Usuarios</a>
+          </div>
+        ` : ''}
+        ${d.pool.unassigned > 0 ? `
+          <div style="background:#E3F2FD;border-left:4px solid #009EE3;padding:14px 18px;border-radius:8px">
+            <div style="font-size:13px;font-weight:700;color:#0D47A1">📋 ${d.pool.unassigned} leads sin asignar en el pool</div>
+            <a href="javascript:showPage('admin-assign', document.querySelector('[onclick*=admin-assign]'), 'Asignar leads')" style="font-size:12px;color:#1565C0;font-weight:600">→ Ir a asignar</a>
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    overviewPage.innerHTML = html;
+  } catch(e) {
+    overviewPage.innerHTML = '<div style="padding:40px;text-align:center;color:#C0392B">Error: ' + e.message + '</div>';
+  }
+}
+
 async function loadOverview(fromDate, toDate){
+  // Si es TL puro (no Owner) → mostrar dashboard avanzado de gestión
+  if (CURRENT_USER && CURRENT_USER.role === 'tl') {
+    return loadOverviewTL();
+  }
   // Si no se pasan args, leer del selector
   if(fromDate === undefined){
     const sel = document.getElementById('mes-filter');
@@ -9192,6 +9361,29 @@ async function loadMiPerfil() {
         </div>
       </div>
 
+      ${(p.role === 'owner' || p.role === 'tl') ? `
+        <div class="card" style="margin-bottom:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div style="font-size:14px;font-weight:700;color:#1A1A2E">🗺️ Apify token (Scraping Google Maps)</div>
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${p.has_apify_token?'#E8F5E9':'#FEECEB'};color:${p.has_apify_token?'#1B5E20':'#C0392B'}">
+              ${p.has_apify_token?'CONFIGURADO':'NO CONFIGURADO'}
+            </span>
+          </div>
+          <div style="font-size:12px;color:#666;margin-bottom:12px">
+            Tu token personal de Apify para hacer scraping. Cada Owner/TL puede tener el suyo.
+          </div>
+          <div style="margin-bottom:6px">
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Apify token</label>
+            <input id="prof-apify" type="password" placeholder="${p.apify_token_masked || 'Pegá tu token de apify.com'}"
+                   style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px;font-family:monospace">
+          </div>
+          <div style="font-size:10px;color:#888;margin-bottom:12px">
+            Generá tu token en <a href="https://console.apify.com/account/integrations" target="_blank" style="color:#009EE3">console.apify.com/account/integrations</a>
+          </div>
+          <button class="btn btn-primary" onclick="saveProfileApify()" style="width:100%">💾 Guardar Apify token</button>
+        </div>
+      ` : ''}
+
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div style="font-size:14px;font-weight:700;color:#1A1A2E">⚙️ Mis jobs automáticos</div>
@@ -9254,6 +9446,21 @@ async function testProfileSmtp() {
     const d = await r.json();
     if (d.ok) toast('✓ ' + d.mensaje, 'success');
     else toast('❌ ' + (d.error || 'Error'), 'error');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function saveProfileApify() {
+  const token = document.getElementById('prof-apify').value.trim();
+  if (!token) { toast('Pegá tu Apify token', 'error'); return; }
+  try {
+    const r = await fetch('/auth/profile', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ apify_token: token })
+    });
+    const d = await r.json();
+    if (d.ok) { toast('Apify token guardado', 'success'); loadMiPerfil(); }
+    else toast(d.error || 'Error', 'error');
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 

@@ -349,7 +349,7 @@ def get_profile():
     row = conn.execute('''
         SELECT id, email, username, name, role,
                sig_title, sig_phone, sig_photo_path,
-               smtp_user, evolution_instance, whatsapp_number,
+               smtp_user, evolution_instance, whatsapp_number, apify_token,
                (smtp_pass_enc IS NOT NULL AND smtp_pass_enc != '') AS has_smtp_pass
         FROM users WHERE id = ?
     ''', (current_user.id,)).fetchone()
@@ -360,6 +360,11 @@ def get_profile():
     # Detectar si el perfil está completo para el wizard
     d['profile_complete'] = bool(d.get('sig_title') and d.get('sig_phone'))
     d['email_configured'] = bool(d.get('smtp_user') and d.get('has_smtp_pass'))
+    d['has_apify_token'] = bool(d.get('apify_token'))
+    # No devolvemos el token completo — solo si está seteado
+    if d.get('apify_token'):
+        d['apify_token_masked'] = d['apify_token'][:8] + '...' + d['apify_token'][-4:]
+    d.pop('apify_token', None)
     return jsonify(d)
 
 
@@ -401,6 +406,16 @@ def update_profile():
         encrypted = encrypt(cleaned)
         set_pairs.append('smtp_pass_enc=?')
         params.append(encrypted)
+    if 'apify_token' in data:
+        # Solo Owner/TL pueden setear su Apify token
+        if current_user.role not in ('owner', 'tl'):
+            return jsonify({'error': 'Solo Owner/TL pueden configurar Apify token'}), 403
+        token = (data.get('apify_token') or '').strip()
+        # Validar formato básico (Apify tokens son ~50 chars alfanuméricos)
+        if token and (len(token) < 20 or ' ' in token):
+            return jsonify({'error': 'Apify token inválido'}), 400
+        set_pairs.append('apify_token=?')
+        params.append(token if token else None)
 
     if not set_pairs:
         return jsonify({'error': 'No hay cambios para guardar'}), 400
