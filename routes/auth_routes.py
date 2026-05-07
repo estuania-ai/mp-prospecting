@@ -331,4 +331,173 @@ def me():
         'can_manage_team': current_user.can_manage_team,
         'team_lead_id': current_user.team_lead_id,
         'password_changed': current_user.password_changed,
+        'sig_title': current_user.sig_title,
+        'sig_phone': current_user.sig_phone,
+        'sig_photo_path': current_user.sig_photo_path,
+        'smtp_user': current_user.smtp_user,
     })
+
+
+# ═══════════════════════════════════════════════════════════════
+# PERFIL — firma de email + credenciales SMTP por usuario
+# ═══════════════════════════════════════════════════════════════
+@auth_bp.route('/profile', methods=['GET'])
+@login_required
+def get_profile():
+    """Devuelve el perfil completo del usuario (sin la password encriptada)."""
+    conn = get_db()
+    row = conn.execute('''
+        SELECT id, email, username, name, role,
+               sig_title, sig_phone, sig_photo_path,
+               smtp_user, evolution_instance, whatsapp_number,
+               (smtp_pass_enc IS NOT NULL AND smtp_pass_enc != '') AS has_smtp_pass
+        FROM users WHERE id = ?
+    ''', (current_user.id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'error': 'no encontrado'}), 404
+    d = dict(row)
+    # Detectar si el perfil está completo para el wizard
+    d['profile_complete'] = bool(d.get('sig_title') and d.get('sig_phone'))
+    d['email_configured'] = bool(d.get('smtp_user') and d.get('has_smtp_pass'))
+    return jsonify(d)
+
+
+@auth_bp.route('/profile', methods=['POST'])
+@login_required
+def update_profile():
+    """
+    Actualiza firma + credenciales SMTP del usuario.
+    Body: {sig_title, sig_phone, smtp_user, smtp_pass (plain — se encripta acá)}
+    """
+    from secure_storage import encrypt
+    data = request.get_json() or {}
+
+    sig_title = (data.get('sig_title') or '').strip()
+    sig_phone = (data.get('sig_phone') or '').strip()
+    smtp_user = (data.get('smtp_user') or '').strip().lower()
+    smtp_pass_plain = data.get('smtp_pass') or ''  # opcional — solo si quiere cambiarla
+
+    set_pairs = []
+    params = []
+
+    if 'sig_title' in data:
+        set_pairs.append('sig_title=?')
+        params.append(sig_title)
+    if 'sig_phone' in data:
+        set_pairs.append('sig_phone=?')
+        params.append(sig_phone)
+    if 'smtp_user' in data:
+        # Validar email básico
+        if smtp_user and '@' not in smtp_user:
+            return jsonify({'error': 'smtp_user no es un email válido'}), 400
+        set_pairs.append('smtp_user=?')
+        params.append(smtp_user)
+    if smtp_pass_plain:
+        # Validar largo razonable (App Passwords de Gmail son 16 chars)
+        cleaned = smtp_pass_plain.replace(' ', '').strip()
+        if len(cleaned) < 8 or len(cleaned) > 64:
+            return jsonify({'error': 'App Password debe tener 8-64 caracteres'}), 400
+        encrypted = encrypt(cleaned)
+        set_pairs.append('smtp_pass_enc=?')
+        params.append(encrypted)
+
+    if not set_pairs:
+        return jsonify({'error': 'No hay cambios para guardar'}), 400
+
+    params.append(current_user.id)
+    conn = get_db()
+    conn.execute(f"UPDATE users SET {', '.join(set_pairs)} WHERE id=?", params)
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@auth_bp.route('/profile/signature-photo', methods=['POST'])
+@login_required
+def upload_signature_photo():
+    """Sube foto de firma. Validamos: imagen JPEG/PNG, tamaño <2MB."""
+    import os as _os
+    if 'photo' not in request.files:
+        return jsonify({'error': 'No se envió archivo'}), 400
+    f = request.files['photo']
+    if not f or not f.filename:
+        return jsonify({'error': 'Archivo vacío'}), 400
+    # Validar extensión
+    fn = f.filename.lower()
+    if not (fn.endswith('.jpg') or fn.endswith('.jpeg') or fn.endswith('.png')):
+        return jsonify({'error': 'Solo JPG/JPEG/PNG'}), 400
+    # Leer y validar tamaño (max 2MB)
+    blob = f.read()
+    if len(blob) > 2 * 1024 * 1024:
+        return jsonify({'error': 'Foto muy grande (max 2MB)'}), 400
+    if len(blob) < 100:
+        return jsonify({'error': 'Foto inválida'}), 400
+    # Validar que sea imagen real (anti-XSS via filename / fake extension)
+    try:
+        from PIL import Image
+        from io import BytesIO
+        img = Image.open(BytesIO(blob))
+        img.verify()
+    except Exception:
+        return jsonify({'error': 'Archivo no es una imagen válida'}), 400
+
+    # Guardar
+    ext = 'jpg' if fn.endswith(('.jpg', '.jpeg')) else 'png'
+    rel_path = f'email_assets/sigs/sig_user_{current_user.id}.{ext}'
+    abs_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), 'static', rel_path)
+    _os.makedirs(_os.path.dirname(abs_path), exist_ok=True)
+    with open(abs_path, 'wb') as fp:
+        fp.write(blob)
+
+    # Guardar path en BD
+    conn = get_db()
+    conn.execute('UPDATE users SET sig_photo_path=? WHERE id=?',
+                 (rel_path, current_user.id))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'path': rel_path, 'url': f'/static/{rel_path}'})
+
+
+@auth_bp.route('/profile/test-smtp', methods=['POST'])
+@login_required
+def test_smtp():
+    """Prueba las credenciales SMTP del usuario enviando un email de prueba a sí mismo."""
+    from secure_storage import decrypt
+    import smtplib, ssl
+    from email.mime.text import MIMEText
+
+    conn = get_db()
+    row = conn.execute(
+        'SELECT smtp_user, smtp_pass_enc, name FROM users WHERE id=?',
+        (current_user.id,)
+    ).fetchone()
+    conn.close()
+    if not row or not row['smtp_user'] or not row['smtp_pass_enc']:
+        return jsonify({'ok': False, 'error': 'Configurá tu email + App Password primero'}), 400
+
+    pwd = decrypt(row['smtp_pass_enc'])
+    if not pwd:
+        return jsonify({'ok': False, 'error': 'No se pudo descifrar la password (clave de cifrado distinta?)'}), 500
+
+    msg = MIMEText(
+        f"Test exitoso de tu configuración SMTP en MP Prospecting.\n\n"
+        f"Si recibiste este email, tu cuenta está lista para enviar campañas.\n\n"
+        f"Saludos,\n{row['name']}",
+        'plain', 'utf-8'
+    )
+    msg['Subject'] = '✓ Test MP Prospecting'
+    msg['From'] = f"{row['name']} <{row['smtp_user']}>"
+    msg['To'] = row['smtp_user']
+
+    try:
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=20) as s:
+            s.ehlo(); s.starttls(context=ctx)
+            s.login(row['smtp_user'], pwd)
+            s.sendmail(row['smtp_user'], [row['smtp_user']], msg.as_string())
+        return jsonify({'ok': True, 'mensaje': f"Email de prueba enviado a {row['smtp_user']}"})
+    except smtplib.SMTPAuthenticationError as e:
+        return jsonify({'ok': False, 'error': 'Auth falló — verificá tu App Password'}), 400
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)[:200]}), 500

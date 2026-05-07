@@ -711,6 +711,9 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   <div class="nav-item" data-roles="owner,tl" onclick="showPage('config',this,'Configuración')">
     <span class="nav-icon">⚙️</span> Configuración
   </div>
+  <div class="nav-item" data-roles="owner,tl,sales" onclick="showPage('profile',this,'Mi Perfil')">
+    <span class="nav-icon">👤</span> Mi Perfil
+  </div>
   <div class="nav-item" data-roles="owner,tl,sales" onclick="window.location.href='/auth/logout'" style="color:#C0392B">
     <span class="nav-icon">🚪</span> Cerrar sesión
   </div>
@@ -2246,6 +2249,24 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   </div>
   <div class="card">
     <div id="admin-users-content"></div>
+  </div>
+</div>
+
+<!-- ══════════════ PAGE: MI PERFIL ══════════════ -->
+<div class="page" id="page-profile">
+  <div class="page-header">
+    <div>
+      <div class="page-title">👤 Mi Perfil</div>
+      <div class="page-sub">Firma de email · credenciales SMTP · jobs de scheduler</div>
+    </div>
+  </div>
+  <div id="profile-content"></div>
+</div>
+
+<!-- ══════════════ MODAL: WIZARD DE ONBOARDING ══════════════ -->
+<div id="onboardingModal" class="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(26,26,46,.85);z-index:9999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:16px;max-width:560px;width:100%;padding:32px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div id="onboarding-content"></div>
   </div>
 </div>
 
@@ -9099,6 +9120,306 @@ async function loadProspectoLeads() {
   }
 }
 
+// ══════════════════════════════════════════════════════
+// PAGE: MI PERFIL (firma + SMTP + scheduler)
+// ══════════════════════════════════════════════════════
+async function loadMiPerfil() {
+  const wrap = document.getElementById('profile-content');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="padding:20px;color:#888">Cargando...</div>';
+  try {
+    const r = await fetch('/auth/profile', { credentials: 'same-origin' });
+    const p = await r.json();
+    const sigUrl = p.sig_photo_path ? `/static/${p.sig_photo_path}` : '';
+
+    let html = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+        <!-- Firma de email -->
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div style="font-size:14px;font-weight:700;color:#1A1A2E">✍️ Firma de email</div>
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${p.profile_complete?'#E8F5E9':'#FFF8E1'};color:${p.profile_complete?'#1B5E20':'#856404'}">
+              ${p.profile_complete?'COMPLETO':'INCOMPLETO'}
+            </span>
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Cargo / título</label>
+            <input id="prof-title" value="${p.sig_title || ''}" placeholder="ej: Sales Executive"
+                   style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px">
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Teléfono</label>
+            <input id="prof-phone" value="${p.sig_phone || ''}" placeholder="+569 1234 5678"
+                   style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px">
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Foto de firma</label>
+            <div style="display:flex;gap:10px;align-items:center">
+              ${sigUrl ? `<img src="${sigUrl}" style="width:50px;height:50px;border-radius:50%;border:2px solid #eee;object-fit:cover">` : '<div style="width:50px;height:50px;border-radius:50%;background:#eee;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:20px">👤</div>'}
+              <input type="file" id="prof-photo" accept="image/jpeg,image/png" style="font-size:12px">
+              <button class="btn btn-ghost" onclick="uploadSigPhoto()" style="font-size:12px;padding:6px 12px">⬆ Subir</button>
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="saveProfileSig()" style="width:100%">💾 Guardar firma</button>
+        </div>
+
+        <!-- Email SMTP -->
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div style="font-size:14px;font-weight:700;color:#1A1A2E">📧 Cuenta de email</div>
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${p.email_configured?'#E8F5E9':'#FEECEB'};color:${p.email_configured?'#1B5E20':'#C0392B'}">
+              ${p.email_configured?'CONFIGURADO':'NO CONFIGURADO'}
+            </span>
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Email Gmail (corporativo o personal)</label>
+            <input id="prof-smtp-user" value="${p.smtp_user || ''}" placeholder="tu.email@gmail.com"
+                   style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px">
+          </div>
+          <div style="margin-bottom:6px">
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">App Password (16 caracteres)</label>
+            <input id="prof-smtp-pass" type="password" placeholder="${p.has_smtp_pass?'••••••••••••••••':'Pegá tu App Password de Google'}"
+                   style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px;font-family:monospace">
+          </div>
+          <div style="font-size:10px;color:#888;margin-bottom:12px">
+            🔐 Se guarda encriptada. Generá la App Password en
+            <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:#009EE3">myaccount.google.com/apppasswords</a>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="saveProfileSmtp()" style="flex:1">💾 Guardar</button>
+            <button class="btn btn-ghost" onclick="testProfileSmtp()" style="flex:1">🧪 Test</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:14px;font-weight:700;color:#1A1A2E">⚙️ Mis jobs automáticos</div>
+        </div>
+        <div style="font-size:12px;color:#666;margin-bottom:12px">
+          Estos jobs corren sobre tus leads asignados. Activá los que quieras usar.
+          Configurá límites y delays desde tu pestaña Envíos.
+        </div>
+        <a href="javascript:showPage('envios', document.querySelector('[onclick*=envios]'), 'Mi scheduler')" style="color:#009EE3;font-size:13px;font-weight:600">→ Ir a configurar jobs</a>
+      </div>`;
+    wrap.innerHTML = html;
+  } catch(e) {
+    wrap.innerHTML = '<div style="padding:20px;color:#C0392B">Error: ' + e.message + '</div>';
+  }
+}
+
+async function saveProfileSig() {
+  const sig_title = document.getElementById('prof-title').value.trim();
+  const sig_phone = document.getElementById('prof-phone').value.trim();
+  if (!sig_title || !sig_phone) {
+    toast('Completá título y teléfono', 'error'); return;
+  }
+  try {
+    const r = await fetch('/auth/profile', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ sig_title, sig_phone })
+    });
+    const d = await r.json();
+    if (d.ok) { toast('Firma guardada', 'success'); loadMiPerfil(); }
+    else toast(d.error || 'Error', 'error');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function saveProfileSmtp() {
+  const smtp_user = document.getElementById('prof-smtp-user').value.trim().toLowerCase();
+  const smtp_pass = document.getElementById('prof-smtp-pass').value.trim();
+  if (!smtp_user) { toast('Email es obligatorio', 'error'); return; }
+  if (!smtp_user.includes('@')) { toast('Email no es válido', 'error'); return; }
+  const body = { smtp_user };
+  if (smtp_pass) body.smtp_pass = smtp_pass;
+  try {
+    const r = await fetch('/auth/profile', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (d.ok) { toast('Email guardado', 'success'); loadMiPerfil(); }
+    else toast(d.error || 'Error', 'error');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function testProfileSmtp() {
+  toast('Enviando email de prueba...', 'info');
+  try {
+    const r = await fetch('/auth/profile/test-smtp', {
+      method: 'POST', credentials: 'same-origin'
+    });
+    const d = await r.json();
+    if (d.ok) toast('✓ ' + d.mensaje, 'success');
+    else toast('❌ ' + (d.error || 'Error'), 'error');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function uploadSigPhoto() {
+  const input = document.getElementById('prof-photo');
+  if (!input.files || !input.files.length) { toast('Elegí una foto', 'error'); return; }
+  const fd = new FormData();
+  fd.append('photo', input.files[0]);
+  try {
+    const r = await fetch('/auth/profile/signature-photo', {
+      method: 'POST', credentials: 'same-origin', body: fd
+    });
+    const d = await r.json();
+    if (d.ok) { toast('Foto subida', 'success'); loadMiPerfil(); }
+    else toast(d.error || 'Error', 'error');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════
+// WIZARD DE ONBOARDING (primer login del Sales)
+// ══════════════════════════════════════════════════════
+async function maybeShowOnboarding() {
+  if (!CURRENT_USER || !CURRENT_USER.password_changed) return;
+  // Si no es Sales, no forzar wizard (Owner/TL configuran cuando quieren)
+  if (CURRENT_USER.role !== 'sales') return;
+  try {
+    const r = await fetch('/auth/profile', { credentials: 'same-origin' });
+    const p = await r.json();
+    if (p.profile_complete && p.email_configured) return;  // ya está completo
+    showOnboardingStep(1, p);
+  } catch(e) {}
+}
+
+function showOnboardingStep(step, profile) {
+  const modal = document.getElementById('onboardingModal');
+  const c = document.getElementById('onboarding-content');
+  if (!modal || !c) return;
+  modal.style.display = 'flex';
+
+  const totalSteps = 3;
+  const stepsBar = `
+    <div style="display:flex;gap:6px;margin-bottom:18px">
+      ${[1,2,3].map(n => `
+        <div style="flex:1;height:5px;border-radius:3px;background:${n<=step?'#009EE3':'#e5e7eb'}"></div>
+      `).join('')}
+    </div>`;
+
+  if (step === 1) {
+    c.innerHTML = `${stepsBar}
+      <div style="font-size:11px;color:#888;margin-bottom:6px">PASO 1 / 3</div>
+      <h2 style="margin:0 0 6px 0;color:#1A1A2E">¡Bienvenido, ${CURRENT_USER.name}! 👋</h2>
+      <p style="color:#666;font-size:13px;line-height:1.5;margin-bottom:18px">
+        Vamos a configurar tu cuenta en 3 pasos. Empecemos con tu <strong>firma de email</strong> — es la que aparecerá en cada email que envíes a tus leads.
+      </p>
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:#666;font-weight:600;display:block;margin-bottom:4px">Cargo / título</label>
+        <input id="ob-title" placeholder="ej: Sales Executive · KAM"
+               style="width:100%;padding:11px 14px;border-radius:8px;border:1.5px solid #ddd;font-size:13px">
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:#666;font-weight:600;display:block;margin-bottom:4px">Tu teléfono</label>
+        <input id="ob-phone" placeholder="+569 1234 5678"
+               style="width:100%;padding:11px 14px;border-radius:8px;border:1.5px solid #ddd;font-size:13px">
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:#666;font-weight:600;display:block;margin-bottom:4px">Foto (opcional, recomendada)</label>
+        <input type="file" id="ob-photo" accept="image/jpeg,image/png" style="font-size:12px">
+        <div style="font-size:10px;color:#888;margin-top:4px">JPG/PNG, máx 2MB. Cuadrada se ve mejor.</div>
+      </div>
+      <button class="btn btn-primary" onclick="onboardingNext1()" style="width:100%;padding:12px;font-size:14px;margin-top:8px">Continuar →</button>
+    `;
+  } else if (step === 2) {
+    c.innerHTML = `${stepsBar}
+      <div style="font-size:11px;color:#888;margin-bottom:6px">PASO 2 / 3</div>
+      <h2 style="margin:0 0 6px 0;color:#1A1A2E">📧 Conectá tu Gmail</h2>
+      <p style="color:#666;font-size:13px;line-height:1.5;margin-bottom:14px">
+        Tu cuenta de Gmail (corporativa o personal) para enviar emails. Necesitás una <strong>App Password</strong> de Google — es un código de 16 caracteres que se genera una sola vez.
+      </p>
+      <div style="background:#FFF8E1;border-left:3px solid #F1C40F;padding:11px 14px;border-radius:8px;margin-bottom:14px;font-size:12px;color:#5D4E00">
+        <strong>📌 Cómo obtener tu App Password:</strong><br>
+        1. Andá a <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:#009EE3">myaccount.google.com/apppasswords</a><br>
+        2. Nombre: "MP Prospecting"<br>
+        3. Crear → copiá los 16 caracteres (sin espacios)
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;color:#666;font-weight:600;display:block;margin-bottom:4px">Tu email Gmail</label>
+        <input id="ob-smtp-user" type="email" placeholder="tu.email@gmail.com"
+               style="width:100%;padding:11px 14px;border-radius:8px;border:1.5px solid #ddd;font-size:13px">
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:#666;font-weight:600;display:block;margin-bottom:4px">App Password</label>
+        <input id="ob-smtp-pass" type="password" placeholder="16 caracteres sin espacios"
+               style="width:100%;padding:11px 14px;border-radius:8px;border:1.5px solid #ddd;font-size:13px;font-family:monospace">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="showOnboardingStep(1, null)" style="flex:1;padding:12px">← Atrás</button>
+        <button class="btn btn-primary" onclick="onboardingNext2()" style="flex:2;padding:12px;font-size:14px">Continuar →</button>
+      </div>
+    `;
+  } else if (step === 3) {
+    c.innerHTML = `${stepsBar}
+      <div style="font-size:11px;color:#888;margin-bottom:6px">PASO 3 / 3</div>
+      <h2 style="margin:0 0 6px 0;color:#1A1A2E">🎉 ¡Casi listo!</h2>
+      <p style="color:#666;font-size:13px;line-height:1.5;margin-bottom:14px">
+        Tu firma y email ya están configurados. Lo último: <strong>activar tus jobs automáticos</strong>.
+      </p>
+      <div style="background:#E3F2FD;border-left:3px solid #009EE3;padding:11px 14px;border-radius:8px;margin-bottom:14px;font-size:12px;color:#0D47A1">
+        ℹ️ Por seguridad los jobs vienen <strong>desactivados</strong>. Activalos cuando quieras desde la pestaña <strong>Envíos</strong>. El owner del sistema te avisará cuando se conecten al scheduler.
+      </div>
+      <div style="background:#f8f9fa;padding:14px;border-radius:8px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:700;color:#1A1A2E;margin-bottom:8px">Próximos pasos</div>
+        <ul style="margin:0;padding-left:20px;font-size:12px;color:#666;line-height:1.7">
+          <li>Andá a <strong>Leads</strong> para ver los que te asignen</li>
+          <li>Marcá interesados / opt-out → se actualiza Fast automático</li>
+          <li>Activá jobs desde <strong>Envíos</strong> cuando quieras</li>
+          <li>Whatsapp y Fast multi-cuenta llegan en próxima fase</li>
+        </ul>
+      </div>
+      <button class="btn btn-primary" onclick="closeOnboarding()" style="width:100%;padding:12px;font-size:14px">¡Empezar a trabajar! 🚀</button>
+    `;
+  }
+}
+
+async function onboardingNext1() {
+  const sig_title = document.getElementById('ob-title').value.trim();
+  const sig_phone = document.getElementById('ob-phone').value.trim();
+  if (!sig_title || !sig_phone) { toast('Completá título y teléfono', 'error'); return; }
+  // Guardar
+  try {
+    await fetch('/auth/profile', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ sig_title, sig_phone })
+    });
+    // Subir foto si la eligió
+    const photo = document.getElementById('ob-photo');
+    if (photo && photo.files && photo.files.length) {
+      const fd = new FormData(); fd.append('photo', photo.files[0]);
+      await fetch('/auth/profile/signature-photo', {method:'POST', credentials:'same-origin', body: fd});
+    }
+    showOnboardingStep(2, null);
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function onboardingNext2() {
+  const smtp_user = document.getElementById('ob-smtp-user').value.trim().toLowerCase();
+  const smtp_pass = document.getElementById('ob-smtp-pass').value.trim();
+  if (!smtp_user || !smtp_pass) { toast('Completá email y App Password', 'error'); return; }
+  if (!smtp_user.includes('@')) { toast('Email inválido', 'error'); return; }
+  try {
+    const r = await fetch('/auth/profile', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ smtp_user, smtp_pass })
+    });
+    const d = await r.json();
+    if (!d.ok) { toast(d.error || 'Error', 'error'); return; }
+    showOnboardingStep(3, null);
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+function closeOnboarding() {
+  const modal = document.getElementById('onboardingModal');
+  if (modal) modal.style.display = 'none';
+}
+
 // Hook: cuando se cambia de página, cargar contenido si corresponde
 const _origShowPage = typeof showPage !== 'undefined' ? showPage : null;
 if (_origShowPage) {
@@ -9108,8 +9429,19 @@ if (_origShowPage) {
     if (id === 'admin-assign') loadAssignPage();
     if (id === 'admin-metrics') loadTeamMetrics();
     if (id === 'prospecto-leads') loadProspectoLeads();
+    if (id === 'profile') loadMiPerfil();
   };
 }
+
+// Mostrar wizard si corresponde después de cargar el usuario
+async function _initOnboarding() {
+  if (!CURRENT_USER) {
+    setTimeout(_initOnboarding, 500);
+    return;
+  }
+  maybeShowOnboarding();
+}
+setTimeout(_initOnboarding, 1000);
 
 // Cargar usuario actual al iniciar
 document.addEventListener('DOMContentLoaded', loadCurrentUser);
