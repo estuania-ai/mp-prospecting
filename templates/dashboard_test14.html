@@ -661,6 +661,9 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     <span class="nav-icon">👤</span> Usuarios
     <span id="badgeUsersPending" style="position:absolute;top:6px;right:8px;background:#F1C40F;color:#1A1A2E;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;display:none">0</span>
   </div>
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('prospecto-leads',this,'Prospecto Leads')">
+    <span class="nav-icon">🎯</span> Prospecto Leads
+  </div>
   <div class="nav-item" data-roles="owner,tl" onclick="showPage('admin-assign',this,'Asignar leads')">
     <span class="nav-icon">📋</span> Asignar leads
   </div>
@@ -1393,6 +1396,12 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     </select>
     <select class="filter-sel" id="filterRubro" onchange="filterLeads()">
       <option value="">Todos los rubros</option>
+    </select>
+    <!-- Filtro de Pool (solo Owner/TL) -->
+    <select class="filter-sel" id="filterPool" onchange="changeLeadsPool(this.value)" data-roles="owner,tl" title="Pool de leads">
+      <option value="owner_personal">📁 Mi base</option>
+      <option value="sales_pool">🎯 Prospecto Leads</option>
+      <option value="all">Todos</option>
     </select>
   </div>
 
@@ -2237,6 +2246,19 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   </div>
   <div class="card">
     <div id="admin-users-content"></div>
+  </div>
+</div>
+
+<!-- ══════════════ PAGE: PROSPECTO LEADS (vista del pool) ══════════════ -->
+<div class="page" id="page-prospecto-leads">
+  <div class="page-header">
+    <div>
+      <div class="page-title">🎯 Prospecto Leads</div>
+      <div class="page-sub">Pool de leads disponibles para asignar a Sales · vista de seguimiento</div>
+    </div>
+  </div>
+  <div class="card">
+    <div id="prospecto-leads-content"></div>
   </div>
 </div>
 
@@ -3781,8 +3803,22 @@ function buildCategoriasChart(categorias){
 }
 
 // ─── LEADS ──────────────────────────────────────────
+// Pool seleccionado para filtrar la página Leads (solo Owner/TL)
+// Default: 'owner_personal' (su base) si es Owner/TL, sino sin filtro (Sales ya filtrado por backend)
+let LEADS_POOL_FILTER = 'owner_personal';
+
+function changeLeadsPool(value) {
+  LEADS_POOL_FILTER = value;
+  loadLeads();
+}
+
 async function loadLeads(){
-  const r = await api('/api/leads/');
+  // Solo Owner/TL pueden cambiar el pool. Sales no envía param.
+  let url = '/api/leads/';
+  if (CURRENT_USER && (CURRENT_USER.role === 'owner' || CURRENT_USER.role === 'tl')) {
+    url += `?pool=${LEADS_POOL_FILTER}`;
+  }
+  const r = await api(url);
   if(!r) return;
   allLeads = r;
   document.getElementById('badgeLeads').textContent = r.length;
@@ -8957,6 +8993,112 @@ async function loadTeamMetrics() {
   }
 }
 
+// ══════════════════════════════════════════════════════
+// PAGE: PROSPECTO LEADS (vista del pool sales_pool)
+// ══════════════════════════════════════════════════════
+async function loadProspectoLeads() {
+  const wrap = document.getElementById('prospecto-leads-content');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="padding:20px;color:#888">Cargando pool...</div>';
+  try {
+    const [r1, r2] = await Promise.all([
+      fetch('/api/leads/pool-overview', { credentials: 'same-origin' }),
+      fetch('/api/leads/unassigned?pool=sales_pool', { credentials: 'same-origin' })
+    ]);
+    const stats = await r1.json();
+    const leads = await r2.json();
+
+    let html = `
+      <!-- Métricas del pool -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px">
+        <div style="background:linear-gradient(135deg,#FFE600 0%,#FFA500 100%);border-radius:12px;padding:18px;color:#1A1A2E">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:600">Pool total</div>
+          <div style="font-size:32px;font-weight:800;margin-top:4px">${stats.pool_total}</div>
+          <div style="font-size:11px;opacity:.7;margin-top:2px">leads para asignar</div>
+        </div>
+        <div style="background:#fff;border-radius:12px;padding:18px;border-left:4px solid #27AE60;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em">Asignados</div>
+          <div style="font-size:28px;font-weight:700;color:#27AE60;margin-top:4px">${stats.pool_assigned}</div>
+          <div style="font-size:11px;color:#666;margin-top:2px">${stats.pool_pct_assigned}% del pool</div>
+        </div>
+        <div style="background:#fff;border-radius:12px;padding:18px;border-left:4px solid #F1C40F;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em">Sin asignar</div>
+          <div style="font-size:28px;font-weight:700;color:#F1C40F;margin-top:4px">${stats.pool_unassigned}</div>
+          <div style="font-size:11px;color:#666;margin-top:2px">por distribuir</div>
+        </div>
+        <div style="background:#fff;border-radius:12px;padding:18px;border-left:4px solid #009EE3;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+          <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em">Mi base personal</div>
+          <div style="font-size:28px;font-weight:700;color:#009EE3;margin-top:4px">${stats.personal_total}</div>
+          <div style="font-size:11px;color:#666;margin-top:2px">leads tuyos (no en pool)</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:20px">
+        <!-- Por Sales -->
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#1A1A2E;margin-bottom:10px">👥 Distribución por Sales</div>
+          <div style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+            ${stats.by_sales.filter(u => u.leads > 0).map(u => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #f0f0f0">
+                <span style="font-size:13px">${u.name} <span style="font-size:10px;color:#999">(${u.role})</span></span>
+                <strong style="color:#27AE60">${u.leads}</strong>
+              </div>
+            `).join('') || '<div style="padding:14px;color:#aaa;font-size:12px">Sin asignaciones todavía</div>'}
+          </div>
+        </div>
+        <!-- Por rubro -->
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#1A1A2E;margin-bottom:10px">📊 Por rubro</div>
+          <div style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04);max-height:280px;overflow-y:auto">
+            ${stats.by_rubro.slice(0, 12).map(r => {
+              const pct = r.total ? Math.round(r.asignados/r.total*100) : 0;
+              return `
+              <div style="padding:10px 14px;border-bottom:1px solid #f0f0f0">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
+                  <strong>${r.rubro || '—'}</strong>
+                  <span><span style="color:#27AE60">${r.asignados}</span> / ${r.total}</span>
+                </div>
+                <div style="height:4px;background:#eee;border-radius:2px;margin-top:4px;overflow:hidden">
+                  <div style="height:100%;width:${pct}%;background:#27AE60"></div>
+                </div>
+              </div>`;
+            }).join('') || '<div style="padding:14px;color:#aaa;font-size:12px">Pool vacío</div>'}
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h3 style="margin:0;font-size:15px;color:#1A1A2E">📋 Leads del pool (${leads.length})</h3>
+        <button class="btn btn-primary" onclick="showPage('admin-assign', document.querySelector('[onclick*=admin-assign]'), 'Asignar leads')" style="font-size:12px;padding:6px 14px">→ Ir a asignar</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+        <thead><tr style="background:#f8f9fa;text-align:left">
+          <th style="padding:10px 14px;font-size:12px">Negocio</th>
+          <th style="padding:10px 14px;font-size:12px">Comuna</th>
+          <th style="padding:10px 14px;font-size:12px">Rubro</th>
+          <th style="padding:10px 14px;font-size:12px">Asignado a</th>
+          <th style="padding:10px 14px;font-size:12px">Fecha</th>
+        </tr></thead><tbody>`;
+    leads.forEach(l => {
+      const assignedBadge = l.assigned_to_name
+        ? `<span style="background:#E8F5E9;color:#1B5E20;font-size:11px;padding:2px 8px;border-radius:10px">${l.assigned_to_name}</span>`
+        : '<span style="color:#aaa;font-size:11px">—</span>';
+      html += `<tr style="border-top:1px solid #eee">
+        <td style="padding:8px 14px;font-size:13px">${l.name || ''}</td>
+        <td style="padding:8px 14px;font-size:12px;color:#666">${l.comuna || ''}</td>
+        <td style="padding:8px 14px;font-size:12px;color:#666">${l.rubro || ''}</td>
+        <td style="padding:8px 14px">${assignedBadge}</td>
+        <td style="padding:8px 14px;font-size:11px;color:#999">${l.created_at || ''}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+
+    wrap.innerHTML = html;
+  } catch(e) {
+    wrap.innerHTML = '<div style="padding:20px;color:#C0392B">Error: ' + e.message + '</div>';
+  }
+}
+
 // Hook: cuando se cambia de página, cargar contenido si corresponde
 const _origShowPage = typeof showPage !== 'undefined' ? showPage : null;
 if (_origShowPage) {
@@ -8965,6 +9107,7 @@ if (_origShowPage) {
     if (id === 'admin-users') loadAdminUsers();
     if (id === 'admin-assign') loadAssignPage();
     if (id === 'admin-metrics') loadTeamMetrics();
+    if (id === 'prospecto-leads') loadProspectoLeads();
   };
 }
 

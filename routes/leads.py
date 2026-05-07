@@ -17,6 +17,9 @@ def get_leads():
     comuna_filter = request.args.get('comuna')
     rubro_filter = request.args.get('rubro')
     search = request.args.get('q')
+    # Filtro por pool (solo aplica a Owner/TL):
+    # 'owner_personal' = base del Owner | 'sales_pool' = pool para Sales | 'all' = ambos
+    pool_filter = (request.args.get('pool') or '').lower()
 
     # Filtro por rol — Sales solo ve sus leads, TL ve los de su equipo, Owner todo
     role_where, role_params = get_user_leads_filter(current_user, alias='l')
@@ -65,6 +68,10 @@ def get_leads():
     if rubro_filter:
         query += ' AND l.rubro = ?'
         params.append(rubro_filter)
+    # Filtro por pool — solo Owner/TL pueden filtrar; Sales siempre ve sus leads
+    if pool_filter in ('owner_personal', 'sales_pool') and current_user.role in ('owner', 'tl'):
+        query += ' AND l.lead_pool = ?'
+        params.append(pool_filter)
     if search:
         query += ' AND (l.name LIKE ? OR l.comuna LIKE ? OR l.rubro LIKE ?)'
         s = f'%{search}%'
@@ -789,6 +796,62 @@ def get_unassigned_leads():
     rows = conn.execute(q, params).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+
+@leads_bp.route("/pool-overview", methods=["GET"])
+@requires_tl
+def pool_overview():
+    """
+    Resumen del pool 'sales_pool' (Prospecto Leads) — para la pestaña dedicada.
+    Devuelve métricas globales + breakdown por rubro/comuna/Sales.
+    """
+    conn = get_db()
+    pool_total = conn.execute(
+        "SELECT COUNT(*) AS c FROM leads WHERE lead_pool='sales_pool' "
+        "AND NOT (phone LIKE '562%' OR phone LIKE '+562%')"
+    ).fetchone()['c']
+    pool_assigned = conn.execute(
+        "SELECT COUNT(*) AS c FROM leads WHERE lead_pool='sales_pool' AND assigned_to IS NOT NULL "
+        "AND NOT (phone LIKE '562%' OR phone LIKE '+562%')"
+    ).fetchone()['c']
+    personal_total = conn.execute(
+        "SELECT COUNT(*) AS c FROM leads WHERE lead_pool='owner_personal' "
+        "AND NOT (phone LIKE '562%' OR phone LIKE '+562%')"
+    ).fetchone()['c']
+    by_rubro = conn.execute("""
+        SELECT rubro, COUNT(*) AS total,
+               SUM(CASE WHEN assigned_to IS NOT NULL THEN 1 ELSE 0 END) AS asignados
+        FROM leads WHERE lead_pool='sales_pool'
+          AND NOT (phone LIKE '562%' OR phone LIKE '+562%')
+        GROUP BY rubro ORDER BY total DESC
+    """).fetchall()
+    by_comuna = conn.execute("""
+        SELECT comuna, COUNT(*) AS total,
+               SUM(CASE WHEN assigned_to IS NOT NULL THEN 1 ELSE 0 END) AS asignados
+        FROM leads WHERE lead_pool='sales_pool'
+          AND comuna IS NOT NULL AND comuna != ''
+          AND NOT (phone LIKE '562%' OR phone LIKE '+562%')
+        GROUP BY comuna ORDER BY total DESC LIMIT 20
+    """).fetchall()
+    by_sales = conn.execute("""
+        SELECT u.id, u.name, u.role, COUNT(l.id) AS leads
+        FROM users u
+        LEFT JOIN leads l ON l.assigned_to = u.id AND l.lead_pool='sales_pool'
+            AND NOT (l.phone LIKE '562%' OR l.phone LIKE '+562%')
+        WHERE u.status='active' AND u.role IN ('owner','tl','sales')
+        GROUP BY u.id ORDER BY leads DESC
+    """).fetchall()
+    conn.close()
+    return jsonify({
+        'pool_total': pool_total,
+        'pool_assigned': pool_assigned,
+        'pool_unassigned': pool_total - pool_assigned,
+        'pool_pct_assigned': round((pool_assigned/pool_total*100), 1) if pool_total else 0,
+        'personal_total': personal_total,
+        'by_rubro': [dict(r) for r in by_rubro],
+        'by_comuna': [dict(r) for r in by_comuna],
+        'by_sales': [dict(r) for r in by_sales],
+    })
 
 
 @leads_bp.route("/assignment-stats", methods=["GET"])
