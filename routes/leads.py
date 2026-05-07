@@ -746,18 +746,20 @@ def update_lead_address(lead_id):
 @requires_tl
 def get_unassigned_leads():
     """
-    Lista de leads para asignar — visible solo a TL/Owner.
-    Devuelve TODOS los leads (asignados y no asignados) con info de asignación.
-    Filtros opcionales: comuna, rubro, assigned_filter (yes|no|all), assigned_user_id
+    Lista de leads del POOL PARA ASIGNAR (lead_pool='sales_pool') — visible solo a TL/Owner.
+    Devuelve TODOS los leads del pool de sales (asignados y no asignados).
+    Filtros: comuna, rubro, assigned_filter (yes|no|all), assigned_user_id
+    Param opcional: pool=all|sales_pool|owner_personal (default: sales_pool)
     """
     comuna = request.args.get("comuna")
     rubro = request.args.get("rubro")
     assigned_filter = (request.args.get("assigned_filter") or "all").lower()
     assigned_user_id = request.args.get("assigned_user_id")
+    pool = (request.args.get("pool") or "sales_pool").lower()
 
     q = """
         SELECT l.id, l.name, l.phone, l.comuna, l.rubro, l.address,
-               l.created_at, l.assigned_to, l.assigned_at,
+               l.created_at, l.assigned_to, l.assigned_at, l.lead_pool,
                u.name AS assigned_to_name,
                ls.status
         FROM leads l
@@ -766,6 +768,9 @@ def get_unassigned_leads():
         WHERE NOT (l.phone LIKE "562%" OR l.phone LIKE "+562%")
     """
     params = []
+    if pool != "all":
+        q += " AND l.lead_pool = ?"
+        params.append(pool)
     if assigned_filter == "no":
         q += " AND l.assigned_to IS NULL"
     elif assigned_filter == "yes":

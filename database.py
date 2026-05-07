@@ -42,11 +42,15 @@ def init_db():
         ('assigned_to', 'INTEGER'),
         ('assigned_at', 'TEXT'),
         ('assigned_by', 'INTEGER'),
+        # lead_pool: 'owner_personal' (base del Owner) | 'sales_pool' (para asignar a Sales)
+        ('lead_pool', "TEXT DEFAULT 'owner_personal'"),
     ]:
         try:
             c.execute(f'ALTER TABLE leads ADD COLUMN {col} {decl}')
         except sqlite3.OperationalError:
             pass  # ya existe
+
+    c.execute('CREATE INDEX IF NOT EXISTS idx_leads_lead_pool ON leads(lead_pool)')
 
     c.execute('CREATE INDEX IF NOT EXISTS idx_leads_assigned_to ON leads(assigned_to)')
 

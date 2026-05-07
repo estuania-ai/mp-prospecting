@@ -1764,6 +1764,27 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     </div>
   </div>
 
+  <!-- ════════════ DESTINO DE LEADS (mandatorio) ════════════ -->
+  <div class="card" style="margin-bottom:14px;border-left:4px solid #FFE600;background:#FFFDF0">
+    <div class="card-title"><span class="card-icon">🎯</span>Destino de los leads <span style="color:#856404;font-size:11px;margin-left:8px">(obligatorio antes de scrapear)</span></div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px">
+      <label style="flex:1;min-width:280px;display:flex;align-items:flex-start;gap:10px;padding:14px;background:#fff;border:2px solid #ddd;border-radius:10px;cursor:pointer" id="poolOption-personal" onclick="setLeadPool('owner_personal')">
+        <input type="radio" name="leadPoolRadio" value="owner_personal" style="margin-top:3px" checked>
+        <div>
+          <div style="font-weight:700;color:#1A1A2E">📁 Mi base personal</div>
+          <div style="font-size:12px;color:#888;margin-top:3px">Los leads quedan en tu pool de trabajo. No se asignan a Sales.</div>
+        </div>
+      </label>
+      <label style="flex:1;min-width:280px;display:flex;align-items:flex-start;gap:10px;padding:14px;background:#fff;border:2px solid #ddd;border-radius:10px;cursor:pointer" id="poolOption-sales" onclick="setLeadPool('sales_pool')">
+        <input type="radio" name="leadPoolRadio" value="sales_pool" style="margin-top:3px">
+        <div>
+          <div style="font-weight:700;color:#1A1A2E">👥 Prospectos Leads</div>
+          <div style="font-size:12px;color:#888;margin-top:3px">Los leads van al pool de asignación para los Sales.</div>
+        </div>
+      </label>
+    </div>
+  </div>
+
   <div class="card" style="margin-bottom:20px">
     <div class="card-title"><span class="card-icon">🚀</span>Nuevo scraping</div>
     <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;flex-wrap:wrap">
@@ -4544,15 +4565,39 @@ function buildRubrosChart(topRubros){
   });
 }
 
+// Pool seleccionado para el próximo scraping (mandatorio)
+let SELECTED_LEAD_POOL = 'owner_personal';
+function setLeadPool(pool) {
+  SELECTED_LEAD_POOL = pool;
+  // Actualizar visual: highlight de la opción elegida
+  document.querySelectorAll('[id^="poolOption-"]').forEach(el => {
+    el.style.borderColor = '#ddd';
+    el.style.background = '#fff';
+  });
+  const target = pool === 'sales_pool' ? 'poolOption-sales' : 'poolOption-personal';
+  const sel = document.getElementById(target);
+  if (sel) {
+    sel.style.borderColor = '#009EE3';
+    sel.style.background = '#E3F2FD';
+  }
+  // Marcar el radio
+  document.querySelectorAll('input[name="leadPoolRadio"]').forEach(r => {
+    r.checked = (r.value === pool);
+  });
+}
+
 async function runScrapingUrl(){
   var maps_url = document.getElementById('scraUrl').value.trim();
   var rubro = document.getElementById('scraUrlRubro').value;
   if(!maps_url){ toast('Pega una URL de Google Maps primero','error'); return; }
   var btn = document.getElementById('scrapeBtnUrl');
   btn.disabled = true; btn.textContent = '⏳ Iniciando...';
-  api('/api/scraping/run', {method:'POST', body:JSON.stringify({maps_url:maps_url, rubro:rubro, comuna:''})}).then(function(r){
+  api('/api/scraping/run', {method:'POST', body:JSON.stringify({
+    maps_url:maps_url, rubro:rubro, comuna:'', lead_pool: SELECTED_LEAD_POOL
+  })}).then(function(r){
     if(r&&r.ok){
-      toast('Scraping iniciado. Los leads apareceran en 2-4 minutos en Leads.', 'success');
+      const dest = SELECTED_LEAD_POOL === 'sales_pool' ? 'Prospectos Leads' : 'Mi base';
+      toast(`Scraping iniciado [${dest}]. Aparecen en 2-4 min.`, 'success');
       document.getElementById('scraUrl').value = '';
     } else {
       toast((r&&r.error)||'Error - verifica el token Apify','error');
@@ -4566,9 +4611,15 @@ async function runScraping(){
   const comuna = document.getElementById('scraComuna').value;
   const btn    = document.getElementById('scrapeBtn');
   btn.disabled = true; btn.textContent = '⏳ Iniciando...';
-  const r = await api('/api/scraping/run', {method:'POST', body:JSON.stringify({rubro, comuna, max_items:40})});
-  if(r?.ok) toast(`Scraping iniciado: ${rubro} en ${comuna}`, 'success');
-  else toast(r?.error||'Error - verifica el token Apify','error');
+  const r = await api('/api/scraping/run', {method:'POST', body:JSON.stringify({
+    rubro, comuna, max_items:40, lead_pool: SELECTED_LEAD_POOL
+  })});
+  if(r?.ok) {
+    const dest = SELECTED_LEAD_POOL === 'sales_pool' ? 'Prospectos Leads' : 'Mi base';
+    toast(`Scraping iniciado [${dest}]: ${rubro} en ${comuna}`, 'success');
+  } else {
+    toast(r?.error||'Error - verifica el token Apify','error');
+  }
   btn.disabled = false; btn.textContent = '🔍 Buscar';
 }
 
