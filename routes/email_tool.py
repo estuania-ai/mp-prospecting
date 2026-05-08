@@ -2125,6 +2125,12 @@ def get_contacts():
             d['fuente'] = 'Serper'
         elif sq.startswith('cse:'):
             d['fuente'] = 'Google'
+        elif sq.startswith('paginas_amarillas:') or sq.startswith('paginasamarillas:'):
+            d['fuente'] = 'Páginas Amarillas'
+        elif sq.startswith('guialocal:'):
+            d['fuente'] = 'Guíalocal'
+        elif sq.startswith('theharvester:'):
+            d['fuente'] = 'theHarvester'
         elif sq.startswith('manual'):
             d['fuente'] = 'Manual'
         elif any(kw in sq for kw in ('contacto email', 'correo', 'contacto web',

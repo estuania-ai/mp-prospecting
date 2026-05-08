@@ -2258,10 +2258,11 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
           <th class="sortable-th" style="padding:6px 8px" onclick="sortLeads('campaign_status')">Estado <span class="sort-icon" id="si-campaign_status">↕</span></th>
           <th style="padding:6px 8px">Seguimiento</th>
           <th class="sortable-th" style="padding:6px 8px" onclick="sortLeads('fecha_envio')">Enviado <span class="sort-icon" id="si-fecha_envio">↕</span></th>
+          <th class="sortable-th" style="padding:6px 8px" onclick="sortLeads('fuente')">Origen <span class="sort-icon" id="si-fuente">↕</span></th>
           <th style="padding:6px 8px">Acciones</th>
         </tr></thead>
         <tbody id="contacts-table-body">
-          <tr><td colspan="10"><div class="empty-state"><p>Cargando contactos...</p></div></td></tr>
+          <tr><td colspan="11"><div class="empty-state"><p>Cargando contactos...</p></div></td></tr>
         </tbody>
       </table>
     </div>
@@ -7539,6 +7540,25 @@ function filterByStatus(val) {
   loadEmailContacts();
 }
 
+// ── Badge de origen del lead (fuente del scraper) ──────────
+function fuenteBadge(fuente) {
+  if (!fuente || fuente === '—') return '<span style="font-size:10px;color:#9CA3AF">—</span>';
+  var palette = {
+    'Outscraper':       { bg:'#EEF2FF', fg:'#4338CA', icon:'🗺️' },
+    'Brave':            { bg:'#FEF3C7', fg:'#92400E', icon:'🦁' },
+    'Serper':           { bg:'#FCE7F3', fg:'#9D174D', icon:'🔎' },
+    'Google':           { bg:'#FEE2E2', fg:'#991B1B', icon:'🔍' },
+    'Páginas Amarillas':{ bg:'#FEF9C3', fg:'#854D0E', icon:'📒' },
+    'Guíalocal':        { bg:'#DCFCE7', fg:'#166534', icon:'📍' },
+    'theHarvester':     { bg:'#E0F2FE', fg:'#075985', icon:'🛰️' },
+    'Web':              { bg:'#F3F4F6', fg:'#4B5563', icon:'🌐' },
+    'Manual':           { bg:'#E0E7FF', fg:'#3730A3', icon:'✍️' },
+  };
+  var p = palette[fuente] || { bg:'#F3F4F6', fg:'#374151', icon:'•' };
+  return '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:'
+    + p.bg + ';color:' + p.fg + ';white-space:nowrap">' + p.icon + ' ' + fuente + '</span>';
+}
+
 // ── Render tabla compacta ──────────────────────────────────
 function renderContactsTable(contacts) {
   var tbody = document.getElementById('contacts-table-body');
@@ -7546,7 +7566,7 @@ function renderContactsTable(contacts) {
   var allCb = document.getElementById('leads-check-all');
   if (allCb) allCb.checked = false;
   if (!contacts || !contacts.length) {
-    tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><p>No hay contactos con estos filtros</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11"><div class="empty-state"><p>No hay contactos con estos filtros</p></div></td></tr>';
     return;
   }
   tbody.innerHTML = contacts.map(function(c) {
@@ -7586,6 +7606,7 @@ function renderContactsTable(contacts) {
       '<td style="white-space:nowrap">' + statusCell + '</td>' +
       '<td style="white-space:nowrap">' + seguimientoBadge(c) + '</td>' +
       '<td style="white-space:nowrap;color:#374151;font-size:11px">' + fecha + '</td>' +
+      '<td style="white-space:nowrap">' + fuenteBadge(c.fuente) + '</td>' +
       '<td><div class="et-actions">' + acts + '</div></td>' +
     '</tr>';
   }).join('');

@@ -502,7 +502,7 @@ async def _scrape_rubro_comuna(rubro: str, comuna: str, max_results: int,
                             )
                             conn.commit()
                             subject = tpl['subject']
-                            body    = tpl['body'].replace('{nombre}', business_name)
+                            body    = smart_email_body_replace(tpl['body'], business_name)
                             ok = _send_email(email, subject, body,
                                              rubro=rubro, contact_name=business_name)
                             if ok:
@@ -611,6 +611,79 @@ _FILE_EXTENSIONS_SHARED = {
     '.png', '.jpg', '.jpeg', '.gif', '.pdf', '.doc',
     '.zip', '.css', '.js', '.svg', '.webp',
 }
+
+
+def smart_business_greeting_name(business_name: str) -> str:
+    """
+    Convierte un nombre de negocio crudo en algo legible para saludar.
+    Ejemplos:
+      'Emporionacional'        -> 'Equipo de Emporionacional'
+      'Milangaschile Com'      -> 'Equipo de Milangaschile'
+      'Construyendomissuenos'  -> 'Equipo de Construyendomissuenos'
+      'CARLOS PEREZ'           -> 'Carlos Perez'  (parece nombre persona)
+      'panaderia don juan'     -> 'Equipo de Panaderia Don Juan'
+      ''                       -> '' (caller usa fallback)
+    """
+    if not business_name:
+        return ''
+    name = business_name.strip()
+
+    # Limpiar sufijos comunes que no agregan valor
+    suffixes = [
+        ' Com', '.com', '.cl', '.cl.', ' .cl', ' .com',
+        ' SpA', ' SPA', ' Spa',
+        ' Ltda', ' LTDA', ' Ltda.',
+        ' SA', ' S.A.', ' S A', ' S.A',
+        ' EIRL', ' E.I.R.L.',
+    ]
+    changed = True
+    while changed:
+        changed = False
+        for sfx in suffixes:
+            if name.lower().endswith(sfx.lower()):
+                name = name[:-len(sfx)].rstrip(' .,')
+                changed = True
+                break
+    if not name:
+        return ''
+
+    # Title case si está todo en mayúsculas o todo minúsculas
+    if name.isupper() or name.islower():
+        name = name.title()
+
+    # Heurística: si tiene 2-3 palabras cortas y todas son nombres comunes
+    # de persona, probablemente sea contacto personal — dejamos sin "Equipo de"
+    parts = name.split()
+    looks_like_person = (
+        2 <= len(parts) <= 3
+        and all(2 <= len(p) <= 12 for p in parts)
+        and all(p[0].isupper() and p[1:].islower() for p in parts)
+        and len(name) <= 30
+        # No tiene palabras típicas de comercio
+        and not any(p.lower() in {
+            'restaurant', 'restaurante', 'cafe', 'cafeteria', 'sushi',
+            'panaderia', 'pasteleria', 'tienda', 'almacen', 'minimarket',
+            'mercado', 'verduleria', 'frutas', 'carniceria', 'farmacia',
+            'florida', 'limited', 'limitada', 'comercial', 'distribuidora',
+            'spa', 'tatto', 'tatuaje', 'belleza', 'gimnasio',
+            'clinica', 'clínica', 'dental', 'centro', 'studio', 'shop',
+            'store', 'market', 'plaza', 'mall', 'kiosco', 'kiosko',
+            'frigorifico', 'frigorífico', 'lavaseco', 'optica', 'óptica',
+            'pizzeria', 'pizzería', 'donde', 'don', 'doña',
+        } for p in parts)
+    )
+    if looks_like_person:
+        return name
+    # Default: prefijar "Equipo de"
+    return f'Equipo de {name}'
+
+
+def smart_email_body_replace(body_template: str, business_name: str) -> str:
+    """Reemplaza {nombre} en el template con el saludo inteligente."""
+    greet = smart_business_greeting_name(business_name)
+    if not greet:
+        greet = 'estimado/a'
+    return body_template.replace('{nombre}', greet)
 
 
 def _is_valid_business_email(e: str) -> bool:
@@ -894,7 +967,7 @@ def _brave_get_leads(rubro: str, comuna: str, max_results: int = 20,
                     )
                     conn.commit()
                     subject = tpl['subject']
-                    body    = tpl['body'].replace('{nombre}', business_name)
+                    body    = smart_email_body_replace(tpl['body'], business_name)
                     ok = _send_email(email, subject, body,
                                      rubro=rubro, contact_name=business_name)
                     if ok:
@@ -1199,7 +1272,7 @@ def _google_cse_get_leads(rubro: str, comuna: str, max_results: int = 20,
                     )
                     conn.commit()
                     subject = tpl['subject']
-                    body    = tpl['body'].replace('{nombre}', business_name)
+                    body    = smart_email_body_replace(tpl['body'], business_name)
                     ok = _send_email(email, subject, body,
                                      rubro=rubro, contact_name=business_name)
                     if ok:
@@ -1468,7 +1541,7 @@ def _outscraper_get_leads(rubro: str, comuna: str, max_results: int = 20,
                 )
                 conn.commit()
                 subject = tpl['subject']
-                body    = tpl['body'].replace('{nombre}', business_name)
+                body    = smart_email_body_replace(tpl['body'], business_name)
                 ok = _send_email(email, subject, body,
                                  rubro=rubro, contact_name=business_name)
                 if ok:
@@ -1734,7 +1807,7 @@ def _serper_get_leads(rubro: str, comuna: str, max_results: int = 20,
                 )
                 conn.commit()
                 subject = tpl['subject']
-                body    = tpl['body'].replace('{nombre}', business_name)
+                body    = smart_email_body_replace(tpl['body'], business_name)
                 ok = _send_email(email, subject, body, rubro=rubro, contact_name=business_name)
                 if ok:
                     saved += 1
@@ -1828,11 +1901,42 @@ def _get_leads(rubro: str, comuna: str, max_results: int = 20,
         logger.info(f'[Leads] Fallback OUTSCRAPER → {rubro}/{comuna}')
         return _outscraper_get_leads(rubro, comuna, max_results, send_emails)
 
+    # ── Último recurso: directorios chilenos gratis (sin API key) ────────────
+    # Funciona aunque no tengas configuradas las APIs anteriores. Calidad
+    # geográfica garantizada (.cl) pero menor volumen que las APIs.
+    try:
+        from jobs.scrapers_cl import scrape_paginas_amarillas, scrape_guialocal
+        logger.info(f'[Leads] DIRECTORIOS CL (sin API) → {rubro}/{comuna}')
+        n = scrape_paginas_amarillas(rubro, comuna, max_results, send_emails=False)
+        if n < max_results:
+            n += scrape_guialocal(rubro, comuna, max_results - n, send_emails=False)
+        return n
+    except Exception as e:
+        logger.warning(f'[Leads] Directorios CL fallaron: {e}')
+
     logger.warning(
         f'[Leads] Sin método de prospección disponible para {rubro}/{comuna}. '
         'Configura SERPER_API_KEY, BRAVE_SEARCH_API_KEY o OUTSCRAPER_API_KEY en .env'
     )
     return 0
+
+
+def get_leads_from_chilean_directories(rubro: str, comuna: str,
+                                         max_results: int = 20) -> int:
+    """
+    Helper público: scrapea PáginasAmarillas + Guíalocal en cascada.
+    Útil para complementar el pipeline cuando se quiere diversificar fuentes.
+    Llamado desde run_intel_scraping (auto 08:00) tras los métodos primarios.
+    """
+    try:
+        from jobs.scrapers_cl import scrape_paginas_amarillas, scrape_guialocal
+        n = scrape_paginas_amarillas(rubro, comuna, max_results, send_emails=False)
+        if n < max_results:
+            n += scrape_guialocal(rubro, comuna, max_results - n, send_emails=False)
+        return n
+    except Exception as e:
+        logger.warning(f'[ScrapersCL] error en {rubro}/{comuna}: {e}')
+        return 0
 
 
 def _get_intel_targets(target_pendiente: int = 100) -> list[tuple[str, str, int]]:
@@ -2125,7 +2229,7 @@ def _run_email_batch_for_user(batch_size: int, lote_name: str,
         try:
             tpl     = _get_template_for_rubro(row['rubro'])
             subject = tpl['subject']
-            body    = tpl['body'].replace('{nombre}', row['business_name'] or '')
+            body    = smart_email_body_replace(tpl['body'], row['business_name'] or '')
             ok      = _send_email(
                           email, subject, body,
                           rubro=row['rubro'], contact_name=row['business_name'],
