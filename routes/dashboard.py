@@ -443,6 +443,54 @@ def leads_diagnostic():
     })
 
 
+@dashboard_bp.route('/email-cooldown-diagnostic', methods=['GET'])
+@login_required
+def email_cooldown_diagnostic():
+    """
+    Diagnostico del cooldown del email lote (Owner-only).
+    Cuenta cuantos contactos NO_ENVIADO podrian enviarse hoy con
+    cooldowns de 7/15/30 dias.
+    """
+    if current_user.role != 'owner':
+        return jsonify({'error': 'Solo Owner'}), 403
+    conn = get_db()
+    out = {}
+    for days in (7, 15, 30):
+        # Disponibles = no_enviado/pendiente cuyo dominio NO recibio email
+        # en los ultimos N dias
+        sql = (
+            "SELECT COUNT(*) FROM et_contacts c "
+            "WHERE c.campaign_status IN ('no_enviado','pendiente') "
+            "  AND c.email IS NOT NULL AND c.email LIKE '%@%' "
+            "  AND NOT EXISTS ("
+            "    SELECT 1 FROM et_contacts c2 "
+            "    WHERE LOWER(SUBSTR(c2.email, INSTR(c2.email,'@')+1)) = "
+            "          LOWER(SUBSTR(c.email,  INSTR(c.email,'@')+1)) "
+            "      AND c2.campaign_status NOT IN ('no_enviado','pendiente','opt_out') "
+            "      AND c2.fecha_envio >= datetime('now', '-' || ? || ' days') "
+            "  )"
+        )
+        n = conn.execute(sql, (days,)).fetchone()[0]
+        out[f'available_cooldown_{days}d'] = n
+    out['total_no_enviado'] = conn.execute(
+        "SELECT COUNT(*) FROM et_contacts WHERE campaign_status IN ('no_enviado','pendiente')"
+    ).fetchone()[0]
+    out['unique_domains_pool'] = conn.execute(
+        "SELECT COUNT(DISTINCT LOWER(SUBSTR(email, INSTR(email,'@')+1))) "
+        "FROM et_contacts "
+        "WHERE campaign_status IN ('no_enviado','pendiente') "
+        "  AND email IS NOT NULL AND email LIKE '%@%'"
+    ).fetchone()[0]
+    out['domains_blocked_30d'] = conn.execute(
+        "SELECT COUNT(DISTINCT LOWER(SUBSTR(email, INSTR(email,'@')+1))) "
+        "FROM et_contacts "
+        "WHERE campaign_status NOT IN ('no_enviado','pendiente','opt_out') "
+        "  AND fecha_envio >= datetime('now','-30 days')"
+    ).fetchone()[0]
+    conn.close()
+    return jsonify(out)
+
+
 @dashboard_bp.route('/leads-claim-owner', methods=['POST'])
 @login_required
 def leads_claim_owner():

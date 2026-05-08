@@ -2030,29 +2030,44 @@ def _run_email_batch_for_user(batch_size: int, lote_name: str,
             logger.warning(f"[{lote_name}{user_label}] Sin SMTP — skip")
             return 0
 
-    # ── Candidatos
+    # ── Candidatos: pre-filtra dominios en cooldown directamente en SQL,
+    # así no perdemos slots del lote en candidatos que iban a saltearse igual.
     conn = get_db()
+    cooldown_clause = (
+        " AND NOT EXISTS ("
+        "   SELECT 1 FROM et_contacts c2"
+        "   WHERE LOWER(SUBSTR(c2.email, INSTR(c2.email,'@')+1)) ="
+        "         LOWER(SUBSTR(c.email,  INSTR(c.email,'@')+1))"
+        "     AND c2.campaign_status NOT IN ('no_enviado','pendiente','opt_out')"
+        "     AND c2.fecha_envio >= datetime('now', '-' || ? || ' days')"
+        " )"
+    )
     if user_id is not None:
         candidatos = conn.execute(
-            """SELECT id, business_name, email, rubro, comuna, campaign_status
-               FROM et_contacts
-               WHERE campaign_status IN ('no_enviado','pendiente')
-                 AND assigned_to = ?
+            f"""SELECT c.id, c.business_name, c.email, c.rubro, c.comuna, c.campaign_status
+               FROM et_contacts c
+               WHERE c.campaign_status IN ('no_enviado','pendiente')
+                 AND c.assigned_to = ?
+                 AND c.email IS NOT NULL AND c.email LIKE '%@%'
+                 {cooldown_clause}
                ORDER BY
-                   CASE campaign_status WHEN 'pendiente' THEN 0 ELSE 1 END,
-                   created_at ASC
+                   CASE c.campaign_status WHEN 'pendiente' THEN 0 ELSE 1 END,
+                   c.created_at ASC
                LIMIT 800""",
-            (user_id,)
+            (user_id, COOLDOWN_DAYS)
         ).fetchall()
     else:
         candidatos = conn.execute(
-            """SELECT id, business_name, email, rubro, comuna, campaign_status
-               FROM et_contacts
-               WHERE campaign_status IN ('no_enviado','pendiente')
+            f"""SELECT c.id, c.business_name, c.email, c.rubro, c.comuna, c.campaign_status
+               FROM et_contacts c
+               WHERE c.campaign_status IN ('no_enviado','pendiente')
+                 AND c.email IS NOT NULL AND c.email LIKE '%@%'
+                 {cooldown_clause}
                ORDER BY
-                   CASE campaign_status WHEN 'pendiente' THEN 0 ELSE 1 END,
-                   created_at ASC
-               LIMIT 800"""
+                   CASE c.campaign_status WHEN 'pendiente' THEN 0 ELSE 1 END,
+                   c.created_at ASC
+               LIMIT 800""",
+            (COOLDOWN_DAYS,)
         ).fetchall()
     conn.close()
 
