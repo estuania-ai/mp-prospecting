@@ -9563,8 +9563,9 @@ async function loadMiPerfil() {
     const p = await r.json();
     const sigUrl = p.sig_photo_path ? `/static/${p.sig_photo_path}` : '';
 
+    const isOwner = (p.role === 'owner');
     let html = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:${isOwner ? '1fr' : '1fr 1fr'};gap:18px;margin-bottom:18px">
         <!-- Firma de email -->
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
@@ -9594,7 +9595,8 @@ async function loadMiPerfil() {
           <button class="btn btn-primary" onclick="saveProfileSig()" style="width:100%">💾 Guardar firma</button>
         </div>
 
-        <!-- Email SMTP -->
+        ${isOwner ? '' : `
+        <!-- Email SMTP (oculto para Owner: usa env vars legacy) -->
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
             <div style="font-size:14px;font-weight:700;color:#1A1A2E">📧 Cuenta de email</div>
@@ -9621,6 +9623,7 @@ async function loadMiPerfil() {
             <button class="btn btn-ghost" onclick="testProfileSmtp()" style="flex:1">🧪 Test</button>
           </div>
         </div>
+        `}
       </div>
 
       ${(p.role === 'owner' || p.role === 'tl') ? `
@@ -9646,6 +9649,7 @@ async function loadMiPerfil() {
         </div>
       ` : ''}
 
+      ${isOwner ? '' : `
       <div class="card" style="margin-bottom:18px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div style="font-size:14px;font-weight:700;color:#1A1A2E">📱 Mi WhatsApp</div>
@@ -9672,10 +9676,11 @@ async function loadMiPerfil() {
           Configurá límites y delays desde tu pestaña Envíos.
         </div>
         <a href="javascript:showPage('envios', document.querySelector('[onclick*=envios]'), 'Mi scheduler')" style="color:#009EE3;font-size:13px;font-weight:600">→ Ir a configurar jobs</a>
-      </div>`;
+      </div>
+      `}`;
     wrap.innerHTML = html;
-    // Cargar estado inicial de Mi WhatsApp
-    waMeRefresh();
+    // Cargar estado inicial de Mi WhatsApp solo para Sales/TL
+    if (!isOwner) waMeRefresh();
   } catch(e) {
     wrap.innerHTML = '<div style="padding:20px;color:#C0392B">Error: ' + e.message + '</div>';
   }

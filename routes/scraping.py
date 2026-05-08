@@ -31,8 +31,14 @@ def _get_apify_token_for_current_user():
     return get_config('apify_token')
 
 
-def _mark_recent_leads_pool(start_iso: str, lead_pool: str):
-    """Asigna lead_pool a los leads insertados desde start_iso."""
+def _mark_recent_leads_pool(start_iso: str, lead_pool: str, owner_id: int | None = None):
+    """
+    Asigna lead_pool a los leads insertados desde start_iso.
+    Si lead_pool='owner_personal', además los autoasigna al Owner pasado por param
+    (o resuelve el primer 'owner' activo si no se pasa).
+    Si lead_pool='sales_pool', los deja con assigned_to=NULL para que aparezcan
+    en "Asignar leads".
+    """
     if lead_pool not in ('owner_personal', 'sales_pool'):
         return
     from database import get_db
@@ -41,11 +47,23 @@ def _mark_recent_leads_pool(start_iso: str, lead_pool: str):
         "UPDATE leads SET lead_pool = ? WHERE created_at >= ?",
         (lead_pool, start_iso)
     )
+    if lead_pool == 'owner_personal':
+        if owner_id is None:
+            row = conn.execute(
+                "SELECT id FROM users WHERE role='owner' AND status='active' ORDER BY id ASC LIMIT 1"
+            ).fetchone()
+            owner_id = row['id'] if row else None
+        if owner_id is not None:
+            conn.execute(
+                "UPDATE leads SET assigned_to = ? "
+                "WHERE created_at >= ? AND lead_pool = 'owner_personal' AND assigned_to IS NULL",
+                (owner_id, start_iso)
+            )
     conn.commit()
     conn.close()
 
 
-def _run_url_async(maps_url: str, rubro: str, comuna: str, lead_pool: str = 'owner_personal', token: str = None):
+def _run_url_async(maps_url: str, rubro: str, comuna: str, lead_pool: str = 'owner_personal', token: str = None, owner_id: int | None = None):
     from database import get_db
     from datetime import datetime as _dt
     # token viene del endpoint que lo resolvió con current_user; fallback a global
@@ -71,7 +89,7 @@ def _run_url_async(maps_url: str, rubro: str, comuna: str, lead_pool: str = 'own
         result = scraper.scrape_from_url(maps_url, rubro or None, comuna or None, max_items=100)
 
         # Marcar pool en leads recién insertados
-        _mark_recent_leads_pool(start_iso, lead_pool)
+        _mark_recent_leads_pool(start_iso, lead_pool, owner_id=owner_id)
 
         conn2 = get_db()
         conn2.execute(
@@ -94,7 +112,7 @@ def _run_url_async(maps_url: str, rubro: str, comuna: str, lead_pool: str = 'own
         conn3.close()
 
 
-def _run_search_async(rubro_key: str, comuna: str, max_items: int, lead_pool: str = 'owner_personal', token: str = None):
+def _run_search_async(rubro_key: str, comuna: str, max_items: int, lead_pool: str = 'owner_personal', token: str = None, owner_id: int | None = None):
     from datetime import datetime as _dt
     if not token:
         token = get_config('apify_token')
@@ -103,7 +121,7 @@ def _run_search_async(rubro_key: str, comuna: str, max_items: int, lead_pool: st
     start_iso = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
     scraper = ApifyScraper(token)
     result  = scraper.scrape_and_save(rubro_key, comuna, max_items)
-    _mark_recent_leads_pool(start_iso, lead_pool)
+    _mark_recent_leads_pool(start_iso, lead_pool, owner_id=owner_id)
     import logging
     logging.getLogger(__name__).info(f"Scraping texto terminado [pool={lead_pool}]: {result}")
 
@@ -126,9 +144,19 @@ def run_scraping():
 
     pool_label = 'Prospectos Leads' if lead_pool == 'sales_pool' else 'Mi base'
 
+    # Resolver owner_id: si scrapea el Owner mismo, los leads owner_personal se le auto-asignan.
+    # Si scrapea un TL/Sales con destino owner_personal, igual van al primer owner activo.
+    owner_id = None
+    try:
+        from flask_login import current_user as _cu
+        if _cu and _cu.is_authenticated and getattr(_cu, 'role', '') == 'owner':
+            owner_id = _cu.id
+    except Exception:
+        pass
+
     # MODO 1: URL directa de Google Maps
     if maps_url:
-        t = threading.Thread(target=_run_url_async, args=(maps_url, rubro, comuna, lead_pool, token))
+        t = threading.Thread(target=_run_url_async, args=(maps_url, rubro, comuna, lead_pool, token, owner_id))
         t.daemon = True
         t.start()
         return jsonify({'ok': True, 'message': f'Scraping iniciado [{pool_label}] con URL de Google Maps', 'modo': 'url'})
@@ -136,7 +164,7 @@ def run_scraping():
     # MODO 2: rubro + comuna
     if rubro and comuna:
         max_items = int(d.get('max_items', 40))
-        t = threading.Thread(target=_run_search_async, args=(rubro, comuna, max_items, lead_pool, token))
+        t = threading.Thread(target=_run_search_async, args=(rubro, comuna, max_items, lead_pool, token, owner_id))
         t.daemon = True
         t.start()
         return jsonify({'ok': True, 'message': f'Scraping iniciado [{pool_label}]: {rubro} en {comuna}', 'modo': 'search'})

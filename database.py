@@ -146,9 +146,6 @@ def init_db():
     # ── Seed Owner: preservar comportamiento histórico ─────────────
     # El Owner siempre debe tener todos los jobs encendidos sobre su pool
     # personal. Se aplica en cada boot, idempotente, no toca a Sales/TL.
-    # Si el Owner explícitamente apagó alguno desde la UI y querés conservar
-    # esa decisión, sacá este bloque — pero el pedido actual es "Owner
-    # siempre con todos los jobs activos".
     owners = c.execute(
         "SELECT id FROM users WHERE role = 'owner'"
     ).fetchall()
@@ -172,6 +169,24 @@ def init_db():
                 updated_at = datetime('now','localtime')
             WHERE user_id = ?
         ''', (ow[0],))
+
+    # ── Backfill: asignar leads históricos al Owner ──────────────────
+    # Toda lead sin `lead_pool` o con pool='owner_personal' que esté
+    # `assigned_to=NULL` se autoasigna al primer Owner activo.
+    # Idempotente: solo toca filas con assigned_to=NULL.
+    if owners:
+        owner_id = owners[0][0]
+        # Setear pool 'owner_personal' a leads sin pool definido (legacy)
+        c.execute(
+            "UPDATE leads SET lead_pool = 'owner_personal' "
+            "WHERE lead_pool IS NULL OR lead_pool = ''"
+        )
+        # Asignar al Owner los huérfanos del pool personal
+        c.execute(
+            "UPDATE leads SET assigned_to = ? "
+            "WHERE assigned_to IS NULL AND lead_pool = 'owner_personal'",
+            (owner_id,)
+        )
 
     # ─── LOG DE ACCESO TL A LEADS (auditoría de coaching) ──────
     # Cuando el TL abre un lead específico, queda registrado.
