@@ -5381,6 +5381,54 @@ function renderTareasWidget(tasks){
   }).join('');
 }
 
+// ── Modal de selección de fecha (calendario nativo, formato DD-MM-YYYY visual)
+// Devuelve Promise<string|null> con YYYY-MM-DD (o null si el usuario canceló)
+function pickDate(opts) {
+  opts = opts || {};
+  var title    = opts.title    || 'Elegí una fecha';
+  var subtitle = opts.subtitle || '';
+  var defValue = opts.defaultValue || new Date().toISOString().slice(0,10);
+  var maxDate  = opts.max || new Date().toISOString().slice(0,10);
+  return new Promise(function(resolve){
+    // Backdrop
+    var bg = document.createElement('div');
+    bg.style.cssText = 'position:fixed;inset:0;background:rgba(20,20,40,.55);z-index:9999;'+
+                       'display:flex;align-items:center;justify-content:center;padding:20px';
+    // Card
+    var card = document.createElement('div');
+    card.style.cssText = 'background:#fff;border-radius:14px;padding:24px;max-width:380px;width:100%;'+
+                         'box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:inherit';
+    card.innerHTML =
+      '<div style="font-size:16px;font-weight:700;color:#1A1A2E;margin-bottom:6px">'+title+'</div>'+
+      (subtitle ? '<div style="font-size:12px;color:#666;margin-bottom:14px">'+subtitle+'</div>' : '<div style="margin-bottom:14px"></div>')+
+      '<input type="date" id="_pickdate_input" value="'+defValue+'" max="'+maxDate+'" '+
+      'lang="es-CL" '+
+      'style="width:100%;padding:12px 14px;font-size:15px;border:1.5px solid #009EE3;border-radius:10px;'+
+      'font-family:inherit;cursor:pointer;outline:none">'+
+      '<div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end">'+
+        '<button id="_pickdate_cancel" class="btn btn-ghost" style="padding:8px 16px">Cancelar</button>'+
+        '<button id="_pickdate_ok" class="btn btn-primary" style="padding:8px 20px">Confirmar</button>'+
+      '</div>';
+    bg.appendChild(card);
+    document.body.appendChild(bg);
+    var input = card.querySelector('#_pickdate_input');
+    setTimeout(function(){ input.focus(); try { input.showPicker && input.showPicker(); } catch(e){} }, 60);
+
+    function close(val){ document.body.removeChild(bg); resolve(val); }
+    card.querySelector('#_pickdate_cancel').onclick = function(){ close(null); };
+    card.querySelector('#_pickdate_ok').onclick = function(){
+      var v = (input.value || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { input.style.borderColor = '#C0392B'; return; }
+      close(v);
+    };
+    bg.addEventListener('click', function(e){ if (e.target === bg) close(null); });
+    input.addEventListener('keydown', function(e){
+      if (e.key === 'Enter') card.querySelector('#_pickdate_ok').click();
+      if (e.key === 'Escape') close(null);
+    });
+  });
+}
+
 async function cambiarEstadoProspecto(prospId, nuevoEstado, leadId) {
   // Actualiza estado del prospecto en DB vía PUT /api/prospects/{id}/estado
   var body = { estado: nuevoEstado };
@@ -5389,22 +5437,16 @@ async function cambiarEstadoProspecto(prospId, nuevoEstado, leadId) {
     var motivo = prompt('Motivo de no logrado (opcional):') || '';
     if (motivo) body.motivo_perdida = motivo;
   }
-  // Si se marca como cerrado, pedir fecha real de cierre (default hoy)
+  // Si se marca como cerrado, pedir fecha real de cierre con calendario
   if (nuevoEstado === 'cerrado') {
-    var hoy = new Date().toISOString().slice(0,10);
-    var fecha = prompt(
-      '¿Qué día se cerró la venta? (formato YYYY-MM-DD)\nEj: 2026-04-30',
-      hoy
-    );
-    if (fecha === null) {
+    var fecha = await pickDate({
+      title:    '✅ Fecha de cierre de venta',
+      subtitle: 'Elegí el día en que se concretó. La estadística usa esta fecha.'
+    });
+    if (!fecha) {
       // Cancelado: revertir el dropdown sin guardar
       loadInteresados();
       return;
-    }
-    fecha = (fecha || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-      toast('Fecha inválida (usá YYYY-MM-DD). Se usará hoy.', 'warning');
-      fecha = hoy;
     }
     body.closed_at = fecha;
   }
