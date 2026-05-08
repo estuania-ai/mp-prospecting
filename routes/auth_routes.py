@@ -425,6 +425,13 @@ def update_profile():
     conn.execute(f"UPDATE users SET {', '.join(set_pairs)} WHERE id=?", params)
     conn.commit()
     conn.close()
+
+    # Invalidar cache de creds del email automation si cambió SMTP/firma
+    try:
+        from jobs.email_automation import _invalidate_user_creds_cache
+        _invalidate_user_creds_cache(current_user.id)
+    except Exception:
+        pass
     return jsonify({'ok': True})
 
 
@@ -471,6 +478,11 @@ def upload_signature_photo():
                  (rel_path, current_user.id))
     conn.commit()
     conn.close()
+    try:
+        from jobs.email_automation import _invalidate_user_creds_cache
+        _invalidate_user_creds_cache(current_user.id)
+    except Exception:
+        pass
     return jsonify({'ok': True, 'path': rel_path, 'url': f'/static/{rel_path}'})
 
 

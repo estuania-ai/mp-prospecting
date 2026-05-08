@@ -52,55 +52,40 @@ def _es_dia_laboral() -> bool:
     return datetime.now().weekday() < 5
 
 
-def _get_leads_seguimiento(horas_min: int, horas_max: int | None, tipo: str) -> list:
+def _get_leads_seguimiento(horas_min: int, horas_max: int | None, tipo: str,
+                            assigned_to_user_id: int | None = None) -> list:
     """
     Leads en estado 'enviado' hace horas_min <= horas < horas_max,
     sin mensaje de seguimiento del tipo indicado.
+    Si se pasa assigned_to_user_id, filtra por leads del Sales.
     """
     conn = get_db()
+    base = """
+        SELECT l.id, l.name, l.phone, l.rubro, l.comuna,
+               CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) as horas
+        FROM leads l
+        JOIN lead_status ls ON l.id = ls.lead_id
+        JOIN messages m ON l.id = m.lead_id
+             AND m.message_type IN ('prospecting','manual')
+             AND m.status = 'sent'
+        LEFT JOIN opt_out o ON l.phone = o.phone
+        LEFT JOIN messages mseg ON l.id = mseg.lead_id
+             AND mseg.message_type = :seg_type
+             AND mseg.status = 'sent'
+        WHERE ls.status = 'enviado'
+          AND o.phone IS NULL
+          AND mseg.id IS NULL
+          AND CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) >= :hmin
+    """
+    p = {'seg_type': f'seguimiento_{tipo}', 'hmin': horas_min}
     if horas_max is not None:
-        rows = conn.execute("""
-            SELECT l.id, l.name, l.phone, l.rubro, l.comuna,
-                   CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) as horas
-            FROM leads l
-            JOIN lead_status ls ON l.id = ls.lead_id
-            JOIN messages m ON l.id = m.lead_id
-                 AND m.message_type IN ('prospecting','manual')
-                 AND m.status = 'sent'
-            LEFT JOIN opt_out o ON l.phone = o.phone
-            LEFT JOIN messages mseg ON l.id = mseg.lead_id
-                 AND mseg.message_type = :seg_type
-                 AND mseg.status = 'sent'
-            WHERE ls.status = 'enviado'
-              AND o.phone IS NULL
-              AND mseg.id IS NULL
-              AND CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) >= :hmin
-              AND CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) < :hmax
-            GROUP BY l.id
-            ORDER BY m.sent_at ASC
-            LIMIT 20
-        """, {'seg_type': f'seguimiento_{tipo}', 'hmin': horas_min, 'hmax': horas_max}).fetchall()
-    else:
-        rows = conn.execute("""
-            SELECT l.id, l.name, l.phone, l.rubro, l.comuna,
-                   CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) as horas
-            FROM leads l
-            JOIN lead_status ls ON l.id = ls.lead_id
-            JOIN messages m ON l.id = m.lead_id
-                 AND m.message_type IN ('prospecting','manual')
-                 AND m.status = 'sent'
-            LEFT JOIN opt_out o ON l.phone = o.phone
-            LEFT JOIN messages mseg ON l.id = mseg.lead_id
-                 AND mseg.message_type = :seg_type
-                 AND mseg.status = 'sent'
-            WHERE ls.status = 'enviado'
-              AND o.phone IS NULL
-              AND mseg.id IS NULL
-              AND CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) >= :hmin
-            GROUP BY l.id
-            ORDER BY m.sent_at ASC
-            LIMIT 20
-        """, {'seg_type': f'seguimiento_{tipo}', 'hmin': horas_min}).fetchall()
+        base += " AND CAST((julianday('now','localtime') - julianday(m.sent_at)) * 24 AS INTEGER) < :hmax"
+        p['hmax'] = horas_max
+    if assigned_to_user_id is not None:
+        base += " AND l.assigned_to = :assigned_to"
+        p['assigned_to'] = int(assigned_to_user_id)
+    base += " GROUP BY l.id ORDER BY m.sent_at ASC LIMIT 20"
+    rows = conn.execute(base, p).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -146,9 +131,6 @@ def run_wa_seguimiento() -> dict:
         return {"ok": True, "reason": "prospeccion_window", "sent": 0}
 
     from whatsapp import evolution_client as ev
-    if not ev.is_connected():
-        logger.warning("[WA Seguimiento] Evolution API no conectada — saltando.")
-        return {"ok": False, "reason": "wa_not_connected", "sent": 0}
 
     conn = get_db()
     delay_min = int((conn.execute("SELECT value FROM config WHERE key='wa_delay_min_sec'").fetchone() or [30])[0])
@@ -157,41 +139,59 @@ def run_wa_seguimiento() -> dict:
 
     sent_24h = sent_72h = errors = 0
 
-    # ── Seguimiento 24h (entre 24h y 72h sin respuesta) ─────────────
-    leads_24h = _get_leads_seguimiento(24, 72, '24h')
-    logger.info(f"[WA Seguimiento] 24h: {len(leads_24h)} leads pendientes")
-    for i, lead in enumerate(leads_24h):
-        nombre  = (lead.get('name') or 'estimado/a').split()[0]
-        mensaje = MSG_24H.format(nombre=nombre)
-        result  = ev.send_message(lead['phone'], mensaje)
-        ok      = result.get('ok', False)
-        _registrar_seguimiento(lead, '24h', ok, error_detail=result.get('error') if not ok else None)
-        if ok:
-            sent_24h += 1
-            logger.info(f"[WA Seguimiento 24h] OK — {lead['name']} ({lead['horas']}h)")
-        else:
-            errors += 1
-            logger.warning(f"[WA Seguimiento 24h] FAIL — {lead['phone']}: {result.get('error')}")
-        if i < len(leads_24h) - 1:
-            time.sleep(random.uniform(delay_min, delay_max))
+    # ── Determinar usuarios activos por slot ─────────────────────────
+    from jobs.send_prospecting import get_users_active_for_slot, resolve_user_instance
+    users_24 = get_users_active_for_slot('seguimiento_24h_active')
+    users_72 = get_users_active_for_slot('seguimiento_72h_active')
+    if not users_24 and not users_72:
+        logger.info("[WA Seguimiento] Ningún usuario con toggle activo — skip")
+        return {"ok": True, "reason": "no_active_users", "sent": 0}
 
-    # ── Seguimiento 72h (más de 72h sin respuesta) ───────────────────
-    leads_72h = _get_leads_seguimiento(72, None, '72h')
-    logger.info(f"[WA Seguimiento] 72h: {len(leads_72h)} leads pendientes")
-    for i, lead in enumerate(leads_72h):
-        nombre  = (lead.get('name') or 'estimado/a').split()[0]
-        mensaje = MSG_72H.format(nombre=nombre)
-        result  = ev.send_message(lead['phone'], mensaje)
-        ok      = result.get('ok', False)
-        _registrar_seguimiento(lead, '72h', ok, error_detail=result.get('error') if not ok else None)
-        if ok:
-            sent_72h += 1
-            logger.info(f"[WA Seguimiento 72h] OK — {lead['name']} ({lead['horas']}h)")
-        else:
-            errors += 1
-            logger.warning(f"[WA Seguimiento 72h] FAIL — {lead['phone']}: {result.get('error')}")
-        if i < len(leads_72h) - 1:
-            time.sleep(random.uniform(delay_min, delay_max))
+    # ── Seguimiento 24h por Sales (con su propia instancia WA) ───────
+    for u in users_24:
+        inst = resolve_user_instance(u)
+        label = f"{u.get('full_name') or u.get('email')} [{inst}]"
+        if not ev.is_connected(instance=inst):
+            logger.warning(f"[WA Seguimiento 24h · {label}] WA desconectado — skip")
+            continue
+        leads = _get_leads_seguimiento(24, 72, '24h', assigned_to_user_id=u['id'])
+        logger.info(f"[WA Seguimiento 24h · {label}] {len(leads)} leads")
+        for i, lead in enumerate(leads):
+            nombre  = (lead.get('name') or 'estimado/a').split()[0]
+            mensaje = MSG_24H.format(nombre=nombre)
+            result  = ev.send_message(lead['phone'], mensaje, instance=inst)
+            ok      = result.get('ok', False)
+            _registrar_seguimiento(lead, '24h', ok, error_detail=result.get('error') if not ok else None)
+            if ok:
+                sent_24h += 1
+            else:
+                errors += 1
+                logger.warning(f"[WA Seguimiento 24h · {label}] FAIL {lead['phone']}: {result.get('error')}")
+            if i < len(leads) - 1:
+                time.sleep(random.uniform(delay_min, delay_max))
+
+    # ── Seguimiento 72h por Sales ────────────────────────────────────
+    for u in users_72:
+        inst = resolve_user_instance(u)
+        label = f"{u.get('full_name') or u.get('email')} [{inst}]"
+        if not ev.is_connected(instance=inst):
+            logger.warning(f"[WA Seguimiento 72h · {label}] WA desconectado — skip")
+            continue
+        leads = _get_leads_seguimiento(72, None, '72h', assigned_to_user_id=u['id'])
+        logger.info(f"[WA Seguimiento 72h · {label}] {len(leads)} leads")
+        for i, lead in enumerate(leads):
+            nombre  = (lead.get('name') or 'estimado/a').split()[0]
+            mensaje = MSG_72H.format(nombre=nombre)
+            result  = ev.send_message(lead['phone'], mensaje, instance=inst)
+            ok      = result.get('ok', False)
+            _registrar_seguimiento(lead, '72h', ok, error_detail=result.get('error') if not ok else None)
+            if ok:
+                sent_72h += 1
+            else:
+                errors += 1
+                logger.warning(f"[WA Seguimiento 72h · {label}] FAIL {lead['phone']}: {result.get('error')}")
+            if i < len(leads) - 1:
+                time.sleep(random.uniform(delay_min, delay_max))
 
     total = sent_24h + sent_72h
     logger.info(f"[WA Seguimiento] Completado: {sent_24h} (24h) + {sent_72h} (72h) = {total} enviados, {errors} errores")

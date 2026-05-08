@@ -3,6 +3,7 @@ Email Prospecting Tool - Routes
 Búsqueda, contactos, campañas, seguimientos, inteligencia, reuniones, PDFs
 """
 from flask import Blueprint, request, jsonify, send_file, render_template_string
+from flask_login import current_user, login_required
 from database import get_db
 import asyncio
 import logging
@@ -1334,7 +1335,11 @@ def _send_smtp(to_email: str, subject: str, body_text: str,
                # Pre-generados por _do_send_campaign para no repetir Pillow por contacto
                _hdr_gif: bytes = None, _pos_gif: bytes = None,
                _sig_bytes: bytes = None,
-               _smtp_conn=None) -> dict:
+               _smtp_conn=None,
+               # Override per-user (Sales/TL): si se pasa, usa estas creds en
+               # lugar de las env vars del Owner. `user_creds` es un dict con:
+               # { 'smtp_user', 'smtp_pass', 'from_name', 'sig_bytes' (opcional) }
+               user_creds: dict | None = None) -> dict:
     import os, smtplib, ssl, pathlib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -1342,10 +1347,20 @@ def _send_smtp(to_email: str, subject: str, body_text: str,
 
     smtp_host  = os.getenv('SMTP_HOST', 'smtp.gmail.com')
     smtp_port  = int(os.getenv('SMTP_PORT', '587'))
-    smtp_user  = os.getenv('SMTP_USER', '')
-    smtp_pass  = os.getenv('SMTP_PASS', '')
-    from_email = os.getenv('EMAIL_FROM', smtp_user)
-    from_name  = os.getenv('EMAIL_FROM_NAME', 'Juan Sebastián Pinto')
+    if user_creds and user_creds.get('smtp_user') and user_creds.get('smtp_pass'):
+        smtp_user  = user_creds['smtp_user']
+        smtp_pass  = user_creds['smtp_pass']
+        from_email = user_creds.get('from_email') or smtp_user
+        from_name  = user_creds.get('from_name') or os.getenv('EMAIL_FROM_NAME', 'MercadoPago')
+        # Si el usuario trajo bytes de su firma propia, los usamos en lugar
+        # del archivo global static/email_assets/sig_photo.jpeg
+        if user_creds.get('sig_bytes') is not None:
+            _sig_bytes = user_creds['sig_bytes']
+    else:
+        smtp_user  = os.getenv('SMTP_USER', '')
+        smtp_pass  = os.getenv('SMTP_PASS', '')
+        from_email = os.getenv('EMAIL_FROM', smtp_user)
+        from_name  = os.getenv('EMAIL_FROM_NAME', 'Juan Sebastián Pinto')
 
     if not smtp_user and not os.getenv('RESEND_API_KEY'):
         return {'ok': False, 'error': 'SMTP no configurado'}
@@ -1732,7 +1747,8 @@ def _build_html_followup_email(rubro: str, contact_name: str, hours: int,
 
 def _send_smtp_followup(to_email: str, subject: str, rubro: str,
                          contact_name: str, hours: int,
-                         booking_url: str = '') -> dict:
+                         booking_url: str = '',
+                         user_creds: dict | None = None) -> dict:
     """
     Envía el email de seguimiento (48h ó 96h) con exactamente el mismo
     formato que los emails de prospección:
@@ -1748,10 +1764,18 @@ def _send_smtp_followup(to_email: str, subject: str, rubro: str,
 
     smtp_host  = os.getenv('SMTP_HOST', 'smtp.gmail.com')
     smtp_port  = int(os.getenv('SMTP_PORT', '587'))
-    smtp_user  = os.getenv('SMTP_USER', '')
-    smtp_pass  = os.getenv('SMTP_PASS', '')
-    from_email = os.getenv('EMAIL_FROM', smtp_user)
-    from_name  = os.getenv('EMAIL_FROM_NAME', 'Juan Sebastián Pinto')
+    if user_creds and user_creds.get('smtp_user') and user_creds.get('smtp_pass'):
+        smtp_user  = user_creds['smtp_user']
+        smtp_pass  = user_creds['smtp_pass']
+        from_email = user_creds.get('from_email') or smtp_user
+        from_name  = user_creds.get('from_name') or os.getenv('EMAIL_FROM_NAME', 'MercadoPago')
+        _user_sig_bytes = user_creds.get('sig_bytes')
+    else:
+        smtp_user  = os.getenv('SMTP_USER', '')
+        smtp_pass  = os.getenv('SMTP_PASS', '')
+        from_email = os.getenv('EMAIL_FROM', smtp_user)
+        from_name  = os.getenv('EMAIL_FROM_NAME', 'Juan Sebastián Pinto')
+        _user_sig_bytes = None
 
     if not smtp_user and not os.getenv('RESEND_API_KEY'):
         return {'ok': False, 'error': 'SMTP no configurado'}
@@ -1806,11 +1830,14 @@ def _send_smtp_followup(to_email: str, subject: str, rubro: str,
     except Exception as e:
         logger.warning(f'[FollowUp] No se pudo generar POS GIF: {e}')
 
-    # Foto de firma
-    sig_path = email_assets_dir / 'sig_photo.jpeg'
-    if sig_path.exists():
-        with open(sig_path, 'rb') as f:
-            sig_img = MIMEImage(f.read(), _subtype='jpeg')
+    # Foto de firma — usa la del Sales si vino en user_creds
+    sig_bytes_to_use = _user_sig_bytes
+    if sig_bytes_to_use is None:
+        sig_path = email_assets_dir / 'sig_photo.jpeg'
+        if sig_path.exists():
+            sig_bytes_to_use = sig_path.read_bytes()
+    if sig_bytes_to_use:
+        sig_img = MIMEImage(sig_bytes_to_use, _subtype='jpeg')
         sig_img.add_header('Content-ID', '<email_sig_photo>')
         sig_img.add_header('Content-Disposition', 'inline', filename='sig_photo.jpeg')
         msg_related.attach(sig_img)
@@ -2058,6 +2085,7 @@ def get_contacts():
     comuna = request.args.get('comuna', '')
     status = request.args.get('status', '')
     estado = request.args.get('estado_interes', '')
+    assigned_to = request.args.get('assigned_to_user_id', '').strip()
 
     q = 'SELECT * FROM et_contacts WHERE 1=1'
     params = []
@@ -2072,6 +2100,14 @@ def get_contacts():
             q += ' AND campaign_status = ?'
             params.append(status)
     if estado: q += ' AND estado_interes = ?';     params.append(estado)
+    if assigned_to:
+        if assigned_to == 'unassigned':
+            q += ' AND (assigned_to IS NULL)'
+        else:
+            try:
+                q += ' AND assigned_to = ?'; params.append(int(assigned_to))
+            except ValueError:
+                pass
     q += ' ORDER BY created_at DESC LIMIT 500'
 
     cur = conn.execute(q, params)
@@ -2103,6 +2139,110 @@ def get_contacts():
             d['fuente'] = '—'
         rows.append(d)
     return jsonify(rows)
+
+
+@email_bp.route('/contacts/assign', methods=['POST'])
+@login_required
+def assign_contacts():
+    """
+    Asigna contactos a un Sales (o desasigna pasando user_id=null).
+    Body: { "contact_ids": [int,...], "user_id": int|null }
+    Solo Owner/TL pueden asignar.
+    """
+    if current_user.role not in ('owner', 'tl'):
+        return jsonify({'error': 'Solo Owner/TL pueden asignar'}), 403
+
+    data = request.get_json() or {}
+    raw_ids = data.get('contact_ids') or []
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({'error': 'contact_ids requerido (lista)'}), 400
+    try:
+        cids = [int(x) for x in raw_ids]
+    except (TypeError, ValueError):
+        return jsonify({'error': 'contact_ids inválidos'}), 400
+
+    user_id = data.get('user_id', None)
+    if user_id is not None:
+        try:
+            user_id = int(user_id)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'user_id inválido'}), 400
+        # Verificar que el usuario existe y está activo
+        conn = get_db()
+        u = conn.execute(
+            "SELECT id, role, status FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+        conn.close()
+        if not u or u['status'] != 'active' or u['role'] not in ('sales', 'owner'):
+            return jsonify({'error': 'Usuario destino inválido'}), 400
+
+    placeholders = ','.join('?' for _ in cids)
+    conn = get_db()
+    if user_id is None:
+        conn.execute(
+            f'UPDATE et_contacts SET assigned_to = NULL WHERE id IN ({placeholders})',
+            cids
+        )
+    else:
+        params = [user_id] + cids
+        conn.execute(
+            f'UPDATE et_contacts SET assigned_to = ? WHERE id IN ({placeholders})',
+            params
+        )
+    affected = conn.total_changes
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'affected': affected, 'user_id': user_id})
+
+
+@email_bp.route('/contacts/stats-by-sales', methods=['GET'])
+@login_required
+def contacts_stats_by_sales():
+    """Métricas de et_contacts agrupadas por Sales asignado + globales."""
+    conn = get_db()
+    role = current_user.role
+
+    if role == 'sales':
+        rows = conn.execute("""
+            SELECT u.id as user_id, u.full_name, u.email,
+                   COUNT(DISTINCT c.id) as total,
+                   SUM(CASE WHEN c.campaign_status IN ('no_enviado','pendiente') THEN 1 ELSE 0 END) as pendientes,
+                   SUM(CASE WHEN c.campaign_status='enviado' THEN 1 ELSE 0 END) as enviados,
+                   SUM(CASE WHEN c.estado_interes='respondido' THEN 1 ELSE 0 END) as respondidos,
+                   SUM(CASE WHEN c.estado_interes='interesado' THEN 1 ELSE 0 END) as interesados
+            FROM users u
+            LEFT JOIN et_contacts c ON c.assigned_to = u.id
+            WHERE u.id = ?
+            GROUP BY u.id
+        """, (current_user.id,)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT u.id as user_id, u.full_name, u.email,
+                   COUNT(DISTINCT c.id) as total,
+                   SUM(CASE WHEN c.campaign_status IN ('no_enviado','pendiente') THEN 1 ELSE 0 END) as pendientes,
+                   SUM(CASE WHEN c.campaign_status='enviado' THEN 1 ELSE 0 END) as enviados,
+                   SUM(CASE WHEN c.estado_interes='respondido' THEN 1 ELSE 0 END) as respondidos,
+                   SUM(CASE WHEN c.estado_interes='interesado' THEN 1 ELSE 0 END) as interesados
+            FROM users u
+            LEFT JOIN et_contacts c ON c.assigned_to = u.id
+            WHERE u.status = 'active' AND u.role IN ('sales','owner')
+            GROUP BY u.id
+            ORDER BY total DESC, u.full_name ASC
+        """).fetchall()
+
+    by_sales = [dict(r) for r in rows]
+
+    g = conn.execute("""
+        SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN assigned_to IS NULL THEN 1 ELSE 0 END) as unassigned,
+            SUM(CASE WHEN campaign_status IN ('no_enviado','pendiente') THEN 1 ELSE 0 END) as pendientes,
+            SUM(CASE WHEN campaign_status='enviado' THEN 1 ELSE 0 END) as enviados,
+            SUM(CASE WHEN estado_interes='respondido' THEN 1 ELSE 0 END) as respondidos
+        FROM et_contacts
+    """).fetchone()
+    conn.close()
+    return jsonify({'by_sales': by_sales, 'globals': dict(g) if g else {}})
 
 
 @email_bp.route('/contacts/<int:cid>', methods=['GET'])

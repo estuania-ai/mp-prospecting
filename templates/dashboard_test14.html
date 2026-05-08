@@ -987,7 +987,18 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
       <option value="wa">WhatsApp</option>
       <option value="email">Email</option>
     </select>
+    <div id="int-sales-filter-wrap" data-roles="owner,tl" data-display="flex" style="display:none;align-items:center;gap:8px">
+      <div style="width:1px;height:20px;background:var(--mp-border)"></div>
+      <span style="font-size:12px;font-weight:700;color:var(--mp-text-2);white-space:nowrap">Sales:</span>
+      <select id="int-sales-filter" onchange="loadInteresados()"
+        style="border:1px solid var(--mp-border);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--mp-text);background:#fff;cursor:pointer;min-width:160px">
+        <option value="">Todos</option>
+      </select>
+    </div>
   </div>
+
+  <!-- ── Cards por Sales (solo Owner/TL) ── -->
+  <div id="int-sales-cards" data-roles="owner,tl" data-display="block" style="display:none;margin-bottom:16px"></div>
 
   <!-- KPIs -->
   <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
@@ -1780,7 +1791,7 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   <div class="card" style="margin-bottom:14px;border-left:4px solid #FFE600;background:#FFFDF0">
     <div class="card-title"><span class="card-icon">🎯</span>Destino de los leads <span style="color:#856404;font-size:11px;margin-left:8px">(obligatorio antes de scrapear)</span></div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px">
-      <label style="flex:1;min-width:280px;display:flex;align-items:flex-start;gap:10px;padding:14px;background:#fff;border:2px solid #ddd;border-radius:10px;cursor:pointer" id="poolOption-personal" onclick="setLeadPool('owner_personal')">
+      <label data-roles="owner" data-display="flex" style="flex:1;min-width:280px;display:flex;align-items:flex-start;gap:10px;padding:14px;background:#fff;border:2px solid #ddd;border-radius:10px;cursor:pointer" id="poolOption-personal" onclick="setLeadPool('owner_personal')">
         <input type="radio" name="leadPoolRadio" value="owner_personal" style="margin-top:3px" checked>
         <div>
           <div style="font-weight:700;color:#1A1A2E">📁 Mi base personal</div>
@@ -2202,17 +2213,36 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
         <label>Enviado hasta</label>
         <input type="date" id="filter-fecha-hasta" onchange="_applyLeadsFiltersAndSort()">
       </div>
+      <div id="filter-sales-wrap" style="display:none;flex-direction:column;flex:1;min-width:180px;margin:0">
+        <label>Asignado a</label>
+        <select id="filter-sales" onchange="loadEmailContacts()">
+          <option value="">Todos</option>
+          <option value="unassigned">Sin asignar</option>
+        </select>
+      </div>
       <div style="display:flex;gap:8px;align-items:center;padding-bottom:1px">
         <button class="btn btn-secondary" onclick="clearContactFilters()">Limpiar todo</button>
         <span id="leads-result-count" style="font-size:13px;color:#6B7280;white-space:nowrap"></span>
       </div>
     </div>
   </div>
+
+  <!-- Cards de stats por Sales (Owner/TL) -->
+  <div id="email-sales-cards" style="display:none;margin-bottom:14px"></div>
+
   <!-- Pills de estado -->
   <div class="et-status-pills" id="leads-status-pills"></div>
-  <div id="leads-bulk-bar" style="display:none;align-items:center;gap:12px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;padding:10px 16px;margin-bottom:12px">
+  <div id="leads-bulk-bar" style="display:none;align-items:center;gap:12px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;padding:10px 16px;margin-bottom:12px;flex-wrap:wrap">
     <span id="leads-bulk-count" style="font-size:14px;font-weight:600;color:#1D4ED8"></span>
     <button class="btn btn-primary btn-sm" onclick="leadsSendEmailBatch()">✉ Enviar email</button>
+    <span id="leads-bulk-assign-wrap" style="display:none;align-items:center;gap:6px">
+      <select id="leads-bulk-assign-user"
+              style="border:1px solid #BFDBFE;border-radius:6px;padding:5px 8px;font-size:12px;background:#fff">
+        <option value="">— Asignar a Sales —</option>
+        <option value="unassign">Desasignar</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="leadsBulkAssign()">👤 Aplicar</button>
+    </span>
     <button class="btn btn-secondary btn-sm" onclick="leadsClearSelection()">✕ Limpiar selección</button>
   </div>
   <div class="card" style="padding:0;overflow:hidden">
@@ -4293,12 +4323,16 @@ async function loadEnviosSales(){
   } catch(e) {}
 
   const jobs = [
-    { key: 'prospeccion_0930_active', label: '🚀 Prospección 09:30 AM', desc: '15 mensajes a leads no enviados' },
-    { key: 'prospeccion_1500_active', label: '🚀 Prospección 15:00 PM', desc: '10 mensajes a leads no enviados' },
-    { key: 'prospeccion_1730_active', label: '🚀 Prospección 17:30 PM', desc: '15 mensajes a leads no enviados' },
-    { key: 'seguimiento_24h_active', label: '⏰ Seguimiento 24h', desc: 'Re-contactar leads sin respuesta tras 24h' },
-    { key: 'seguimiento_72h_active', label: '⏰ Seguimiento 72h', desc: 'Re-contactar leads sin respuesta tras 72h' },
-    { key: 'fidelizacion_active', label: '💖 Fidelización Sellers', desc: 'Mensajes a sellers cerrados (etapas 7,14,15,30,35)' },
+    { key: 'prospeccion_0930_active', label: '🚀 WhatsApp 09:30 AM', desc: '15 mensajes a leads no enviados (tu WA)' },
+    { key: 'prospeccion_1500_active', label: '🚀 WhatsApp 15:00 PM', desc: '10 mensajes a leads no enviados (tu WA)' },
+    { key: 'prospeccion_1730_active', label: '🚀 WhatsApp 17:30 PM', desc: '15 mensajes a leads no enviados (tu WA)' },
+    { key: 'seguimiento_24h_active',  label: '⏰ Seguimiento 24h',  desc: 'Re-contactar leads sin respuesta tras 24h' },
+    { key: 'seguimiento_72h_active',  label: '⏰ Seguimiento 72h',  desc: 'Re-contactar leads sin respuesta tras 72h' },
+    { key: 'fidelizacion_active',     label: '💖 Fidelización Sellers', desc: 'Mensajes a sellers cerrados' },
+    { key: 'email_lote1_active',      label: '✉️ Email 09:00',      desc: '40 emails — usa tu Gmail / firma' },
+    { key: 'email_lote2_active',      label: '✉️ Email 12:00',      desc: '35 emails — usa tu Gmail / firma' },
+    { key: 'email_lote3_active',      label: '✉️ Email 16:00',      desc: '25 emails — usa tu Gmail / firma' },
+    { key: 'email_followup_active',   label: '↩️ Email follow-up',   desc: 'Seguimientos 48h/96h con tu Gmail' },
   ];
 
   let html = `
@@ -4362,7 +4396,8 @@ async function loadEnviosSales(){
 
 async function saveSchedulerConfig() {
   const fields = ['prospeccion_0930_active','prospeccion_1500_active','prospeccion_1730_active',
-                  'seguimiento_24h_active','seguimiento_72h_active','fidelizacion_active'];
+                  'seguimiento_24h_active','seguimiento_72h_active','fidelizacion_active',
+                  'email_lote1_active','email_lote2_active','email_lote3_active','email_followup_active'];
   const body = {};
   fields.forEach(f => {
     const el = document.getElementById('cfg-' + f);
@@ -5175,9 +5210,100 @@ function renderInteresadosList(prospects){
   }).join('');
 }
 
+let _intSalesUsersCache = null;
+async function populateSalesFilter(){
+  const sel = document.getElementById('int-sales-filter');
+  if (!sel || sel.options.length > 1) return; // ya poblado
+  try {
+    if (!_intSalesUsersCache) {
+      const r = await fetch('/auth/admin/users', { credentials: 'same-origin' });
+      if (!r.ok) return;
+      _intSalesUsersCache = await r.json();
+    }
+    const users = (_intSalesUsersCache || []).filter(u => u.status === 'active' && (u.role === 'sales' || u.role === 'owner'));
+    users.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id;
+      // Escape: usar textContent
+      opt.textContent = (u.full_name || u.username || u.email) + ' (' + u.role + ')';
+      sel.appendChild(opt);
+    });
+  } catch(e){ console.error('populateSalesFilter', e); }
+}
+
+async function loadInteresadosStatsBySales(){
+  const wrap = document.getElementById('int-sales-cards');
+  if (!wrap) return;
+  try {
+    const r = await fetch('/api/prospects/stats-by-sales', { credentials: 'same-origin' });
+    if (!r.ok) return;
+    const data = await r.json();
+    const g = data.globals || {};
+    const bySales = data.by_sales || [];
+
+    const globalCards =
+      '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:10px">' +
+        kpiMini('🌐 Global', g.total||0, '#0c63e7') +
+        kpiMini('🔵 Seguim.', g.en_seguimiento||0, '#1976d2') +
+        kpiMini('🤝 Reunión', g.reunion_agendada||0, '#7b1fa2') +
+        kpiMini('✅ Cerrados', g.cerrados||0, '#2e7d32') +
+        kpiMini('❌ No logr.', g.no_logrados||0, '#c62828') +
+        kpiMini('📵 Sin resp.', g.sin_respuesta||0, '#757575') +
+      '</div>';
+
+    let salesCards = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">';
+    bySales.forEach(s => {
+      const name = (s.full_name || s.email || 'Sin nombre');
+      const safe = name.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      salesCards += '<div onclick="filterIntBySales(' + s.user_id + ')" ' +
+        'style="background:#fff;border:1px solid var(--mp-border);border-radius:10px;padding:10px;cursor:pointer;transition:all .15s" ' +
+        'onmouseover="this.style.borderColor=\'#0c63e7\'" onmouseout="this.style.borderColor=\'var(--mp-border)\'">' +
+        '<div style="font-size:11px;font-weight:700;color:var(--mp-text-2);margin-bottom:6px">👤 ' + safe + '</div>' +
+        '<div style="font-size:18px;font-weight:800;color:var(--mp-text-1)">' + (s.total||0) + ' <span style="font-size:10px;color:var(--mp-text-3);font-weight:500">interesados</span></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;font-size:10px">' +
+          '<span style="color:#1976d2">🔵 ' + (s.en_seguimiento||0) + '</span>' +
+          '<span style="color:#7b1fa2">🤝 ' + (s.reunion_agendada||0) + '</span>' +
+          '<span style="color:#2e7d32">✅ ' + (s.cerrados||0) + '</span>' +
+          '<span style="color:#c62828">❌ ' + (s.no_logrados||0) + '</span>' +
+        '</div>' +
+      '</div>';
+    });
+    salesCards += '</div>';
+
+    wrap.innerHTML = globalCards + salesCards;
+  } catch(e){ console.error('loadInteresadosStatsBySales', e); }
+}
+
+function kpiMini(label, val, color){
+  return '<div style="background:#fff;border:1px solid var(--mp-border);border-left:3px solid '+color+';border-radius:8px;padding:8px 10px">' +
+    '<div style="font-size:10px;color:var(--mp-text-3);font-weight:600">'+label+'</div>' +
+    '<div style="font-size:18px;font-weight:800;color:'+color+'">'+val+'</div>' +
+  '</div>';
+}
+
+function filterIntBySales(userId){
+  const sel = document.getElementById('int-sales-filter');
+  if (sel) { sel.value = userId; loadInteresados(); }
+}
+
 async function loadInteresados(){
+  // Mostrar filtro Sales y cards si Owner/TL
+  const isMgr = CURRENT_USER && (CURRENT_USER.role === 'owner' || CURRENT_USER.role === 'tl');
+  if (isMgr) {
+    const wrap = document.getElementById('int-sales-filter-wrap');
+    const cards = document.getElementById('int-sales-cards');
+    if (wrap) wrap.style.display = 'flex';
+    if (cards) cards.style.display = 'block';
+    await populateSalesFilter();
+    loadInteresadosStatsBySales();
+  }
+
+  const salesFilterEl = document.getElementById('int-sales-filter');
+  const sales = salesFilterEl ? salesFilterEl.value : '';
+  const qs = sales ? ('?assigned_to_user_id=' + encodeURIComponent(sales)) : '';
+
   const [prospects, tasks] = await Promise.all([
-    api('/api/prospects/'),
+    api('/api/prospects/' + qs),
     api('/api/prospects/tasks/today')
   ]);
   if(!prospects) return;
@@ -7004,16 +7130,134 @@ var _batchPollInterval = null;
 function loadEmailContacts() {
   var rubro  = (document.getElementById('filter-rubro')  || {}).value || '';
   var comuna = (document.getElementById('filter-comuna') || {}).value || '';
+  var sales  = (document.getElementById('filter-sales')  || {}).value || '';
   var params = new URLSearchParams();
   if (rubro)  params.set('rubro', rubro);
   if (comuna) params.set('comuna', comuna);
+  if (sales)  params.set('assigned_to_user_id', sales);
   // Status se filtra client-side para poder calcular pills
+
+  // Mostrar UI de asignación si Owner/TL
+  var isMgr = CURRENT_USER && (CURRENT_USER.role === 'owner' || CURRENT_USER.role === 'tl');
+  if (isMgr) {
+    var fw = document.getElementById('filter-sales-wrap');
+    var ec = document.getElementById('email-sales-cards');
+    var ba = document.getElementById('leads-bulk-assign-wrap');
+    if (fw) fw.style.display = 'flex';
+    if (ec) ec.style.display = 'block';
+    if (ba) ba.style.display = 'inline-flex';
+    populateEmailSalesFilter();
+    loadEmailStatsBySales();
+  }
+
   api('/api/email-tool/contacts?' + params.toString()).then(function(data) {
     _allLeadsData = (data && (data.contacts || data)) || [];
     if (!Array.isArray(_allLeadsData)) _allLeadsData = [];
     renderStatusPills(_allLeadsData);  // pills con TODOS los registros
     _applyLeadsFiltersAndSort();
   });
+}
+
+var _emailSalesUsersCache = null;
+async function populateEmailSalesFilter(){
+  var sel  = document.getElementById('filter-sales');
+  var sel2 = document.getElementById('leads-bulk-assign-user');
+  // Solo poblar una vez
+  if (sel && sel.options.length > 2) return;
+  try {
+    if (!_emailSalesUsersCache) {
+      var r = await fetch('/auth/admin/users', { credentials:'same-origin' });
+      if (!r.ok) return;
+      _emailSalesUsersCache = await r.json();
+    }
+    var users = (_emailSalesUsersCache || []).filter(function(u){
+      return u.status === 'active' && (u.role === 'sales' || u.role === 'owner');
+    });
+    users.forEach(function(u){
+      var lbl = (u.full_name || u.username || u.email) + ' (' + u.role + ')';
+      if (sel) {
+        var opt = document.createElement('option');
+        opt.value = u.id; opt.textContent = lbl;
+        sel.appendChild(opt);
+      }
+      if (sel2) {
+        var opt2 = document.createElement('option');
+        opt2.value = u.id; opt2.textContent = lbl;
+        sel2.appendChild(opt2);
+      }
+    });
+  } catch(e){ console.error('populateEmailSalesFilter', e); }
+}
+
+async function loadEmailStatsBySales(){
+  var wrap = document.getElementById('email-sales-cards');
+  if (!wrap) return;
+  try {
+    var r = await fetch('/api/email-tool/contacts/stats-by-sales', { credentials:'same-origin' });
+    if (!r.ok) return;
+    var data = await r.json();
+    var g = data.globals || {};
+    var bs = data.by_sales || [];
+
+    function k(label, val, color){
+      return '<div style="background:#fff;border:1px solid var(--mp-border);border-left:3px solid '+color+';border-radius:8px;padding:8px 10px">' +
+        '<div style="font-size:10px;color:var(--mp-text-3);font-weight:600">'+label+'</div>' +
+        '<div style="font-size:18px;font-weight:800;color:'+color+'">'+(val||0)+'</div></div>';
+    }
+
+    var globalCards = '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px">' +
+      k('🌐 Total', g.total, '#0c63e7') +
+      k('🟡 Sin asignar', g.unassigned, '#d97706') +
+      k('⏳ Pendientes', g.pendientes, '#1976d2') +
+      k('✉️ Enviados', g.enviados, '#2e7d32') +
+      k('💬 Respondidos', g.respondidos, '#7b1fa2') +
+    '</div>';
+
+    var sc = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">';
+    bs.forEach(function(s){
+      var name = (s.full_name || s.email || 'Sin nombre').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      sc += '<div onclick="filterEmailBySales('+s.user_id+')" ' +
+        'style="background:#fff;border:1px solid var(--mp-border);border-radius:10px;padding:10px;cursor:pointer;transition:all .15s" ' +
+        'onmouseover="this.style.borderColor=\'#0c63e7\'" onmouseout="this.style.borderColor=\'var(--mp-border)\'">' +
+        '<div style="font-size:11px;font-weight:700;color:var(--mp-text-2);margin-bottom:6px">👤 ' + name + '</div>' +
+        '<div style="font-size:18px;font-weight:800;color:var(--mp-text-1)">' + (s.total||0) + ' <span style="font-size:10px;color:var(--mp-text-3);font-weight:500">contactos</span></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;font-size:10px">' +
+          '<span style="color:#1976d2">⏳ ' + (s.pendientes||0) + '</span>' +
+          '<span style="color:#2e7d32">✉️ ' + (s.enviados||0) + '</span>' +
+          '<span style="color:#7b1fa2">💬 ' + (s.respondidos||0) + '</span>' +
+        '</div></div>';
+    });
+    sc += '</div>';
+    wrap.innerHTML = globalCards + sc;
+  } catch(e){ console.error('loadEmailStatsBySales', e); }
+}
+
+function filterEmailBySales(userId){
+  var sel = document.getElementById('filter-sales');
+  if (sel) { sel.value = userId; loadEmailContacts(); }
+}
+
+async function leadsBulkAssign(){
+  var sel = document.getElementById('leads-bulk-assign-user');
+  if (!sel) return;
+  var v = sel.value;
+  if (!v) { toast('Elegí un Sales o "Desasignar"', 'error'); return; }
+  var ids = Array.from(_leadsSelected);
+  if (!ids.length) { toast('No hay contactos seleccionados', 'error'); return; }
+  var body = { contact_ids: ids, user_id: (v === 'unassign' ? null : parseInt(v)) };
+  try {
+    var r = await fetch('/api/email-tool/contacts/assign', {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    var d = await r.json();
+    if (!r.ok || !d.ok) { toast(d.error || 'Error asignando', 'error'); return; }
+    toast('✓ Asignación aplicada a '+ids.length+' contactos', 'success');
+    _leadsSelected.clear();
+    sel.value = '';
+    loadEmailContacts();
+  } catch(e){ toast('Error: '+e.message, 'error'); }
 }
 
 function _applyLeadsFiltersAndSort() {
@@ -8789,8 +9033,26 @@ function applyRoleVisibility() {
   // Mostrar/ocultar items del sidebar según data-roles
   document.querySelectorAll('[data-roles]').forEach(el => {
     const allowed = (el.getAttribute('data-roles') || '').split(',').map(s => s.trim());
-    el.style.display = allowed.includes(role) ? '' : 'none';
+    if (allowed.includes(role)) {
+      // Restaurar display: respeta data-display="flex|grid|block|inline-flex" si existe
+      const want = el.getAttribute('data-display') || '';
+      el.style.display = want;
+    } else {
+      el.style.display = 'none';
+    }
   });
+  // TL: forzar destino "Prospectos Leads" porque no ve la opción "Mi base personal"
+  if (role === 'tl' && typeof setLeadPool === 'function') {
+    try { setLeadPool('sales_pool'); } catch(e){}
+  }
+  // Si hay una página visible que requiere stats por Sales, recargarla
+  // (cubre el caso: usuario ya entró a Interesados antes de que CURRENT_USER cargara)
+  try {
+    const intPage = document.getElementById('page-interesados');
+    if (intPage && intPage.classList.contains('active') && typeof loadInteresados === 'function') {
+      loadInteresados();
+    }
+  } catch(e){}
 }
 
 function showUserBadge() {
@@ -9384,6 +9646,23 @@ async function loadMiPerfil() {
         </div>
       ` : ''}
 
+      <div class="card" style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:14px;font-weight:700;color:#1A1A2E">📱 Mi WhatsApp</div>
+          <span id="wa-state-badge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:#eee;color:#666">cargando...</span>
+        </div>
+        <div style="font-size:12px;color:#666;margin-bottom:12px">
+          Cada Sales conecta su propio número. Los jobs y el botón "Enviar" usan tu sesión.
+        </div>
+        <div id="wa-me-content" style="min-height:120px"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="waMeConnect()" style="flex:1;min-width:140px">🔌 Conectar / QR</button>
+          <button class="btn btn-ghost"   onclick="waMeRefresh()" style="flex:1;min-width:140px">↻ Refrescar estado</button>
+          <button class="btn btn-ghost"   onclick="waMeRestart()" style="flex:1;min-width:140px">🔁 Reiniciar</button>
+          <button class="btn btn-ghost"   onclick="waMeDisconnect()" style="flex:1;min-width:140px;color:#C0392B">🚪 Desconectar</button>
+        </div>
+      </div>
+
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div style="font-size:14px;font-weight:700;color:#1A1A2E">⚙️ Mis jobs automáticos</div>
@@ -9395,9 +9674,100 @@ async function loadMiPerfil() {
         <a href="javascript:showPage('envios', document.querySelector('[onclick*=envios]'), 'Mi scheduler')" style="color:#009EE3;font-size:13px;font-weight:600">→ Ir a configurar jobs</a>
       </div>`;
     wrap.innerHTML = html;
+    // Cargar estado inicial de Mi WhatsApp
+    waMeRefresh();
   } catch(e) {
     wrap.innerHTML = '<div style="padding:20px;color:#C0392B">Error: ' + e.message + '</div>';
   }
+}
+
+// ── Mi WhatsApp (per-user Evolution instance) ────────────────────
+function _waSetBadge(state){
+  const b = document.getElementById('wa-state-badge');
+  if (!b) return;
+  const map = {
+    open:        ['CONECTADO',     '#E8F5E9', '#1B5E20'],
+    connecting:  ['CONECTANDO',    '#FFF8E1', '#856404'],
+    close:       ['DESCONECTADO',  '#FEECEB', '#C0392B'],
+    not_found:   ['SIN INSTANCIA', '#eee',    '#666'],
+    error:       ['ERROR',         '#FEECEB', '#C0392B'],
+    unknown:     ['DESCONOCIDO',   '#eee',    '#666']
+  };
+  const [txt,bg,fg] = map[state] || map.unknown;
+  b.textContent = txt; b.style.background = bg; b.style.color = fg;
+}
+
+async function waMeRefresh(){
+  const wrap = document.getElementById('wa-me-content');
+  if (!wrap) return;
+  try {
+    const r = await fetch('/api/whatsapp/me/status', { credentials: 'same-origin' });
+    const d = await r.json();
+    _waSetBadge(d.state);
+    let html = '<div style="font-size:11px;color:#888">Instancia: <code>'+(d.instance||'—')+'</code></div>';
+    if (d.state === 'open') {
+      html += '<div style="margin-top:10px;padding:14px;background:#E8F5E9;border-radius:10px;color:#1B5E20;font-size:13px">✅ Tu WhatsApp está conectado y listo para enviar.</div>';
+    } else if (d.state === 'connecting') {
+      html += '<div style="margin-top:10px;padding:14px;background:#FFF8E1;border-radius:10px;color:#856404;font-size:13px">⏳ Conectando... presioná "Conectar / QR" para escanear.</div>';
+    } else {
+      html += '<div style="margin-top:10px;padding:14px;background:#FEECEB;border-radius:10px;color:#C0392B;font-size:13px">⚠️ Sin sesión activa. Presioná "Conectar / QR" para escanear.</div>';
+    }
+    wrap.innerHTML = html;
+  } catch(e){
+    wrap.innerHTML = '<div style="color:#C0392B;font-size:12px">Error: '+e.message+'</div>';
+  }
+}
+
+async function waMeConnect(){
+  const wrap = document.getElementById('wa-me-content');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="font-size:13px;color:#666">⏳ Solicitando QR...</div>';
+  try {
+    await fetch('/api/whatsapp/me/connect', { method:'POST', credentials:'same-origin' });
+    const r = await fetch('/api/whatsapp/me/qr', { credentials:'same-origin' });
+    const d = await r.json();
+    if (!d.qr){
+      wrap.innerHTML = '<div style="color:#C0392B;font-size:12px">No se obtuvo QR. Reintentá en unos segundos.</div>';
+      return;
+    }
+    const src = d.qr.startsWith('data:') ? d.qr : ('data:image/png;base64,' + d.qr);
+    wrap.innerHTML =
+      '<div style="text-align:center">' +
+      '<img src="'+src+'" style="max-width:260px;border:1px solid #eee;border-radius:8px;padding:6px;background:#fff">' +
+      '<div style="font-size:12px;color:#666;margin-top:10px">Escaneá el QR con WhatsApp → Dispositivos vinculados</div>' +
+      '<div style="font-size:11px;color:#888;margin-top:4px">Instancia: <code>'+(d.instance||'—')+'</code></div>' +
+      '</div>';
+    // Polling automático cada 4s para detectar conexión
+    if (window._waPollInt) clearInterval(window._waPollInt);
+    window._waPollInt = setInterval(async () => {
+      try {
+        const rr = await fetch('/api/whatsapp/me/status', { credentials:'same-origin' });
+        const dd = await rr.json();
+        _waSetBadge(dd.state);
+        if (dd.state === 'open'){
+          clearInterval(window._waPollInt);
+          window._waPollInt = null;
+          waMeRefresh();
+          toast('✅ WhatsApp conectado', 'success');
+        }
+      } catch(e){}
+    }, 4000);
+  } catch(e){
+    wrap.innerHTML = '<div style="color:#C0392B;font-size:12px">Error: '+e.message+'</div>';
+  }
+}
+
+async function waMeRestart(){
+  toast('Reiniciando instancia...', 'info');
+  await fetch('/api/whatsapp/me/restart', { method:'POST', credentials:'same-origin' });
+  setTimeout(waMeRefresh, 1500);
+}
+
+async function waMeDisconnect(){
+  if (!confirm('¿Desconectar tu WhatsApp? Tendrás que volver a escanear el QR para enviar mensajes.')) return;
+  await fetch('/api/whatsapp/me/disconnect', { method:'POST', credentials:'same-origin' });
+  toast('Desconectado', 'info');
+  setTimeout(waMeRefresh, 1000);
 }
 
 async function saveProfileSig() {

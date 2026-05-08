@@ -48,9 +48,13 @@ def is_allowed_send_hour() -> bool:
     return ALLOWED_SEND_HOURS[0] <= current_hour < ALLOWED_SEND_HOURS[1]
 
 
-def get_pending_leads(limit: int, offset: int = 0) -> list:
+def get_pending_leads(limit: int, offset: int = 0, assigned_to_user_id: int | None = None) -> list:
+    """
+    Devuelve leads en estado 'no_enviado' válidos para WA.
+    Si se pasa `assigned_to_user_id`, filtra solo leads asignados a ese usuario.
+    """
     conn = get_db()
-    rows = conn.execute('''
+    base_sql = '''
         SELECT l.id, l.name, l.phone, l.comuna, l.rubro, l.address
         FROM leads l
         LEFT JOIN lead_status ls ON l.id = ls.lead_id
@@ -58,13 +62,59 @@ def get_pending_leads(limit: int, offset: int = 0) -> list:
         WHERE o.phone IS NULL
           AND ls.status = 'no_enviado'
           AND l.phone IS NOT NULL
-        ORDER BY ls.updated_at ASC NULLS FIRST
-        LIMIT ? OFFSET ?
-    ''', (limit, offset)).fetchall()
-    conn.close()
+    '''
+    params: list = []
+    if assigned_to_user_id is not None:
+        base_sql += ' AND l.assigned_to = ?'
+        params.append(int(assigned_to_user_id))
+    base_sql += ' ORDER BY ls.updated_at ASC NULLS FIRST LIMIT ? OFFSET ?'
+    params.extend([limit, offset])
 
-    # Filtrar solo números válidos
+    rows = conn.execute(base_sql, params).fetchall()
+    conn.close()
     return [dict(r) for r in rows if is_valid_phone(r['phone'])]
+
+
+def get_users_active_for_slot(slot_field: str) -> list:
+    """
+    Devuelve [{'id', 'full_name', 'email', 'role', 'evolution_instance', 'daily_limit'}, ...]
+    de los usuarios activos que tienen el toggle del slot encendido en user_scheduler_config.
+    Si no hay ninguno → lista vacía (el caller decide si correr legacy global).
+    """
+    if slot_field not in (
+        'prospeccion_0930_active', 'prospeccion_1500_active', 'prospeccion_1730_active',
+        'seguimiento_24h_active', 'seguimiento_72h_active', 'fidelizacion_active',
+        'email_lote1_active', 'email_lote2_active', 'email_lote3_active',
+        'email_followup_active',
+    ):
+        return []
+    conn = get_db()
+    rows = conn.execute(f'''
+        SELECT u.id, u.full_name, u.email, u.role, u.evolution_instance,
+               COALESCE(c.daily_limit, 50) as daily_limit
+        FROM user_scheduler_config c
+        JOIN users u ON u.id = c.user_id
+        WHERE c.{slot_field} = 1
+          AND u.is_active = 1
+          AND u.role IN ('sales','owner','tl')
+    ''').fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def resolve_user_instance(user: dict) -> str:
+    """
+    Devuelve nombre de instancia Evolution del usuario.
+    Owner → instancia legacy; Sales/TL → users.evolution_instance o 'sales_<id>'.
+    """
+    from whatsapp import evolution_client as ev
+    role = (user.get('role') or '').strip()
+    if role == 'owner':
+        return ev._default_instance()
+    inst = (user.get('evolution_instance') or '').strip()
+    if inst:
+        return inst
+    return ev.instance_name_for_user(user['id'], role)
 
 
 def build_message(contact: dict) -> str:
@@ -121,31 +171,13 @@ def register_send(contact: dict, success: bool, error: str = None):
     conn.close()
 
 
-def run_prospecting_batch(limit: int, batch_name: str = ""):
+def _send_leads_via_evolution(leads: list, batch_name: str, owner_label: str = "",
+                               instance: str | None = None) -> tuple[int, int, int]:
+    """Envía la lista de leads via Evolution API. Retorna (sent, no_phone, failed).
+    Si `instance` se pasa, se usa esa instancia (multi-WA per Sales)."""
     import time, random
-    current_time = datetime.now().strftime('%H:%M')
-    logger.info(f"[PROSPECCION {batch_name}] Iniciando - {limit} mensajes - {current_time}")
-
-    # ── PROTECCIÓN: Bloquear envíos fuera de horario permitido ──
-    if not is_allowed_send_hour():
-        logger.warning(f"[{batch_name}] ❌ BLOQUEADO: Intento de envío a las {current_time} (solo permitido 07:00-20:00)")
-        return
-
-    leads = get_pending_leads(limit)
-    if not leads:
-        logger.info(f"[{batch_name}] Sin leads pendientes")
-        return
-
-    logger.info(f"[{batch_name}] {len(leads)} leads encontrados (validados)")
-
-    # ── Usar SOLO Evolution API. Si está desconectada, NO ejecutar.
-    # No abrimos WhatsApp Web automáticamente — es spam visual y bloquea la PC.
     from whatsapp import evolution_client as ev
-    if not ev.is_connected():
-        logger.warning(f"[{batch_name}] Evolution API desconectada — saltando job (NO abrimos WA Web)")
-        return
 
-    # ── Evolution API ─────────────────────────────────────────────
     conn = get_db()
     delay_min = int(conn.execute("SELECT value FROM config WHERE key='wa_delay_min_sec'").fetchone()[0] or 30)
     delay_max = int(conn.execute("SELECT value FROM config WHERE key='wa_delay_max_sec'").fetchone()[0] or 60)
@@ -157,7 +189,7 @@ def run_prospecting_batch(limit: int, batch_name: str = ""):
         message   = build_message(contact)
         image_url = build_image_url(contact)
 
-        result = ev.send_message(phone, message, image_url)
+        result = ev.send_message(phone, message, image_url, instance=instance)
         ok     = result.get("ok", False)
         error  = result.get("error", "")
 
@@ -170,28 +202,75 @@ def run_prospecting_batch(limit: int, batch_name: str = ""):
         else:
             failed += 1
 
-        logger.info(f"[{batch_name}] [{i+1}/{len(leads)}] {phone} → {'OK' if ok else 'FAIL'}")
+        logger.info(f"[{batch_name}{owner_label}] [{i+1}/{len(leads)}] {phone} → {'OK' if ok else 'FAIL'}")
 
-        # Delay anti-bloqueo entre mensajes
         if i < len(leads) - 1:
             delay = random.uniform(delay_min, delay_max)
             time.sleep(delay)
+    return sent, no_phone, failed
 
-    logger.info(f"[{batch_name}] Completado: {sent} enviados, {no_phone} sin tel, {failed} fallidos")
 
-    conn = get_db()
-    conn.execute('''
-        INSERT INTO campaigns (name, total_sent, sent_at, status)
-        VALUES (?, ?, datetime('now','localtime'), 'completed')
-    ''', (f"Lote {batch_name} {datetime.now().strftime('%d/%m/%Y %H:%M')}", sent))
-    conn.commit()
-    conn.close()
+def run_prospecting_batch(limit: int, batch_name: str = "", slot_field: str | None = None):
+    """
+    Ejecuta el lote de prospección.
+    - Si hay usuarios con `slot_field` activo en user_scheduler_config:
+        corre por cada usuario filtrando solo sus leads asignados,
+        aplicando min(limit, user.daily_limit, leads_disponibles).
+    - Si no hay ninguno con toggle activo: NO corre legacy global
+      (los nuevos jobs son explícitamente per-user; el toggle es la fuente de verdad).
+    """
+    current_time = datetime.now().strftime('%H:%M')
+    logger.info(f"[PROSPECCION {batch_name}] Iniciando - default {limit} - {current_time}")
+
+    if not is_allowed_send_hour():
+        logger.warning(f"[{batch_name}] ❌ BLOQUEADO: Intento de envío a las {current_time} (solo permitido 07:00-20:00)")
+        return
+
+    from whatsapp import evolution_client as ev
+
+    users = get_users_active_for_slot(slot_field) if slot_field else []
+    if not users:
+        logger.info(f"[{batch_name}] Ningún usuario con toggle activo para '{slot_field}' — skip")
+        return
+
+    total_sent = total_failed = total_no_phone = 0
+    for u in users:
+        instance = resolve_user_instance(u)
+        label = f" · {u.get('full_name') or u.get('email')} [{instance}]"
+        # Gate por instancia: solo enviamos si la WA del Sales está conectada
+        if not ev.is_connected(instance=instance):
+            logger.warning(f"[{batch_name}{label}] WhatsApp desconectado — skip")
+            continue
+        per_user_limit = min(limit, int(u.get('daily_limit') or limit))
+        leads = get_pending_leads(per_user_limit, assigned_to_user_id=u['id'])
+        if not leads:
+            logger.info(f"[{batch_name}{label}] Sin leads asignados pendientes")
+            continue
+        logger.info(f"[{batch_name}{label}] {len(leads)} leads (limit={per_user_limit})")
+        s, n, f = _send_leads_via_evolution(leads, batch_name, owner_label=label, instance=instance)
+        total_sent += s
+        total_no_phone += n
+        total_failed += f
+
+    logger.info(f"[{batch_name}] TOTAL: {total_sent} enviados, {total_no_phone} sin tel, {total_failed} fallidos")
+
+    if total_sent > 0:
+        conn = get_db()
+        conn.execute('''
+            INSERT INTO campaigns (name, total_sent, sent_at, status)
+            VALUES (?, ?, datetime('now','localtime'), 'completed')
+        ''', (f"Lote {batch_name} {datetime.now().strftime('%d/%m/%Y %H:%M')}", total_sent))
+        conn.commit()
+        conn.close()
 
 
 # Funciones llamadas por el scheduler
-def run_batch1(): run_prospecting_batch(15, "09:30")
-def run_batch2(): run_prospecting_batch(10, "15:00")
-def run_batch3(): run_prospecting_batch(15, "17:30")
+def run_batch1(): run_prospecting_batch(15, "09:30", slot_field='prospeccion_0930_active')
+def run_batch2(): run_prospecting_batch(10, "15:00", slot_field='prospeccion_1500_active')
+def run_batch3(): run_prospecting_batch(15, "17:30", slot_field='prospeccion_1730_active')
 
-# Compatibilidad con llamada directa
-def run_prospecting(): run_prospecting_batch(40, "manual")
+# Compatibilidad con llamada directa: dispara los 3 lotes en secuencia.
+def run_prospecting():
+    run_batch1()
+    run_batch2()
+    run_batch3()

@@ -405,11 +405,79 @@ def kpis():
 
 
 # ═══════════════════════════════════════════════════════════════
+# DIAGNÓSTICO de asignación de leads (Owner-only)
+# ═══════════════════════════════════════════════════════════════
+@dashboard_bp.route('/leads-diagnostic', methods=['GET'])
+@login_required
+def leads_diagnostic():
+    """Diagnóstico rápido: cuántos leads existen, sin asignar, por pool, etc."""
+    if current_user.role != 'owner':
+        return jsonify({'error': 'Solo Owner'}), 403
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
+    unassigned_total = conn.execute(
+        "SELECT COUNT(*) FROM leads WHERE assigned_to IS NULL"
+    ).fetchone()[0]
+    by_pool = conn.execute("""
+        SELECT COALESCE(lead_pool,'(null)') as pool,
+               COUNT(*) as total,
+               SUM(CASE WHEN assigned_to IS NULL THEN 1 ELSE 0 END) as unassigned
+        FROM leads
+        GROUP BY lead_pool
+    """).fetchall()
+    no_enviado_unassigned = conn.execute("""
+        SELECT COUNT(*) FROM leads l
+        LEFT JOIN lead_status ls ON ls.lead_id = l.id
+        WHERE ls.status = 'no_enviado' AND l.assigned_to IS NULL
+    """).fetchone()[0]
+    conn.close()
+    return jsonify({
+        'total_leads': total,
+        'unassigned_total': unassigned_total,
+        'no_enviado_unassigned': no_enviado_unassigned,
+        'by_pool': [dict(r) for r in by_pool],
+    })
+
+
+@dashboard_bp.route('/leads-claim-owner', methods=['POST'])
+@login_required
+def leads_claim_owner():
+    """
+    Asigna al Owner actual todos los leads sin asignar del pool 'owner_personal'
+    (o todos los NULL si el pool no está set). Reactiva el comportamiento
+    histórico: los jobs corren sobre los leads del Owner.
+    Body opcional: { "include_null_pool": true }
+    """
+    if current_user.role != 'owner':
+        return jsonify({'error': 'Solo Owner'}), 403
+    data = request.get_json(silent=True) or {}
+    include_null_pool = bool(data.get('include_null_pool', True))
+    conn = get_db()
+    if include_null_pool:
+        cur = conn.execute("""
+            UPDATE leads SET assigned_to = ?
+            WHERE assigned_to IS NULL
+              AND (lead_pool = 'owner_personal' OR lead_pool IS NULL)
+        """, (current_user.id,))
+    else:
+        cur = conn.execute("""
+            UPDATE leads SET assigned_to = ?
+            WHERE assigned_to IS NULL AND lead_pool = 'owner_personal'
+        """, (current_user.id,))
+    affected = cur.rowcount
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'claimed': affected, 'owner_id': current_user.id})
+
+
+# ═══════════════════════════════════════════════════════════════
 # SCHEDULER CONFIG por usuario (Sales/TL/Owner ve la suya)
 # ═══════════════════════════════════════════════════════════════
 SCHEDULER_FIELDS = [
     'prospeccion_0930_active', 'prospeccion_1500_active', 'prospeccion_1730_active',
-    'seguimiento_24h_active', 'seguimiento_72h_active', 'fidelizacion_active'
+    'seguimiento_24h_active', 'seguimiento_72h_active', 'fidelizacion_active',
+    'email_lote1_active', 'email_lote2_active', 'email_lote3_active',
+    'email_followup_active',
 ]
 
 
@@ -453,6 +521,13 @@ def set_user_scheduler():
             limit = max(0, min(int(data['daily_limit']), 1000))
             set_pairs.append('daily_limit=?')
             params.append(limit)
+        except Exception:
+            pass
+    if 'email_daily_limit' in data:
+        try:
+            elimit = max(0, min(int(data['email_daily_limit']), 500))
+            set_pairs.append('email_daily_limit=?')
+            params.append(elimit)
         except Exception:
             pass
     if set_pairs:

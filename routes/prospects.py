@@ -13,17 +13,15 @@ def _user_lead_filter(alias='p'):
     """
     Devuelve (sql_fragment, params) para filtrar prospects por rol.
     Usa la columna lead_id que linkea con leads.assigned_to.
+    - Owner y TL: ven TODOS los prospects (gestión global)
+    - Sales: solo sus leads asignados
     """
     if not current_user or not current_user.is_authenticated:
         return ' AND 1=0', []
     role = current_user.role
-    if role == 'owner':
+    # CAMBIO: Owner y TL ahora ven TODO. TL Josema gestiona todos los Sales.
+    if role in ('owner', 'tl'):
         return '', []
-    if role == 'tl':
-        return (f' AND ({alias}.lead_id IS NULL OR {alias}.lead_id IN '
-                f'(SELECT id FROM leads WHERE assigned_to = ? OR assigned_to IN '
-                f'(SELECT id FROM users WHERE team_lead_id = ? AND status="active")))',
-                [current_user.id, current_user.id])
     if role == 'sales':
         return (f' AND {alias}.lead_id IN (SELECT id FROM leads WHERE assigned_to = ?)',
                 [current_user.id])
@@ -42,18 +40,101 @@ MSG_SEGUIMIENTO = "Hola, como estas? Te escribo cortito porque de la ultima vez 
 def get_prospects():
     conn = get_db()
     where_role, params = _user_lead_filter('p')
+
+    # Filtro adicional para Owner/TL: ?assigned_to_user_id=X
+    extra_where = ''
+    assigned_to = request.args.get('assigned_to_user_id', '').strip()
+    if assigned_to and current_user.role in ('owner', 'tl'):
+        if assigned_to == 'unassigned':
+            extra_where = ' AND (p.lead_id IS NULL OR p.lead_id NOT IN (SELECT id FROM leads WHERE assigned_to IS NOT NULL))'
+        else:
+            try:
+                uid = int(assigned_to)
+                extra_where = ' AND p.lead_id IN (SELECT id FROM leads WHERE assigned_to = ?)'
+                params = list(params) + [uid]
+            except ValueError:
+                pass
+
     rows = conn.execute(f"""
         SELECT p.*,
                COUNT(CASE WHEN t.completada=0 THEN 1 END) as tareas_pendientes,
-               COUNT(t.id) as total_tareas
+               COUNT(t.id) as total_tareas,
+               (SELECT assigned_to FROM leads WHERE id = p.lead_id) as assigned_to_user_id,
+               (SELECT u.full_name FROM users u JOIN leads l ON l.assigned_to = u.id WHERE l.id = p.lead_id) as assigned_to_name
         FROM prospects p
         LEFT JOIN tasks t ON p.id = t.prospect_id
-        WHERE 1=1 {where_role}
+        WHERE 1=1 {where_role} {extra_where}
         GROUP BY p.id
         ORDER BY p.updated_at DESC
     """, params).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+
+@prospects_bp.route('/stats-by-sales', methods=['GET'])
+@login_required
+def stats_by_sales():
+    """
+    Devuelve metricas de prospects agrupadas por Sales asignado + globales.
+    Solo Owner/TL pueden ver el desglose. Sales solo ve sus propios stats.
+    """
+    conn = get_db()
+    role = current_user.role
+
+    if role == 'sales':
+        # Sales: solo sus propios stats
+        rows = conn.execute("""
+            SELECT u.id as user_id, u.full_name, u.email,
+                   COUNT(DISTINCT p.id) as total,
+                   SUM(CASE WHEN p.estado='en_seguimiento' THEN 1 ELSE 0 END) as en_seguimiento,
+                   SUM(CASE WHEN p.estado='reunion_agendada' THEN 1 ELSE 0 END) as reunion_agendada,
+                   SUM(CASE WHEN p.estado='cerrado' THEN 1 ELSE 0 END) as cerrados,
+                   SUM(CASE WHEN p.estado='no_logrado' THEN 1 ELSE 0 END) as no_logrados,
+                   SUM(CASE WHEN p.estado='sin_respuesta' THEN 1 ELSE 0 END) as sin_respuesta
+            FROM users u
+            LEFT JOIN leads l ON l.assigned_to = u.id
+            LEFT JOIN prospects p ON p.lead_id = l.id
+            WHERE u.id = ?
+            GROUP BY u.id
+        """, (current_user.id,)).fetchall()
+    else:
+        # Owner/TL: por cada Sales activo
+        rows = conn.execute("""
+            SELECT u.id as user_id, u.full_name, u.email,
+                   COUNT(DISTINCT p.id) as total,
+                   SUM(CASE WHEN p.estado='en_seguimiento' THEN 1 ELSE 0 END) as en_seguimiento,
+                   SUM(CASE WHEN p.estado='reunion_agendada' THEN 1 ELSE 0 END) as reunion_agendada,
+                   SUM(CASE WHEN p.estado='cerrado' THEN 1 ELSE 0 END) as cerrados,
+                   SUM(CASE WHEN p.estado='no_logrado' THEN 1 ELSE 0 END) as no_logrados,
+                   SUM(CASE WHEN p.estado='sin_respuesta' THEN 1 ELSE 0 END) as sin_respuesta
+            FROM users u
+            LEFT JOIN leads l ON l.assigned_to = u.id
+            LEFT JOIN prospects p ON p.lead_id = l.id
+            WHERE u.role IN ('sales','owner') AND u.is_active = 1
+            GROUP BY u.id
+            ORDER BY total DESC, u.full_name ASC
+        """).fetchall()
+
+    by_sales = [dict(r) for r in rows]
+
+    # Globales (todos los prospects accesibles)
+    global_rows = conn.execute("""
+        SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN estado='en_seguimiento' THEN 1 ELSE 0 END) as en_seguimiento,
+            SUM(CASE WHEN estado='reunion_agendada' THEN 1 ELSE 0 END) as reunion_agendada,
+            SUM(CASE WHEN estado='cerrado' THEN 1 ELSE 0 END) as cerrados,
+            SUM(CASE WHEN estado='no_logrado' THEN 1 ELSE 0 END) as no_logrados,
+            SUM(CASE WHEN estado='sin_respuesta' THEN 1 ELSE 0 END) as sin_respuesta
+        FROM prospects
+    """).fetchone()
+    globals_dict = dict(global_rows) if global_rows else {}
+
+    conn.close()
+    return jsonify({
+        'by_sales': by_sales,
+        'globals': globals_dict
+    })
 
 
 @prospects_bp.route('/', methods=['POST'])
@@ -148,6 +229,20 @@ def send_message(pid):
         return jsonify({'error': 'Prospecto no encontrado'}), 404
     prospect = dict(prospect)
     
+    # Resolver instancia WA del usuario actual (Sales envía desde su propio WA)
+    user_instance = None
+    if current_user and current_user.is_authenticated:
+        if getattr(current_user, 'role', '') == 'owner':
+            user_instance = None  # legacy / env default
+        else:
+            conn2 = get_db()
+            row = conn2.execute(
+                'SELECT evolution_instance FROM users WHERE id = ?', (current_user.id,)
+            ).fetchone()
+            conn2.close()
+            from whatsapp import evolution_client as _ev_mod
+            user_instance = (row['evolution_instance'] if row else None) or _ev_mod.instance_name_for_user(current_user.id, current_user.role)
+
     import threading
     def _send():
         try:
@@ -155,8 +250,8 @@ def send_message(pid):
             # Preferir Evolution API (Railway) - sin popup WhatsApp Web
             from whatsapp import evolution_client as ev
             ok = False
-            if ev.is_connected():
-                r = ev.send_message(prospect['phone'], msg, None)
+            if ev.is_connected(instance=user_instance):
+                r = ev.send_message(prospect['phone'], msg, None, instance=user_instance)
                 ok = r.get('ok', False)
             else:
                 from whatsapp.sender_desktop import get_sender

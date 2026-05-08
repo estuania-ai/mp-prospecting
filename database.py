@@ -127,10 +127,51 @@ def init_db():
             seguimiento_24h_active   INTEGER DEFAULT 0,
             seguimiento_72h_active   INTEGER DEFAULT 0,
             fidelizacion_active      INTEGER DEFAULT 0,
+            email_lote1_active       INTEGER DEFAULT 0,
+            email_lote2_active       INTEGER DEFAULT 0,
+            email_lote3_active       INTEGER DEFAULT 0,
+            email_followup_active    INTEGER DEFAULT 0,
             daily_limit              INTEGER DEFAULT 50,
+            email_daily_limit        INTEGER DEFAULT 40,
             updated_at               TEXT DEFAULT (datetime('now','localtime'))
         )
     ''')
+    # Migraciones por si la tabla ya existía
+    _add_col(c, 'user_scheduler_config', 'email_lote1_active',    'INTEGER DEFAULT 0')
+    _add_col(c, 'user_scheduler_config', 'email_lote2_active',    'INTEGER DEFAULT 0')
+    _add_col(c, 'user_scheduler_config', 'email_lote3_active',    'INTEGER DEFAULT 0')
+    _add_col(c, 'user_scheduler_config', 'email_followup_active', 'INTEGER DEFAULT 0')
+    _add_col(c, 'user_scheduler_config', 'email_daily_limit',     'INTEGER DEFAULT 40')
+
+    # ── Seed Owner: preservar comportamiento histórico ─────────────
+    # El Owner siempre debe tener todos los jobs encendidos sobre su pool
+    # personal. Se aplica en cada boot, idempotente, no toca a Sales/TL.
+    # Si el Owner explícitamente apagó alguno desde la UI y querés conservar
+    # esa decisión, sacá este bloque — pero el pedido actual es "Owner
+    # siempre con todos los jobs activos".
+    owners = c.execute(
+        "SELECT id FROM users WHERE role = 'owner'"
+    ).fetchall()
+    for ow in owners:
+        c.execute(
+            'INSERT OR IGNORE INTO user_scheduler_config (user_id) VALUES (?)',
+            (ow[0],)
+        )
+        c.execute('''
+            UPDATE user_scheduler_config SET
+                prospeccion_0930_active = 1,
+                prospeccion_1500_active = 1,
+                prospeccion_1730_active = 1,
+                seguimiento_24h_active  = 1,
+                seguimiento_72h_active  = 1,
+                fidelizacion_active     = 1,
+                email_lote1_active      = 1,
+                email_lote2_active      = 1,
+                email_lote3_active      = 1,
+                email_followup_active   = 1,
+                updated_at = datetime('now','localtime')
+            WHERE user_id = ?
+        ''', (ow[0],))
 
     # ─── LOG DE ACCESO TL A LEADS (auditoría de coaching) ──────
     # Cuando el TL abre un lead específico, queda registrado.
@@ -283,6 +324,9 @@ def init_db():
     _add_col(c, 'et_contacts', 'last_followup_at',    'TEXT')
     _add_col(c, 'et_contacts', 'fecha_envio',         'TEXT')
     _add_col(c, 'et_contacts', 'comuna',              'TEXT')
+    # Asignación a un Sales: email automation routea por dueño del contacto
+    _add_col(c, 'et_contacts', 'assigned_to',         'INTEGER')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_etc_assigned_to ON et_contacts(assigned_to)')
     _add_col(c, 'et_seguimientos', 'batch_id',        'INTEGER')
     # Prospects: unificación email → gestión CRM
     _add_col(c, 'prospects', 'email',         'TEXT')

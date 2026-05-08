@@ -6,10 +6,81 @@ Email Automation Jobs
 import logging
 import asyncio
 import threading
+import pathlib
 from datetime import datetime, timedelta
 from database import get_db
 
 logger = logging.getLogger(__name__)
+
+
+# ── PER-USER SMTP RESOLVER ────────────────────────────────────────
+# Cada Sales tiene sus credenciales SMTP encriptadas + firma personalizada.
+# El cache evita decrypt+IO en cada email del lote.
+_USER_CREDS_CACHE: dict[int, dict] = {}
+
+def _resolve_user_creds(user_id: int) -> dict | None:
+    """
+    Devuelve dict con creds SMTP del usuario (o None si está incompleto).
+    { 'smtp_user', 'smtp_pass', 'from_email', 'from_name', 'sig_bytes' }
+    """
+    if user_id in _USER_CREDS_CACHE:
+        return _USER_CREDS_CACHE[user_id]
+
+    try:
+        from secure_storage import decrypt
+    except Exception as e:
+        logger.error(f"[Email per-user] secure_storage no disponible: {e}")
+        return None
+
+    conn = get_db()
+    row = conn.execute(
+        '''SELECT smtp_user, smtp_pass_enc, name, sig_title, sig_phone, sig_photo_path
+           FROM users WHERE id = ?''',
+        (user_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+
+    smtp_user = (row['smtp_user'] or '').strip()
+    enc       = (row['smtp_pass_enc'] or '').strip()
+    if not smtp_user or not enc:
+        return None
+    try:
+        smtp_pass = decrypt(enc)
+    except Exception as e:
+        logger.error(f"[Email per-user] decrypt falló user_id={user_id}: {e}")
+        return None
+    if not smtp_pass:
+        return None
+
+    sig_bytes = None
+    sig_path = (row['sig_photo_path'] or '').strip()
+    if sig_path:
+        try:
+            full = pathlib.Path(__file__).parent.parent / 'static' / sig_path
+            if full.exists():
+                sig_bytes = full.read_bytes()
+        except Exception as e:
+            logger.warning(f"[Email per-user] no se pudo leer firma: {e}")
+
+    creds = {
+        'smtp_user':  smtp_user,
+        'smtp_pass':  smtp_pass,
+        'from_email': smtp_user,
+        'from_name':  (row['name'] or smtp_user.split('@')[0]),
+        'sig_bytes':  sig_bytes,
+    }
+    _USER_CREDS_CACHE[user_id] = creds
+    return creds
+
+
+def _invalidate_user_creds_cache(user_id: int | None = None):
+    """Llamar cuando un usuario actualiza su SMTP/firma."""
+    if user_id is None:
+        _USER_CREDS_CACHE.clear()
+    else:
+        _USER_CREDS_CACHE.pop(user_id, None)
 
 # ── Fix 1: RUBROS_FALLBACK hardcodeado solo como respaldo ─────────────────────
 # La fuente de verdad son los rubros en et_rubro_templates (ventana Campañas).
@@ -145,10 +216,12 @@ def _get_template_for_rubro(rubro: str) -> dict:
 
 
 def _send_email(to_email: str, subject: str, body: str,
-                rubro: str = '', contact_name: str = '') -> bool:
+                rubro: str = '', contact_name: str = '',
+                for_user_id: int | None = None) -> bool:
     """
-    Delega a _send_smtp de email_tool para enviar el HTML animado completo
-    (GIF header + GIF POS + firma) en lugar de un correo de texto plano.
+    Delega a _send_smtp de email_tool para enviar el HTML animado completo.
+    Si se pasa `for_user_id`, usa las credenciales SMTP y firma del Sales
+    correspondiente (cada Sales envía desde su propio Gmail).
     """
     import os
     from routes.email_tool import _send_smtp
@@ -157,6 +230,13 @@ def _send_email(to_email: str, subject: str, body: str,
         'BOOKING_URL',
         'https://calendly.com/juansebastian-pinto/mercadopago'
     )
+    user_creds = _resolve_user_creds(for_user_id) if for_user_id else None
+    if for_user_id and not user_creds:
+        logger.warning(
+            f"[EmailAuto] user_id={for_user_id} sin SMTP configurado — no se envía"
+        )
+        return False
+
     result = _send_smtp(
         to_email=to_email,
         subject=subject,
@@ -164,6 +244,7 @@ def _send_email(to_email: str, subject: str, body: str,
         rubro=rubro,
         contact_name=contact_name,
         booking_url=booking_url,
+        user_creds=user_creds,
     )
     if not result.get('ok'):
         logger.error(f'[EmailAuto] Error enviando a {to_email}: {result.get("error")}')
@@ -1895,7 +1976,135 @@ def run_intel_scraping():
     return total_saved
 
 
-def run_email_batch(batch_size: int = 40, lote_name: str = 'Lote') -> int:
+def _run_email_batch_for_user(batch_size: int, lote_name: str,
+                               user: dict | None, MAX_PER_RUBRO: int,
+                               THROTTLE_SECS: int, COOLDOWN_DAYS: int) -> int:
+    """
+    Procesa un lote para un usuario específico (Sales) o para el pool global
+    (cuando user is None — modo legacy Owner). Extraído de run_email_batch.
+    """
+    import time as _time
+    from collections import defaultdict
+
+    user_id = user['id'] if user else None
+    user_label = f" · {user.get('full_name') or user.get('email')}" if user else ""
+
+    # Si es per-user, validamos creds antes de gastar queries
+    if user_id is not None:
+        creds = _resolve_user_creds(user_id)
+        if not creds:
+            logger.warning(f"[{lote_name}{user_label}] Sin SMTP — skip")
+            return 0
+
+    # ── Candidatos
+    conn = get_db()
+    if user_id is not None:
+        candidatos = conn.execute(
+            """SELECT id, business_name, email, rubro, comuna, campaign_status
+               FROM et_contacts
+               WHERE campaign_status IN ('no_enviado','pendiente')
+                 AND assigned_to = ?
+               ORDER BY
+                   CASE campaign_status WHEN 'pendiente' THEN 0 ELSE 1 END,
+                   created_at ASC
+               LIMIT 800""",
+            (user_id,)
+        ).fetchall()
+    else:
+        candidatos = conn.execute(
+            """SELECT id, business_name, email, rubro, comuna, campaign_status
+               FROM et_contacts
+               WHERE campaign_status IN ('no_enviado','pendiente')
+               ORDER BY
+                   CASE campaign_status WHEN 'pendiente' THEN 0 ELSE 1 END,
+                   created_at ASC
+               LIMIT 800"""
+        ).fetchall()
+    conn.close()
+
+    rubro_counts: dict = defaultdict(int)
+    selected = []
+    for lead in candidatos:
+        rk = (lead['rubro'] or '').lower().strip()
+        if rubro_counts[rk] < MAX_PER_RUBRO:
+            selected.append(lead)
+            rubro_counts[rk] += 1
+        if len(selected) >= batch_size:
+            break
+
+    logger.info(
+        f'[{lote_name}{user_label}] {len(selected)} leads seleccionados '
+        f'({len(candidatos)} candidatos, máx {MAX_PER_RUBRO}/rubro)'
+    )
+
+    total_sent = 0
+    skipped_cd = 0
+
+    for row in selected:
+        email = (row['email'] or '').strip()
+        if not email:
+            continue
+
+        # ── Cooldown 30 días por dominio
+        domain = email.rsplit('@', 1)[-1].lower() if '@' in email else ''
+        if domain:
+            conn_cd = get_db()
+            recently_sent = conn_cd.execute(
+                """SELECT COUNT(*) FROM et_contacts
+                   WHERE LOWER(email) LIKE ?
+                     AND campaign_status NOT IN ('no_enviado','pendiente','opt_out')
+                     AND fecha_envio >= datetime('now', ?)""",
+                (f'%@{domain}', f'-{COOLDOWN_DAYS} days')
+            ).fetchone()[0]
+            conn_cd.close()
+            if recently_sent > 0:
+                skipped_cd += 1
+                continue
+
+        try:
+            tpl     = _get_template_for_rubro(row['rubro'])
+            subject = tpl['subject']
+            body    = tpl['body'].replace('{nombre}', row['business_name'] or '')
+            ok      = _send_email(
+                          email, subject, body,
+                          rubro=row['rubro'], contact_name=row['business_name'],
+                          for_user_id=user_id,
+                      )
+            now         = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            followup_dt = (datetime.now() + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
+
+            conn2 = get_db()
+            if ok:
+                conn2.execute(
+                    """UPDATE et_contacts
+                       SET campaign_status='enviado', fecha_envio=?, proximo_seguimiento=?
+                       WHERE id=?""",
+                    (now, followup_dt, row['id'])
+                )
+                total_sent += 1
+                logger.info(f'[{lote_name}{user_label}] ✉ {email} ({row["rubro"]})')
+            else:
+                conn2.execute(
+                    "UPDATE et_contacts SET campaign_status='no_enviado' WHERE id=?",
+                    (row['id'],)
+                )
+            conn2.commit()
+            conn2.close()
+
+            _time.sleep(THROTTLE_SECS)
+
+        except Exception as e:
+            logger.error(f'[{lote_name}{user_label}] Error enviando {email}: {e}')
+
+    logger.info(
+        f'[{lote_name}{user_label}] Completado: {total_sent} enviados, '
+        f'{skipped_cd} saltados por cooldown.'
+    )
+    return total_sent
+
+
+def run_email_batch(batch_size: int = 40, lote_name: str = 'Lote',
+                    slot_field: str | None = None) -> int:
     """
     Envía un lote de emails desde el pool no_enviado.
 
@@ -1917,123 +2126,39 @@ def run_email_batch(batch_size: int = 40, lote_name: str = 'Lote') -> int:
       pool < 100  → dispara refill inmediato en background.
       pool < 1000 → log informativo; el job 08:00 completa mañana.
     """
-    import time as _time
-    from collections import defaultdict
     from database import job_run
+    from jobs.send_prospecting import get_users_active_for_slot
 
-    MAX_PER_RUBRO    = 8     # Regla 2: máx emails por rubro por lote
-    THROTTLE_SECS    = 2     # Regla 6: segundos entre emails
-    COOLDOWN_DAYS    = 30    # Regla 4: días de cooldown por dominio
-    REFILL_THRESHOLD = 100   # dispara refill si pool < esto tras el lote
-    POOL_TARGET      = 1000  # objetivo del pool no_enviado
+    MAX_PER_RUBRO    = 8
+    THROTTLE_SECS    = 2
+    COOLDOWN_DAYS    = 30
+    REFILL_THRESHOLD = 100
+    POOL_TARGET      = 1000
 
-    # ── Regla 1: Solo L-V ────────────────────────────────────────────────────
-    if datetime.now().weekday() >= 5:   # 5=sábado, 6=domingo
+    if datetime.now().weekday() >= 5:
         logger.info(f'[{lote_name}] Fin de semana — sin envíos (Regla 1: L-V).')
         return 0
 
-    logger.info(f'[{lote_name}] Iniciando lote de hasta {batch_size} emails...')
+    logger.info(f'[{lote_name}] Iniciando — default batch {batch_size}, slot={slot_field}')
 
     with job_run(f'email_{lote_name.lower().replace(" ", "_")}') as run:
-
-        # ── Regla 2: Candidatos con cap por rubro ────────────────────────────
-        conn = get_db()
-        candidatos = conn.execute(
-            """SELECT id, business_name, email, rubro, comuna, campaign_status
-               FROM et_contacts
-               WHERE campaign_status IN ('no_enviado', 'pendiente')
-               ORDER BY
-                   CASE campaign_status WHEN 'pendiente' THEN 0 ELSE 1 END,
-                   created_at ASC
-               LIMIT 800"""
-        ).fetchall()
-        conn.close()
-
-        rubro_counts: dict = defaultdict(int)
-        selected = []
-        for lead in candidatos:
-            rk = (lead['rubro'] or '').lower().strip()
-            if rubro_counts[rk] < MAX_PER_RUBRO:
-                selected.append(lead)
-                rubro_counts[rk] += 1
-            if len(selected) >= batch_size:
-                break
-
-        logger.info(
-            f'[{lote_name}] {len(selected)} leads seleccionados '
-            f'({len(candidatos)} candidatos, máx {MAX_PER_RUBRO}/rubro)'
-        )
-
         total_sent = 0
-        skipped_cd = 0
-
-        for row in selected:
-            email = (row['email'] or '').strip()
-            if not email:
-                continue
-
-            # ── Regla 4: Cooldown 30 días por dominio ────────────────────────
-            domain = email.rsplit('@', 1)[-1].lower() if '@' in email else ''
-            if domain:
-                conn_cd = get_db()
-                recently_sent = conn_cd.execute(
-                    """SELECT COUNT(*) FROM et_contacts
-                       WHERE LOWER(email) LIKE ?
-                         AND campaign_status NOT IN ('no_enviado','pendiente','opt_out')
-                         AND fecha_envio >= datetime('now', ?)""",
-                    (f'%@{domain}', f'-{COOLDOWN_DAYS} days')
-                ).fetchone()[0]
-                conn_cd.close()
-                if recently_sent > 0:
-                    logger.debug(
-                        f'[{lote_name}] Cooldown {COOLDOWN_DAYS}d: '
-                        f'@{domain} ya contactado recientemente. Saltando.'
-                    )
-                    skipped_cd += 1
-                    continue
-
-            # ── Enviar ────────────────────────────────────────────────────────
-            try:
-                tpl         = _get_template_for_rubro(row['rubro'])
-                subject     = tpl['subject']
-                body        = tpl['body'].replace('{nombre}', row['business_name'] or '')
-                ok          = _send_email(
-                                  email, subject, body,
-                                  rubro=row['rubro'], contact_name=row['business_name']
-                              )
-                now         = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                followup_dt = (datetime.now() + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
-
-                conn2 = get_db()
-                if ok:
-                    conn2.execute(
-                        """UPDATE et_contacts
-                           SET campaign_status='enviado', fecha_envio=?, proximo_seguimiento=?
-                           WHERE id=?""",
-                        (now, followup_dt, row['id'])
-                    )
-                    total_sent += 1
-                    logger.info(f'[{lote_name}] ✉ {email} ({row["rubro"]})')
-                else:
-                    conn2.execute(
-                        "UPDATE et_contacts SET campaign_status='no_enviado' WHERE id=?",
-                        (row['id'],)
-                    )
-                    logger.warning(f'[{lote_name}] Falló: {email} → no_enviado')
-                conn2.commit()
-                conn2.close()
-
-                # ── Regla 6: Throttle ─────────────────────────────────────────
-                _time.sleep(THROTTLE_SECS)
-
-            except Exception as e:
-                logger.error(f'[{lote_name}] Error enviando {email}: {e}')
+        users = get_users_active_for_slot(slot_field) if slot_field else []
+        if users:
+            for u in users:
+                per_user_limit = min(batch_size, int(u.get('daily_limit') or batch_size))
+                total_sent += _run_email_batch_for_user(
+                    per_user_limit, lote_name, u,
+                    MAX_PER_RUBRO, THROTTLE_SECS, COOLDOWN_DAYS
+                )
+        else:
+            logger.info(f'[{lote_name}] Sin usuarios con toggle activo — running pool global (Owner legacy)')
+            total_sent = _run_email_batch_for_user(
+                batch_size, lote_name, None,
+                MAX_PER_RUBRO, THROTTLE_SECS, COOLDOWN_DAYS
+            )
 
         run['count'] = total_sent
-        logger.info(
-            f'[{lote_name}] Completado: {total_sent} enviados, '
-            f'{skipped_cd} saltados por cooldown.'
-        )
 
         # ── Verificar pool y disparar refill si es necesario ─────────────────
         conn3 = get_db()
@@ -2050,12 +2175,6 @@ def run_email_batch(batch_size: int = 40, lote_name: str = 'Lote') -> int:
                 'Iniciando refill en background...'
             )
             threading.Thread(target=run_intel_scraping, daemon=True, name='refill_leads').start()
-        elif pool_restante < POOL_TARGET:
-            logger.info(
-                f'[{lote_name}] Pool por debajo del objetivo '
-                f'({pool_restante}/{POOL_TARGET}). '
-                'El job 08:00 completará el relleno mañana.'
-            )
 
     return total_sent
 
@@ -2178,19 +2297,40 @@ def run_followup():
     now = datetime.now()
     threshold = now.strftime('%Y-%m-%d %H:%M:%S')
 
-    # Contactos que ya deberían haber recibido seguimiento y no respondieron
-    contacts = conn.execute(
-        """SELECT *
-           FROM et_contacts
-           WHERE estado_interes NOT IN ('respondido','interesado','quiere_reunion','cerrado','opt_out')
-             AND campaign_status NOT IN ('no_responde','opt_out')
-             AND proximo_seguimiento IS NOT NULL
-             AND proximo_seguimiento <= ?
-             AND seguimiento_count < 2
-           ORDER BY proximo_seguimiento ASC
-           LIMIT 50""",
-        (threshold,)
-    ).fetchall()
+    # Si hay usuarios con email_followup_active, filtramos por sus contactos.
+    # Si no hay ninguno → modo legacy global (Owner).
+    from jobs.send_prospecting import get_users_active_for_slot
+    fu_users = get_users_active_for_slot('email_followup_active')
+    fu_user_ids = [u['id'] for u in fu_users]
+
+    if fu_user_ids:
+        placeholders = ','.join('?' for _ in fu_user_ids)
+        contacts = conn.execute(
+            f"""SELECT *
+               FROM et_contacts
+               WHERE estado_interes NOT IN ('respondido','interesado','quiere_reunion','cerrado','opt_out')
+                 AND campaign_status NOT IN ('no_responde','opt_out')
+                 AND proximo_seguimiento IS NOT NULL
+                 AND proximo_seguimiento <= ?
+                 AND seguimiento_count < 2
+                 AND assigned_to IN ({placeholders})
+               ORDER BY proximo_seguimiento ASC
+               LIMIT 50""",
+            (threshold, *fu_user_ids)
+        ).fetchall()
+    else:
+        contacts = conn.execute(
+            """SELECT *
+               FROM et_contacts
+               WHERE estado_interes NOT IN ('respondido','interesado','quiere_reunion','cerrado','opt_out')
+                 AND campaign_status NOT IN ('no_responde','opt_out')
+                 AND proximo_seguimiento IS NOT NULL
+                 AND proximo_seguimiento <= ?
+                 AND seguimiento_count < 2
+               ORDER BY proximo_seguimiento ASC
+               LIMIT 50""",
+            (threshold,)
+        ).fetchall()
 
     sent = 0
     errors = 0
@@ -2209,13 +2349,20 @@ def run_followup():
 
         # Enviar con el mismo pipeline que los emails de prospección:
         # header GIF animado + POS GIF en firma + foto de firma (todos via CID)
+        # Per-Sales: si el contacto está asignado a un user, usamos su SMTP.
+        owner_uid = c['assigned_to'] if 'assigned_to' in c.keys() else None
+        user_creds = _resolve_user_creds(owner_uid) if owner_uid else None
+        if owner_uid and not user_creds:
+            logger.warning(f'[EmailAuto] followup skip — user {owner_uid} sin SMTP')
+            continue
         result = _send_smtp_followup(
             to_email=email,
             subject=subject,
             rubro=rubro,
             contact_name=nombre,
             hours=hours,
-            booking_url=booking_url
+            booking_url=booking_url,
+            user_creds=user_creds,
         )
 
         ok = result.get('ok', False)
@@ -2275,6 +2422,16 @@ def _log_followup_run(sent: int):
 
 
 # ── Thread wrappers para los 3 lotes diarios ─────────────────────────────────
+
+def run_lote_manana():
+    return run_email_batch(40, 'Lote Mañana', slot_field='email_lote1_active')
+
+def run_lote_mediodia():
+    return run_email_batch(35, 'Lote Mediodía', slot_field='email_lote2_active')
+
+def run_lote_tarde():
+    return run_email_batch(25, 'Lote Tarde', slot_field='email_lote3_active')
+
 
 def run_lote_manana_in_thread():
     """09:00 L-V — 40 emails (Lote Mañana)"""

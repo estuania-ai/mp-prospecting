@@ -4,12 +4,44 @@ Gestión de Evolution API: estado, QR, envío manual, historial, webhook entrant
 """
 
 from flask import Blueprint, jsonify, request
+from flask_login import current_user, login_required
 from datetime import datetime
 import logging
 import threading
 
 from database import get_db
 from whatsapp import evolution_client as ev
+
+
+# ── HELPERS PER-USER ─────────────────────────────────────────────
+def _instance_for_current_user() -> str:
+    """
+    Devuelve el nombre de instancia Evolution para el usuario logueado.
+    - Si users.evolution_instance está seteado, lo usa.
+    - Si no, genera 'sales_<id>' y lo persiste.
+    - Owner mantiene la instancia legacy (env EVOLUTION_INSTANCE).
+    """
+    if not current_user or not current_user.is_authenticated:
+        return ev._default_instance()
+    role = getattr(current_user, 'role', '')
+    if role == 'owner':
+        return ev._default_instance()
+    conn = get_db()
+    row = conn.execute(
+        'SELECT evolution_instance FROM users WHERE id = ?',
+        (current_user.id,)
+    ).fetchone()
+    inst = (row['evolution_instance'] if row else None) or ''
+    inst = inst.strip()
+    if not inst:
+        inst = ev.instance_name_for_user(current_user.id, role)
+        conn.execute(
+            'UPDATE users SET evolution_instance = ? WHERE id = ?',
+            (inst, current_user.id)
+        )
+        conn.commit()
+    conn.close()
+    return inst
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('whatsapp', __name__, url_prefix='/api/whatsapp')
@@ -50,6 +82,53 @@ def wa_disconnect():
 def wa_restart():
     """Reinicia la instancia (útil si se cuelga)."""
     result = ev.restart_instance()
+    return jsonify(result)
+
+
+# ── PER-USER (Sales / TL): cada usuario gestiona su propia instancia ──
+@bp.get('/me/status')
+@login_required
+def wa_me_status():
+    inst = _instance_for_current_user()
+    state = ev.get_connection_state(instance=inst)
+    state['instance'] = inst
+    return jsonify(state)
+
+
+@bp.get('/me/qr')
+@login_required
+def wa_me_qr():
+    inst = _instance_for_current_user()
+    result = ev.get_qr_code(instance=inst)
+    result['instance'] = inst
+    return jsonify(result)
+
+
+@bp.post('/me/connect')
+@login_required
+def wa_me_connect():
+    inst = _instance_for_current_user()
+    ev.ensure_instance_exists(instance=inst)
+    state = ev.get_connection_state(instance=inst)
+    state['instance'] = inst
+    return jsonify(state)
+
+
+@bp.post('/me/disconnect')
+@login_required
+def wa_me_disconnect():
+    inst = _instance_for_current_user()
+    result = ev.logout_instance(instance=inst)
+    result['instance'] = inst
+    return jsonify(result)
+
+
+@bp.post('/me/restart')
+@login_required
+def wa_me_restart():
+    inst = _instance_for_current_user()
+    result = ev.restart_instance(instance=inst)
+    result['instance'] = inst
     return jsonify(result)
 
 
