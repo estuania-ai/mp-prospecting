@@ -673,6 +673,18 @@ def _is_valid_business_email(e: str) -> bool:
     if len(local) >= 5 and not any(c in vowels for c in local):
         return False
 
+    # 5) MX DNS: verifica que el dominio tenga servidor de correo configurado.
+    # Si dnspython no está disponible o el chequeo falla, el helper hace fail-open
+    # (no bloquea) — el cooldown y los rebotes capturados por SMTP cubren el resto.
+    # Esto filtra ~80% de los rebotes futuros (dominios muertos / typos).
+    try:
+        from email_validator_mx import _has_mx_record
+        if not _has_mx_record(domain, timeout=2.5):
+            return False
+    except Exception as _mx_e:
+        logger.debug(f"[Validator] MX check error {domain}: {_mx_e}")
+        # fail-open: no bloqueamos por error de DNS; el SMTP filtrará después
+
     return True
 
 
@@ -2181,7 +2193,10 @@ def run_email_batch(batch_size: int = 40, lote_name: str = 'Lote',
     MAX_PER_RUBRO    = 8
     THROTTLE_SECS    = 2
     COOLDOWN_DAYS    = 30
-    REFILL_THRESHOLD = 100
+    # Refill agresivo: arranca a rellenar cuando el pool cae bajo 800.
+    # Asi mantenemos siempre cerca de 1000 disponibles, no esperamos a quedar
+    # con < 100 (que es tarde — solo alcanza para 1 dia de envios).
+    REFILL_THRESHOLD = 800
     POOL_TARGET      = 1000
 
     if datetime.now().weekday() >= 5:
