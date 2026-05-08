@@ -187,6 +187,13 @@ def init_db():
             "WHERE assigned_to IS NULL AND lead_pool = 'owner_personal'",
             (owner_id,)
         )
+        # Email contacts: backfill análogo. Todo et_contact sin dueño se asigna
+        # al Owner para que sus lotes y followups lo procesen (mantiene
+        # comportamiento histórico de pool global propiedad del Owner).
+        c.execute(
+            "UPDATE et_contacts SET assigned_to = ? WHERE assigned_to IS NULL",
+            (owner_id,)
+        )
 
     # ─── LOG DE ACCESO TL A LEADS (auditoría de coaching) ──────
     # Cuando el TL abre un lead específico, queda registrado.

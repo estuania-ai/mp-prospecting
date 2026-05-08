@@ -220,8 +220,10 @@ def _send_email(to_email: str, subject: str, body: str,
                 for_user_id: int | None = None) -> bool:
     """
     Delega a _send_smtp de email_tool para enviar el HTML animado completo.
-    Si se pasa `for_user_id`, usa las credenciales SMTP y firma del Sales
-    correspondiente (cada Sales envía desde su propio Gmail).
+    Si se pasa `for_user_id`:
+      - Owner → usa env vars legacy (SMTP_USER/SMTP_PASS), sin firma per-user.
+      - Sales/TL → resuelve sus creds; si no las tiene, skipea (no spoofea
+        desde el SMTP del Owner).
     """
     import os
     from routes.email_tool import _send_smtp
@@ -230,12 +232,23 @@ def _send_email(to_email: str, subject: str, body: str,
         'BOOKING_URL',
         'https://calendly.com/juansebastian-pinto/mercadopago'
     )
-    user_creds = _resolve_user_creds(for_user_id) if for_user_id else None
-    if for_user_id and not user_creds:
-        logger.warning(
-            f"[EmailAuto] user_id={for_user_id} sin SMTP configurado — no se envía"
-        )
-        return False
+    user_creds = None
+    if for_user_id:
+        conn = get_db()
+        urow = conn.execute(
+            "SELECT role FROM users WHERE id = ?", (for_user_id,)
+        ).fetchone()
+        conn.close()
+        if urow and urow['role'] == 'owner':
+            # Owner mantiene flujo histórico: env vars + firma estática
+            user_creds = None
+        else:
+            user_creds = _resolve_user_creds(for_user_id)
+            if not user_creds:
+                logger.warning(
+                    f"[EmailAuto] user_id={for_user_id} (Sales/TL) sin SMTP — no se envía"
+                )
+                return False
 
     result = _send_smtp(
         to_email=to_email,
@@ -1973,6 +1986,25 @@ def run_intel_scraping():
             f'[Refill] Completado. Pool: {pool_final}/{POOL_TARGET} '
             f'({total_saved} leads nuevos agregados).'
         )
+
+        # Backfill: asignar al Owner los contactos recién scrapeados que
+        # quedaron con assigned_to=NULL. Mantiene el flujo histórico de
+        # "el pool de email es del Owner por default".
+        try:
+            conn_bf = get_db()
+            owner = conn_bf.execute(
+                "SELECT id FROM users WHERE role='owner' AND status='active' "
+                "ORDER BY id ASC LIMIT 1"
+            ).fetchone()
+            if owner:
+                conn_bf.execute(
+                    "UPDATE et_contacts SET assigned_to = ? WHERE assigned_to IS NULL",
+                    (owner['id'],)
+                )
+                conn_bf.commit()
+            conn_bf.close()
+        except Exception as e:
+            logger.warning(f'[Refill] Backfill assigned_to falló: {e}')
     return total_saved
 
 
@@ -1989,8 +2021,10 @@ def _run_email_batch_for_user(batch_size: int, lote_name: str,
     user_id = user['id'] if user else None
     user_label = f" · {user.get('full_name') or user.get('email')}" if user else ""
 
-    # Si es per-user, validamos creds antes de gastar queries
-    if user_id is not None:
+    # Si es per-user, validamos creds antes de gastar queries.
+    # Owner usa env vars legacy → se permite continuar sin smtp_user en su perfil.
+    user_role = (user or {}).get('role') or ''
+    if user_id is not None and user_role != 'owner':
         creds = _resolve_user_creds(user_id)
         if not creds:
             logger.warning(f"[{lote_name}{user_label}] Sin SMTP — skip")
@@ -2349,12 +2383,21 @@ def run_followup():
 
         # Enviar con el mismo pipeline que los emails de prospección:
         # header GIF animado + POS GIF en firma + foto de firma (todos via CID)
-        # Per-Sales: si el contacto está asignado a un user, usamos su SMTP.
+        # Per-Sales: resolver creds del dueño del contacto.
+        # Owner → env legacy; Sales/TL → sus creds; sin creds → skip.
         owner_uid = c['assigned_to'] if 'assigned_to' in c.keys() else None
-        user_creds = _resolve_user_creds(owner_uid) if owner_uid else None
-        if owner_uid and not user_creds:
-            logger.warning(f'[EmailAuto] followup skip — user {owner_uid} sin SMTP')
-            continue
+        user_creds = None
+        if owner_uid:
+            urow = conn.execute(
+                "SELECT role FROM users WHERE id = ?", (owner_uid,)
+            ).fetchone()
+            if urow and urow['role'] == 'owner':
+                user_creds = None  # env vars legacy
+            else:
+                user_creds = _resolve_user_creds(owner_uid)
+                if not user_creds:
+                    logger.warning(f'[EmailAuto] followup skip — user {owner_uid} sin SMTP')
+                    continue
         result = _send_smtp_followup(
             to_email=email,
             subject=subject,
