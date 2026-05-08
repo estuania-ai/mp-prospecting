@@ -90,12 +90,12 @@ def get_users_active_for_slot(slot_field: str) -> list:
         return []
     conn = get_db()
     rows = conn.execute(f'''
-        SELECT u.id, u.full_name, u.email, u.role, u.evolution_instance,
+        SELECT u.id, u.name as full_name, u.email, u.role, u.evolution_instance,
                COALESCE(c.daily_limit, 50) as daily_limit
         FROM user_scheduler_config c
         JOIN users u ON u.id = c.user_id
         WHERE c.{slot_field} = 1
-          AND u.is_active = 1
+          AND u.status = 'active'
           AND u.role IN ('sales','owner','tl')
     ''').fetchall()
     conn.close()

@@ -60,7 +60,7 @@ def get_prospects():
                COUNT(CASE WHEN t.completada=0 THEN 1 END) as tareas_pendientes,
                COUNT(t.id) as total_tareas,
                (SELECT assigned_to FROM leads WHERE id = p.lead_id) as assigned_to_user_id,
-               (SELECT u.full_name FROM users u JOIN leads l ON l.assigned_to = u.id WHERE l.id = p.lead_id) as assigned_to_name
+               (SELECT u.name as full_name FROM users u JOIN leads l ON l.assigned_to = u.id WHERE l.id = p.lead_id) as assigned_to_name
         FROM prospects p
         LEFT JOIN tasks t ON p.id = t.prospect_id
         WHERE 1=1 {where_role} {extra_where}
@@ -84,7 +84,7 @@ def stats_by_sales():
     if role == 'sales':
         # Sales: solo sus propios stats
         rows = conn.execute("""
-            SELECT u.id as user_id, u.full_name, u.email,
+            SELECT u.id as user_id, u.name as full_name, u.email,
                    COUNT(DISTINCT p.id) as total,
                    SUM(CASE WHEN p.estado='en_seguimiento' THEN 1 ELSE 0 END) as en_seguimiento,
                    SUM(CASE WHEN p.estado='reunion_agendada' THEN 1 ELSE 0 END) as reunion_agendada,
@@ -100,7 +100,7 @@ def stats_by_sales():
     else:
         # Owner/TL: por cada Sales activo
         rows = conn.execute("""
-            SELECT u.id as user_id, u.full_name, u.email,
+            SELECT u.id as user_id, u.name as full_name, u.email,
                    COUNT(DISTINCT p.id) as total,
                    SUM(CASE WHEN p.estado='en_seguimiento' THEN 1 ELSE 0 END) as en_seguimiento,
                    SUM(CASE WHEN p.estado='reunion_agendada' THEN 1 ELSE 0 END) as reunion_agendada,
@@ -110,9 +110,9 @@ def stats_by_sales():
             FROM users u
             LEFT JOIN leads l ON l.assigned_to = u.id
             LEFT JOIN prospects p ON p.lead_id = l.id
-            WHERE u.role IN ('sales','owner') AND u.is_active = 1
+            WHERE u.role IN ('sales','owner') AND u.status = 'active'
             GROUP BY u.id
-            ORDER BY total DESC, u.full_name ASC
+            ORDER BY total DESC, u.name ASC
         """).fetchall()
 
     by_sales = [dict(r) for r in rows]

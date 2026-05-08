@@ -2204,7 +2204,7 @@ def contacts_stats_by_sales():
 
     if role == 'sales':
         rows = conn.execute("""
-            SELECT u.id as user_id, u.full_name, u.email,
+            SELECT u.id as user_id, u.name as full_name, u.email,
                    COUNT(DISTINCT c.id) as total,
                    SUM(CASE WHEN c.campaign_status IN ('no_enviado','pendiente') THEN 1 ELSE 0 END) as pendientes,
                    SUM(CASE WHEN c.campaign_status='enviado' THEN 1 ELSE 0 END) as enviados,
@@ -2217,7 +2217,7 @@ def contacts_stats_by_sales():
         """, (current_user.id,)).fetchall()
     else:
         rows = conn.execute("""
-            SELECT u.id as user_id, u.full_name, u.email,
+            SELECT u.id as user_id, u.name as full_name, u.email,
                    COUNT(DISTINCT c.id) as total,
                    SUM(CASE WHEN c.campaign_status IN ('no_enviado','pendiente') THEN 1 ELSE 0 END) as pendientes,
                    SUM(CASE WHEN c.campaign_status='enviado' THEN 1 ELSE 0 END) as enviados,
@@ -2227,7 +2227,7 @@ def contacts_stats_by_sales():
             LEFT JOIN et_contacts c ON c.assigned_to = u.id
             WHERE u.status = 'active' AND u.role IN ('sales','owner')
             GROUP BY u.id
-            ORDER BY total DESC, u.full_name ASC
+            ORDER BY total DESC, u.name ASC
         """).fetchall()
 
     by_sales = [dict(r) for r in rows]
