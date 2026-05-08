@@ -50,7 +50,23 @@ def get_prospects():
         else:
             try:
                 uid = int(assigned_to)
-                extra_where = ' AND p.lead_id IN (SELECT id FROM leads WHERE assigned_to = ?)'
+                # ¿uid es el Owner? Si lo es, incluimos prospects manuales sin lead
+                # (históricamente eran del Owner por default).
+                owner_row = conn.execute(
+                    "SELECT id FROM users WHERE role='owner' AND status='active' "
+                    "ORDER BY id ASC LIMIT 1"
+                ).fetchone()
+                is_owner_filter = owner_row and owner_row['id'] == uid
+                if is_owner_filter:
+                    extra_where = (
+                        ' AND ('
+                        '  p.lead_id IN (SELECT id FROM leads WHERE assigned_to = ?)'
+                        '  OR p.lead_id IS NULL'
+                        '  OR p.lead_id NOT IN (SELECT id FROM leads WHERE assigned_to IS NOT NULL)'
+                        ')'
+                    )
+                else:
+                    extra_where = ' AND p.lead_id IN (SELECT id FROM leads WHERE assigned_to = ?)'
                 params = list(params) + [uid]
             except ValueError:
                 pass
@@ -116,6 +132,40 @@ def stats_by_sales():
         """).fetchall()
 
     by_sales = [dict(r) for r in rows]
+
+    # Override card del Owner: incluir prospects manuales (sin lead_id) y
+    # prospects cuyo lead tiene assigned_to=NULL. Mantiene el comportamiento
+    # histórico donde "Owner" agrupa todo lo no asignado a un Sales.
+    if role != 'sales':
+        owner_row_id = conn.execute(
+            "SELECT id FROM users WHERE role='owner' AND status='active' "
+            "ORDER BY id ASC LIMIT 1"
+        ).fetchone()
+        if owner_row_id:
+            oid = owner_row_id['id']
+            ostats = conn.execute("""
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE WHEN p.estado='en_seguimiento' THEN 1 ELSE 0 END) as en_seguimiento,
+                    SUM(CASE WHEN p.estado='reunion_agendada' THEN 1 ELSE 0 END) as reunion_agendada,
+                    SUM(CASE WHEN p.estado='cerrado' THEN 1 ELSE 0 END) as cerrados,
+                    SUM(CASE WHEN p.estado='no_logrado' THEN 1 ELSE 0 END) as no_logrados,
+                    SUM(CASE WHEN p.estado='sin_respuesta' THEN 1 ELSE 0 END) as sin_respuesta
+                FROM prospects p
+                WHERE p.lead_id IS NULL
+                   OR p.lead_id IN (SELECT id FROM leads WHERE assigned_to = ?)
+                   OR p.lead_id NOT IN (SELECT id FROM leads WHERE assigned_to IS NOT NULL)
+            """, (oid,)).fetchone()
+            if ostats:
+                for s in by_sales:
+                    if s['user_id'] == oid:
+                        s['total']            = ostats['total'] or 0
+                        s['en_seguimiento']   = ostats['en_seguimiento'] or 0
+                        s['reunion_agendada'] = ostats['reunion_agendada'] or 0
+                        s['cerrados']         = ostats['cerrados'] or 0
+                        s['no_logrados']      = ostats['no_logrados'] or 0
+                        s['sin_respuesta']    = ostats['sin_respuesta'] or 0
+                        break
 
     # Globales (todos los prospects accesibles)
     global_rows = conn.execute("""

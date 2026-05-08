@@ -181,10 +181,12 @@ def init_db():
             "UPDATE leads SET lead_pool = 'owner_personal' "
             "WHERE lead_pool IS NULL OR lead_pool = ''"
         )
-        # Asignar al Owner los huérfanos del pool personal
+        # Asignar al Owner TODOS los leads sin asignar — restaura el estado
+        # pre-multi-user donde el Owner era dueño del pool global. Esto incluye
+        # leads del pool sales_pool que nunca fueron distribuidos: si el Owner
+        # los quiere distribuir, lo hace desde "Asignar leads".
         c.execute(
-            "UPDATE leads SET assigned_to = ? "
-            "WHERE assigned_to IS NULL AND lead_pool = 'owner_personal'",
+            "UPDATE leads SET assigned_to = ? WHERE assigned_to IS NULL",
             (owner_id,)
         )
         # Email contacts: backfill análogo. Todo et_contact sin dueño se asigna
