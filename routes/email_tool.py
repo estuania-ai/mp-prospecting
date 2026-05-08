@@ -2147,6 +2147,135 @@ def get_contacts():
     return jsonify(rows)
 
 
+@email_bp.route('/generic-template', methods=['GET'])
+@login_required
+def get_generic_template():
+    """Devuelve el template guardado para emails genericos (sin rubro)."""
+    if current_user.role not in ('owner', 'tl'):
+        return jsonify({'error': 'Solo Owner/TL'}), 403
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT key, value FROM config WHERE key IN "
+        "('generic_email_subject','generic_email_body','generic_email_updated_at')"
+    ).fetchall()
+    conn.close()
+    cfg = {r['key']: r['value'] for r in rows}
+    return jsonify({
+        'subject': cfg.get('generic_email_subject', ''),
+        'body':    cfg.get('generic_email_body', ''),
+        'updated_at': cfg.get('generic_email_updated_at', ''),
+    })
+
+
+@email_bp.route('/generic-template', methods=['POST'])
+@login_required
+def save_generic_template():
+    """Guarda subject + body para emails genericos."""
+    if current_user.role not in ('owner', 'tl'):
+        return jsonify({'error': 'Solo Owner/TL'}), 403
+    data = request.get_json() or {}
+    subject = (data.get('subject') or '').strip()
+    body    = (data.get('body') or '').strip()
+    if not subject or not body:
+        return jsonify({'error': 'subject y body son requeridos'}), 400
+    if len(subject) > 200:
+        return jsonify({'error': 'subject muy largo (max 200)'}), 400
+    if len(body) > 8000:
+        return jsonify({'error': 'body muy largo (max 8000)'}), 400
+    from datetime import datetime as _dt
+    now = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
+    conn = get_db()
+    for k, v in [
+        ('generic_email_subject', subject),
+        ('generic_email_body', body),
+        ('generic_email_updated_at', now),
+    ]:
+        conn.execute(
+            "INSERT INTO config (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (k, v)
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'updated_at': now})
+
+
+@email_bp.route('/generic-stats', methods=['GET'])
+@login_required
+def generic_stats():
+    """Cuenta cuantos contactos elegibles para email generico."""
+    if current_user.role not in ('owner', 'tl'):
+        return jsonify({'error': 'Solo Owner/TL'}), 403
+    conn = get_db()
+    # Elegibles: sin rubro o rubro vacio, status no_enviado/pendiente,
+    # asignados al user (o al primer Owner si current_user es TL).
+    target_uid = current_user.id
+    if current_user.role == 'tl':
+        owner = conn.execute(
+            "SELECT id FROM users WHERE role='owner' AND status='active' "
+            "ORDER BY id ASC LIMIT 1"
+        ).fetchone()
+        if owner:
+            target_uid = owner['id']
+    n = conn.execute(
+        """SELECT COUNT(*) FROM et_contacts
+           WHERE (rubro IS NULL OR TRIM(rubro) = '')
+             AND campaign_status IN ('no_enviado','pendiente')
+             AND email IS NOT NULL AND email LIKE '%@%'
+             AND (assigned_to = ? OR assigned_to IS NULL)""",
+        (target_uid,)
+    ).fetchone()[0]
+    conn.close()
+    return jsonify({'eligibles': n, 'target_user_id': target_uid})
+
+
+@email_bp.route('/generic-batch', methods=['POST'])
+@login_required
+def trigger_generic_batch():
+    """
+    Dispara envio en background de email generico a contactos sin rubro.
+    Body opcional: { batch_size: 30 }
+    """
+    if current_user.role not in ('owner', 'tl'):
+        return jsonify({'error': 'Solo Owner/TL'}), 403
+    data = request.get_json(silent=True) or {}
+    batch_size = max(1, min(int(data.get('batch_size', 30)), 100))
+
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT key, value FROM config WHERE key IN "
+        "('generic_email_subject','generic_email_body')"
+    ).fetchall()
+    cfg = {r['key']: r['value'] for r in rows}
+    conn.close()
+    subject = (cfg.get('generic_email_subject') or '').strip()
+    body    = (cfg.get('generic_email_body') or '').strip()
+    if not subject or not body:
+        return jsonify({'error': 'No hay template generico configurado. '
+                                  'Guarda subject y body primero.'}), 400
+
+    user_id = current_user.id
+    if current_user.role == 'tl':
+        c2 = get_db()
+        owner = c2.execute(
+            "SELECT id FROM users WHERE role='owner' AND status='active' "
+            "ORDER BY id ASC LIMIT 1"
+        ).fetchone()
+        c2.close()
+        if owner:
+            user_id = owner['id']
+
+    import threading
+    def _bg():
+        try:
+            from jobs.email_automation import _run_generic_batch
+            _run_generic_batch(user_id, subject, body, batch_size)
+        except Exception as e:
+            logger.error(f'[generic-batch] {e}', exc_info=True)
+    threading.Thread(target=_bg, daemon=True).start()
+    return jsonify({'ok': True, 'message': f'Enviando hasta {batch_size} emails genericos en background'})
+
+
 @email_bp.route('/contacts/assign', methods=['POST'])
 @login_required
 def assign_contacts():

@@ -696,6 +696,9 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   <div class="nav-item" data-roles="owner" onclick="showPage('email-campanas',this,'Email · Campañas')">
     <span class="nav-icon">📤</span> Campañas
   </div>
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-generico',this,'Email · Genérico')">
+    <span class="nav-icon">✉️</span> Email genérico
+  </div>
   <div class="nav-item" data-roles="owner" onclick="showPage('email-scheduler',this,'Email · Automatización')">
     <span class="nav-icon">⏰</span> Automatización
   </div>
@@ -2676,6 +2679,66 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   </div>
 </div>
 
+<!-- ─── EMAIL · GENÉRICO (sin rubro) ─────────── -->
+<div class="page" id="page-email-generico">
+  <div class="page-header">
+    <div>
+      <div class="page-title">✉️ Email genérico</div>
+      <div class="page-sub">Para leads sin rubro (theHarvester, Páginas Amarillas listings) — usa header + firma estándar, vos cargás solo el cuerpo</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
+    <div class="card">
+      <div style="font-size:14px;font-weight:700;color:#1A1A2E;margin-bottom:14px">📝 Configurar template</div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Asunto del email</label>
+        <input id="gen-subject" placeholder="Ej: ¿Acepta MercadoPago en su negocio?"
+               style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px">
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Cuerpo del email (texto plano, podés usar {nombre} para saludo)</label>
+        <textarea id="gen-body" rows="14" placeholder="Hola {nombre},
+Te escribo desde MercadoPago para contarte cómo podés vender más con nuestros beneficios:
+- Sin costos de instalación
+- Cuotas sin interés para tus clientes
+- Acreditación al instante
+¿Te tinca conversar 5 minutos?
+Saludos,"
+                  style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px;font-family:inherit;resize:vertical"></textarea>
+      </div>
+      <div style="font-size:11px;color:#888;margin-bottom:12px">
+        💡 <strong>{nombre}</strong> se reemplaza automáticamente por "Equipo de [Negocio]" o el nombre detectado.<br>
+        🎨 El header GIF y la firma de MercadoPago se agregan solos al enviar.<br>
+        🛡️ Cooldown 30 días por dominio + máx 1 envío por dominio en este lote (anti-spam).
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="saveGenericTemplate()">💾 Guardar template</button>
+        <span id="gen-saved-info" style="font-size:11px;color:#666;align-self:center"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:14px;font-weight:700;color:#1A1A2E;margin-bottom:14px">📊 Estado</div>
+      <div style="margin-bottom:14px;padding:14px;background:#F0F9FF;border-radius:8px">
+        <div style="font-size:11px;color:#0369A1;font-weight:600;text-transform:uppercase">Leads sin rubro elegibles</div>
+        <div id="gen-eligibles" style="font-size:32px;font-weight:800;color:#0C4A6E;margin-top:4px">—</div>
+        <div style="font-size:11px;color:#0369A1">contactos disponibles</div>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Tamaño del lote a enviar ahora</label>
+        <input id="gen-batch-size" type="number" value="20" min="1" max="100"
+               style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px">
+        <div style="font-size:10px;color:#888;margin-top:4px">Recomendado 20-30 para no saturar Gmail</div>
+      </div>
+      <button class="btn btn-primary" onclick="sendGenericBatch()" style="width:100%;background:#10B981">
+        ▶ Enviar lote ahora
+      </button>
+      <button class="btn btn-ghost" onclick="loadGenericPage()" style="width:100%;margin-top:8px">↻ Actualizar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── EMAIL · SCHEDULER ─────────────────────── -->
 <div class="page" id="page-email-scheduler">
   <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
@@ -3183,6 +3246,7 @@ function showPage(id, el, label){
     'email-interesados':  function(){ loadEmailInteresados(); },
     'email-inteligencia': function(){ loadEmailInteligencia(); },
     'email-kpis':         function(){ loadEmailKpis(); },
+    'email-generico':     function(){ loadGenericPage(); },
     'email-scheduler':    function(){ loadEmailScheduler(); },
     'whatsapp':           function(){ waRefreshStatus(); waLoadMessages(); waLoadStats(); waLoadConfig(); },
   };
@@ -7557,6 +7621,68 @@ function fuenteBadge(fuente) {
   var p = palette[fuente] || { bg:'#F3F4F6', fg:'#374151', icon:'•' };
   return '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:'
     + p.bg + ';color:' + p.fg + ';white-space:nowrap">' + p.icon + ' ' + fuente + '</span>';
+}
+
+// ── Email genérico ─────────────────────────────────────────
+async function loadGenericPage(){
+  try {
+    const [tplR, statR] = await Promise.all([
+      fetch('/api/email-tool/generic-template', {credentials:'same-origin'}),
+      fetch('/api/email-tool/generic-stats',    {credentials:'same-origin'}),
+    ]);
+    const tpl  = await tplR.json();
+    const stat = await statR.json();
+    if (tpl && tpl.subject !== undefined) {
+      document.getElementById('gen-subject').value = tpl.subject || '';
+      document.getElementById('gen-body').value    = tpl.body    || '';
+      const info = document.getElementById('gen-saved-info');
+      if (info) info.textContent = tpl.updated_at ? '· última edición: ' + tpl.updated_at : '';
+    }
+    const eligEl = document.getElementById('gen-eligibles');
+    if (eligEl) eligEl.textContent = (stat && typeof stat.eligibles === 'number') ? stat.eligibles : '—';
+  } catch(e) {
+    console.error('loadGenericPage', e);
+  }
+}
+
+async function saveGenericTemplate(){
+  const subject = (document.getElementById('gen-subject').value || '').trim();
+  const body    = (document.getElementById('gen-body').value    || '').trim();
+  if (!subject) { toast('Falta asunto', 'error'); return; }
+  if (!body)    { toast('Falta cuerpo', 'error'); return; }
+  try {
+    const r = await fetch('/api/email-tool/generic-template', {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({subject, body})
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { toast(d.error || 'Error guardando', 'error'); return; }
+    toast('✓ Template guardado', 'success');
+    const info = document.getElementById('gen-saved-info');
+    if (info) info.textContent = '· última edición: ' + d.updated_at;
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+async function sendGenericBatch(){
+  const sub = (document.getElementById('gen-subject').value || '').trim();
+  const bod = (document.getElementById('gen-body').value    || '').trim();
+  if (!sub || !bod) { toast('Configurá asunto y cuerpo primero', 'error'); return; }
+  const sz  = parseInt(document.getElementById('gen-batch-size').value) || 20;
+  if (!confirm(`¿Enviar hasta ${sz} emails genéricos? Se aplican cooldowns y filtros anti-spam.`)) return;
+  try {
+    // Si los cambios no se guardaron, los guardamos primero
+    await saveGenericTemplate();
+    const r = await fetch('/api/email-tool/generic-batch', {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({batch_size: sz})
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { toast(d.error || 'Error', 'error'); return; }
+    toast('▶ ' + d.message, 'success');
+    setTimeout(loadGenericPage, 5000);
+  } catch(e){ toast('Error: '+e.message, 'error'); }
 }
 
 // ── Render tabla compacta ──────────────────────────────────

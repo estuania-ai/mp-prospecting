@@ -1921,6 +1921,107 @@ def _get_leads(rubro: str, comuna: str, max_results: int = 20,
     return 0
 
 
+def _run_generic_batch(user_id: int, subject: str, body_template: str,
+                        batch_size: int = 30) -> int:
+    """
+    Envia un lote de emails genericos a contactos sin rubro asignados al user.
+    El body_template lo carga el usuario via UI. Mantiene header GIF + firma
+    (header sale de _get_rubro_content('') que devuelve genérico).
+
+    Filtros:
+    - rubro NULL o vacio
+    - campaign_status no_enviado/pendiente
+    - assigned_to = user_id (o NULL = orphan, va al Owner)
+    - cooldown 30 dias por dominio (igual que lotes regulares)
+
+    Reusa _send_email() con rubro='' para que use plantilla genérica de header.
+    """
+    import time as _time
+    from collections import defaultdict
+    MAX_PER_DOMAIN = 1   # 1 email por dominio para evitar parecer spam masivo
+    THROTTLE       = 2
+    COOLDOWN_DAYS  = 30
+
+    if datetime.now().weekday() >= 5:
+        logger.info('[Generico] Fin de semana — sin envios (Regla L-V).')
+        return 0
+
+    logger.info(f'[Generico] Iniciando — batch {batch_size}, user_id={user_id}')
+
+    conn = get_db()
+    cooldown_clause = (
+        " AND NOT EXISTS ("
+        "   SELECT 1 FROM et_contacts c2"
+        "   WHERE LOWER(SUBSTR(c2.email, INSTR(c2.email,'@')+1)) ="
+        "         LOWER(SUBSTR(c.email,  INSTR(c.email,'@')+1))"
+        "     AND c2.campaign_status NOT IN ('no_enviado','pendiente','opt_out')"
+        "     AND c2.fecha_envio >= datetime('now', '-' || ? || ' days')"
+        " )"
+    )
+    candidatos = conn.execute(
+        f"""SELECT c.id, c.business_name, c.email
+           FROM et_contacts c
+           WHERE (c.rubro IS NULL OR TRIM(c.rubro) = '')
+             AND c.campaign_status IN ('no_enviado','pendiente')
+             AND c.email IS NOT NULL AND c.email LIKE '%@%'
+             AND (c.assigned_to = ? OR c.assigned_to IS NULL)
+             {cooldown_clause}
+           ORDER BY c.created_at ASC
+           LIMIT 500""",
+        (user_id, COOLDOWN_DAYS)
+    ).fetchall()
+    conn.close()
+
+    seen_domains: dict = defaultdict(int)
+    selected = []
+    for c in candidatos:
+        em = (c['email'] or '').lower()
+        dom = em.rsplit('@', 1)[-1] if '@' in em else ''
+        if seen_domains[dom] >= MAX_PER_DOMAIN:
+            continue
+        seen_domains[dom] += 1
+        selected.append(c)
+        if len(selected) >= batch_size:
+            break
+
+    logger.info(f'[Generico] {len(selected)} candidatos (de {len(candidatos)})')
+
+    sent = 0
+    for row in selected:
+        email = (row['email'] or '').strip()
+        if not email:
+            continue
+        # Reemplazar {nombre} en el body con saludo inteligente
+        body_final = smart_email_body_replace(body_template, row['business_name'] or '')
+        try:
+            ok = _send_email(
+                email, subject, body_final,
+                rubro='',
+                contact_name=row['business_name'] or '',
+                for_user_id=user_id,
+            )
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            followup_dt = (datetime.now() + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
+            c2 = get_db()
+            if ok:
+                c2.execute(
+                    "UPDATE et_contacts SET campaign_status='enviado', "
+                    "fecha_envio=?, proximo_seguimiento=? WHERE id=?",
+                    (now, followup_dt, row['id'])
+                )
+                sent += 1
+                logger.info(f'[Generico] ✉ {email}')
+            else:
+                logger.warning(f'[Generico] Falló: {email}')
+            c2.commit(); c2.close()
+            _time.sleep(THROTTLE)
+        except Exception as e:
+            logger.error(f'[Generico] Error {email}: {e}')
+
+    logger.info(f'[Generico] Completado: {sent}/{len(selected)} enviados')
+    return sent
+
+
 def get_leads_from_chilean_directories(rubro: str, comuna: str,
                                          max_results: int = 20) -> int:
     """
@@ -2090,11 +2191,24 @@ def run_intel_scraping():
                 saved = _get_leads(rubro, comuna, max_items, send_emails=False)
                 total_saved += saved
                 logger.info(
-                    f'[Refill] {rubro}/{comuna}: +{saved} leads '
+                    f'[Refill] {rubro}/{comuna}: +{saved} leads API '
                     f'(acum: {total_saved}/{deficit})'
                 )
             except Exception as e:
-                logger.error(f'[Refill] Error en {rubro}/{comuna}: {e}')
+                logger.error(f'[Refill] Error API en {rubro}/{comuna}: {e}')
+
+            # Suma directorios chilenos (gratis, sin API) — siempre activos
+            try:
+                cl_max = max(5, max_items // 2)  # mitad del cupo, mínimo 5
+                cl_n = get_leads_from_chilean_directories(rubro, comuna, cl_max)
+                if cl_n > 0:
+                    total_saved += cl_n
+                    logger.info(
+                        f'[Refill] {rubro}/{comuna}: +{cl_n} leads CL '
+                        f'(acum: {total_saved}/{deficit})'
+                    )
+            except Exception as e:
+                logger.debug(f'[Refill] Directorios CL en {rubro}/{comuna}: {e}')
 
         run['count'] = total_saved
         pool_final = current_pool + total_saved
