@@ -514,6 +514,8 @@ def update_prospect_estado(prospect_id):
     estado = data.get('estado', '')
     motivo_perdida = data.get('motivo_perdida', '')
     notas = data.get('notas', '')
+    # Fecha real de cierre (YYYY-MM-DD). Solo aplica si estado='cerrado'.
+    closed_at = (data.get('closed_at') or '').strip()
 
     # Mapeo estado prospecto -> estado lead
     ESTADO_LEAD_MAP = {
@@ -525,10 +527,26 @@ def update_prospect_estado(prospect_id):
     }
 
     conn = get_db()
-    conn.execute(
-        "UPDATE prospects SET estado=?, updated_at=datetime('now','localtime') WHERE id=?",
-        (estado, prospect_id)
-    )
+    if estado == 'cerrado':
+        # Si vino fecha explícita: validamos formato básico YYYY-MM-DD.
+        # Si no vino: usar el día de hoy.
+        import re as _re
+        if closed_at and not _re.match(r'^\d{4}-\d{2}-\d{2}$', closed_at):
+            closed_at = ''
+        if not closed_at:
+            closed_at = datetime.now().strftime('%Y-%m-%d')
+        conn.execute(
+            "UPDATE prospects SET estado=?, closed_at=?, "
+            "updated_at=datetime('now','localtime') WHERE id=?",
+            (estado, closed_at, prospect_id)
+        )
+    else:
+        # Cambio a otro estado: no tocamos closed_at (queda como histórico
+        # si ya estaba cerrado y se reabre, o NULL si nunca lo estuvo).
+        conn.execute(
+            "UPDATE prospects SET estado=?, updated_at=datetime('now','localtime') WHERE id=?",
+            (estado, prospect_id)
+        )
 
     # Registrar actividad
     conn.execute("""

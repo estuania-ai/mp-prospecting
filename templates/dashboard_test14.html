@@ -5135,10 +5135,16 @@ function filtrarInteresados(){
   var estado  = _intEstadoFilter;
 
   var filtered = _intAllProspects.filter(function(p){
-    // Filtro mes (por updated_at)
+    // Filtro mes:
+    //   - prospects abiertos (no cerrados) siempre pasan, para poder
+    //     seguir trabajando seguimientos sin importar la fecha del filtro
+    //   - prospects cerrados se filtran por closed_at (fecha real de cierre)
     if(mesVal){
-      var upd = (p.updated_at||p.created_at||'').slice(0,7); // YYYY-MM
-      if(upd !== mesVal) return false;
+      if(p.estado === 'cerrado'){
+        var ref = (p.closed_at || p.updated_at || p.created_at || '').slice(0,7);
+        if(ref !== mesVal) return false;
+      }
+      // si no es cerrado, no aplico filtro de fecha → siempre visible
     }
     // Filtro estado
     if(estado && p.estado !== estado) return false;
@@ -5382,6 +5388,25 @@ async function cambiarEstadoProspecto(prospId, nuevoEstado, leadId) {
   if (nuevoEstado === 'no_logrado') {
     var motivo = prompt('Motivo de no logrado (opcional):') || '';
     if (motivo) body.motivo_perdida = motivo;
+  }
+  // Si se marca como cerrado, pedir fecha real de cierre (default hoy)
+  if (nuevoEstado === 'cerrado') {
+    var hoy = new Date().toISOString().slice(0,10);
+    var fecha = prompt(
+      '¿Qué día se cerró la venta? (formato YYYY-MM-DD)\nEj: 2026-04-30',
+      hoy
+    );
+    if (fecha === null) {
+      // Cancelado: revertir el dropdown sin guardar
+      loadInteresados();
+      return;
+    }
+    fecha = (fecha || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      toast('Fecha inválida (usá YYYY-MM-DD). Se usará hoy.', 'warning');
+      fecha = hoy;
+    }
+    body.closed_at = fecha;
   }
   try {
     var r = await api('/api/prospects/' + prospId + '/estado', {

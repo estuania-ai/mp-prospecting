@@ -357,6 +357,15 @@ def init_db():
     _add_col(c, 'prospects', 'et_contact_id', 'INTEGER')
     _add_col(c, 'prospects', 'source',        "TEXT DEFAULT 'whatsapp'")
     _add_col(c, 'prospects', 'direccion',     'TEXT')
+    # Fecha real de cierre (la pregunta el usuario al marcar 'cerrado').
+    # Distinto de updated_at, que cambia con cualquier edición.
+    _add_col(c, 'prospects', 'closed_at',     'TEXT')
+    # Backfill: para prospects ya cerrados que no tienen closed_at,
+    # usar updated_at como aproximación.
+    c.execute(
+        "UPDATE prospects SET closed_at = updated_at "
+        "WHERE estado = 'cerrado' AND (closed_at IS NULL OR closed_at = '')"
+    )
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS et_campaigns (

@@ -62,6 +62,9 @@ def kpis():
     df_msg      = _date_clause('sent_at',    from_date, to_date)
     df_ls       = _date_clause('updated_at', from_date, to_date)
     df_pro      = _date_clause('updated_at', from_date, to_date)
+    # Para cerrados usamos la fecha real de cierre (closed_at).
+    # Si una fila vieja no tiene closed_at, COALESCE cae a updated_at.
+    df_pro_closed = _date_clause('COALESCE(closed_at, updated_at)', from_date, to_date)
     df_email    = _date_clause('fecha_envio', from_date, to_date)
 
     conn = get_db()
@@ -133,11 +136,12 @@ def kpis():
         GROUP BY week, year
     ''', prospects_extra_params).fetchall()}
 
-    # Cerrados por semana
+    # Cerrados por semana — agrupa por la fecha REAL de cierre (closed_at)
     _wk_cerr = {(r['week'], r['year']): r['cnt'] for r in conn.execute(f'''
-        SELECT strftime('%W', updated_at) as week, strftime('%Y', updated_at) as year,
+        SELECT strftime('%W', COALESCE(closed_at, updated_at)) as week,
+               strftime('%Y', COALESCE(closed_at, updated_at)) as year,
                COUNT(*) as cnt
-        FROM prospects WHERE estado='cerrado' {df_pro} {prospects_where_extra}
+        FROM prospects WHERE estado='cerrado' {df_pro_closed} {prospects_where_extra}
         GROUP BY week, year
     ''', prospects_extra_params).fetchall()}
 
@@ -268,7 +272,7 @@ def kpis():
             prospects_params
         ).fetchone()[0]
         prospects_cerrados = conn.execute(
-            f"SELECT COUNT(*) FROM prospects WHERE estado='cerrado' {df_pro} {prospects_filter}",
+            f"SELECT COUNT(*) FROM prospects WHERE estado='cerrado' {df_pro_closed} {prospects_filter}",
             prospects_params
         ).fetchone()[0]
         prospects_no_logrado = conn.execute(
