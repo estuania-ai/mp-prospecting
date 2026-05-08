@@ -2477,16 +2477,28 @@ def run_lote_tarde():
 
 
 def run_lote_manana_in_thread():
-    """09:00 L-V — 40 emails (Lote Mañana)"""
-    threading.Thread(target=run_email_batch, args=(40, 'Lote Mañana'),  daemon=True).start()
+    """09:00 L-V — 40 emails (Lote Mañana). Pasa slot_field para gating per-user."""
+    threading.Thread(
+        target=run_email_batch,
+        kwargs={'batch_size':40, 'lote_name':'Lote Mañana', 'slot_field':'email_lote1_active'},
+        daemon=True
+    ).start()
 
 def run_lote_mediodia_in_thread():
-    """12:00 L-V — 35 emails (Lote Mediodía)"""
-    threading.Thread(target=run_email_batch, args=(35, 'Lote Mediodía'), daemon=True).start()
+    """12:00 L-V — 35 emails (Lote Mediodía)."""
+    threading.Thread(
+        target=run_email_batch,
+        kwargs={'batch_size':35, 'lote_name':'Lote Mediodía', 'slot_field':'email_lote2_active'},
+        daemon=True
+    ).start()
 
 def run_lote_tarde_in_thread():
-    """16:00 L-V — 25 emails (Lote Tarde)"""
-    threading.Thread(target=run_email_batch, args=(25, 'Lote Tarde'),   daemon=True).start()
+    """16:00 L-V — 25 emails (Lote Tarde)."""
+    threading.Thread(
+        target=run_email_batch,
+        kwargs={'batch_size':25, 'lote_name':'Lote Tarde', 'slot_field':'email_lote3_active'},
+        daemon=True
+    ).start()
 
 # Legacy (usado por disparos manuales del dashboard)
 def run_daily_in_thread():
