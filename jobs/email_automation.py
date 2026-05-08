@@ -1922,7 +1922,10 @@ def _get_leads(rubro: str, comuna: str, max_results: int = 20,
 
 
 def _run_generic_batch(user_id: int, subject: str, body_template: str,
-                        batch_size: int = 30) -> int:
+                        batch_size: int = 30,
+                        mode: str = 'plain',
+                        wa_url: str = '',
+                        pdf_url: str = '') -> int:
     """
     Envia un lote de emails genericos a contactos sin rubro asignados al user.
     El body_template lo carga el usuario via UI. Mantiene header GIF + firma
@@ -1986,20 +1989,52 @@ def _run_generic_batch(user_id: int, subject: str, body_template: str,
 
     logger.info(f'[Generico] {len(selected)} candidatos (de {len(candidatos)})')
 
+    # Resolver creds del Owner una vez (Owner usa env legacy → user_creds=None)
+    owner_creds = None
+    try:
+        from database import get_db as _db
+        c2 = _db()
+        urow = c2.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+        c2.close()
+        if urow and urow['role'] != 'owner':
+            owner_creds = _resolve_user_creds(user_id)
+    except Exception:
+        pass
+
+    # Path al PDF para adjuntar (modo mp_html)
+    pdf_path = None
+    if mode == 'mp_html':
+        import pathlib as _pl
+        pdf_path = str(_pl.Path(__file__).parent.parent / 'static' /
+                        'email_assets' / 'beneficios_mp.pdf')
+
     sent = 0
     for row in selected:
         email = (row['email'] or '').strip()
         if not email:
             continue
-        # Reemplazar {nombre} en el body con saludo inteligente
-        body_final = smart_email_body_replace(body_template, row['business_name'] or '')
         try:
-            ok = _send_email(
-                email, subject, body_final,
-                rubro='',
-                contact_name=row['business_name'] or '',
-                for_user_id=user_id,
-            )
+            if mode == 'mp_html':
+                # Saludo inteligente para el HTML
+                from routes.email_tool import _send_mp_html_email
+                business_name_friendly = smart_business_greeting_name(
+                    row['business_name'] or ''
+                ) or 'estimado/a'
+                result = _send_mp_html_email(
+                    email, subject, business_name_friendly,
+                    wa_url=wa_url, pdf_url=pdf_url,
+                    pdf_path=pdf_path, user_creds=owner_creds,
+                )
+                ok = result.get('ok', False)
+            else:
+                # Modo plain: pipeline normal con header GIF + firma
+                body_final = smart_email_body_replace(body_template, row['business_name'] or '')
+                ok = _send_email(
+                    email, subject, body_final,
+                    rubro='',
+                    contact_name=row['business_name'] or '',
+                    for_user_id=user_id,
+                )
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             followup_dt = (datetime.now() + timedelta(hours=48)).strftime('%Y-%m-%d %H:%M:%S')
             c2 = get_db()

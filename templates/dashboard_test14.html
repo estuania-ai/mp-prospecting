@@ -2690,30 +2690,79 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
 
   <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
     <div class="card">
-      <div style="font-size:14px;font-weight:700;color:#1A1A2E;margin-bottom:14px">📝 Configurar template</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-size:14px;font-weight:700;color:#1A1A2E">📝 Configurar template</div>
+        <div style="display:flex;gap:6px;background:#F3F4F6;border-radius:8px;padding:3px">
+          <button id="mode-plain" onclick="setGenMode('plain')"
+                  style="border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;background:#fff;color:#1A1A2E;font-weight:600">📝 Texto plano</button>
+          <button id="mode-mp" onclick="setGenMode('mp_html')"
+                  style="border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;background:transparent;color:#666;font-weight:500">🎨 Template MercadoPago</button>
+        </div>
+      </div>
+
       <div style="margin-bottom:12px">
         <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Asunto del email</label>
         <input id="gen-subject" placeholder="Ej: ¿Acepta MercadoPago en su negocio?"
                style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px">
       </div>
-      <div style="margin-bottom:12px">
-        <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Cuerpo del email (texto plano, podés usar {nombre} para saludo)</label>
-        <textarea id="gen-body" rows="14" placeholder="Hola {nombre},
-Te escribo desde MercadoPago para contarte cómo podés vender más con nuestros beneficios:
-- Sin costos de instalación
-- Cuotas sin interés para tus clientes
-- Acreditación al instante
+
+      <!-- Modo plain -->
+      <div id="gen-plain-section">
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Cuerpo del email (texto plano, podés usar {nombre} para saludo)</label>
+          <textarea id="gen-body" rows="14" placeholder="Hola {nombre},
+Te escribo desde MercadoPago para contarte cómo podés vender más con nuestros beneficios.
 ¿Te tinca conversar 5 minutos?
 Saludos,"
-                  style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px;font-family:inherit;resize:vertical"></textarea>
+                    style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px;font-family:inherit;resize:vertical"></textarea>
+        </div>
+        <div style="font-size:11px;color:#888;margin-bottom:12px">
+          💡 <strong>{nombre}</strong> se reemplaza por "Equipo de [Negocio]" o nombre detectado.<br>
+          🎨 Se agrega header GIF + firma estándar de MercadoPago automáticamente.
+        </div>
       </div>
-      <div style="font-size:11px;color:#888;margin-bottom:12px">
-        💡 <strong>{nombre}</strong> se reemplaza automáticamente por "Equipo de [Negocio]" o el nombre detectado.<br>
-        🎨 El header GIF y la firma de MercadoPago se agregan solos al enviar.<br>
-        🛡️ Cooldown 30 días por dominio + máx 1 envío por dominio en este lote (anti-spam).
+
+      <!-- Modo MP HTML -->
+      <div id="gen-mp-section" style="display:none">
+        <div style="background:#FFFEF0;border:1px solid #FFE600;border-radius:10px;padding:14px;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:#1A1A2E;margin-bottom:8px">✨ Template MercadoPago listo para usar</div>
+          <div style="font-size:12px;color:#444;line-height:1.55">
+            HTML pre-armado con header animado, beneficios destacados (Point Smart 2 + cuotas + valeras), CTAs a WhatsApp y PDF de beneficios. Solo configurá los enlaces:
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+          <div>
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">📱 WhatsApp del ejecutivo</label>
+            <input id="gen-wa" placeholder="https://wa.me/56935103447"
+                   style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:12px;font-family:monospace">
+            <div style="font-size:10px;color:#888;margin-top:3px">Si vacío, usa el teléfono de Configuración</div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">📄 URL del PDF de beneficios</label>
+            <input id="gen-pdf" placeholder="/static/email_assets/beneficios_mp.pdf"
+                   style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:12px;font-family:monospace">
+            <div style="font-size:10px;color:#888;margin-top:3px">El PDF también se adjunta al email</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <a href="/static/email_assets/mp_generico.html" target="_blank"
+             style="font-size:12px;color:#009EE3;text-decoration:none">👁️ Ver preview del HTML</a>
+          <span style="color:#ccc">·</span>
+          <a href="/static/email_assets/beneficios_mp.pdf" target="_blank"
+             style="font-size:12px;color:#009EE3;text-decoration:none">📄 Ver PDF adjunto</a>
+        </div>
+        <div style="font-size:11px;color:#888;margin-bottom:12px">
+          💡 El HTML reemplaza <strong>{{NOMBRE}}</strong> con el saludo inteligente.<br>
+          🎨 Este modo NO usa el header/firma estándar — el HTML ya trae los suyos integrados.<br>
+          📎 El PDF "Beneficios MercadoPago.pdf" se adjunta al email.
+        </div>
+      </div>
+
+      <div style="font-size:11px;color:#666;margin-bottom:12px;padding:10px;background:#F9FAFB;border-radius:8px">
+        🛡️ Cooldown 30 días por dominio · máx 1 envío por dominio por lote · throttle 2s · solo L-V.
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-primary" onclick="saveGenericTemplate()">💾 Guardar template</button>
+        <button class="btn btn-primary" onclick="saveGenericTemplate()">💾 Guardar configuración</button>
         <span id="gen-saved-info" style="font-size:11px;color:#666;align-self:center"></span>
       </div>
     </div>
@@ -7624,6 +7673,27 @@ function fuenteBadge(fuente) {
 }
 
 // ── Email genérico ─────────────────────────────────────────
+let _GEN_MODE = 'plain';
+
+function setGenMode(mode){
+  _GEN_MODE = (mode === 'mp_html') ? 'mp_html' : 'plain';
+  const bp = document.getElementById('mode-plain');
+  const bm = document.getElementById('mode-mp');
+  const sp = document.getElementById('gen-plain-section');
+  const sm = document.getElementById('gen-mp-section');
+  if (_GEN_MODE === 'mp_html') {
+    if (bp) { bp.style.background='transparent'; bp.style.color='#666'; bp.style.fontWeight='500'; }
+    if (bm) { bm.style.background='#fff';        bm.style.color='#1A1A2E'; bm.style.fontWeight='600'; }
+    if (sp) sp.style.display = 'none';
+    if (sm) sm.style.display = 'block';
+  } else {
+    if (bp) { bp.style.background='#fff';        bp.style.color='#1A1A2E'; bp.style.fontWeight='600'; }
+    if (bm) { bm.style.background='transparent'; bm.style.color='#666';    bm.style.fontWeight='500'; }
+    if (sp) sp.style.display = 'block';
+    if (sm) sm.style.display = 'none';
+  }
+}
+
 async function loadGenericPage(){
   try {
     const [tplR, statR] = await Promise.all([
@@ -7635,6 +7705,11 @@ async function loadGenericPage(){
     if (tpl && tpl.subject !== undefined) {
       document.getElementById('gen-subject').value = tpl.subject || '';
       document.getElementById('gen-body').value    = tpl.body    || '';
+      const wa = document.getElementById('gen-wa');
+      const pdf = document.getElementById('gen-pdf');
+      if (wa)  wa.value  = tpl.wa_url || '';
+      if (pdf) pdf.value = tpl.pdf_url || '';
+      setGenMode(tpl.mode || 'plain');
       const info = document.getElementById('gen-saved-info');
       if (info) info.textContent = tpl.updated_at ? '· última edición: ' + tpl.updated_at : '';
     }
@@ -7648,17 +7723,19 @@ async function loadGenericPage(){
 async function saveGenericTemplate(){
   const subject = (document.getElementById('gen-subject').value || '').trim();
   const body    = (document.getElementById('gen-body').value    || '').trim();
+  const wa      = (document.getElementById('gen-wa')   || {value:''}).value.trim();
+  const pdf     = (document.getElementById('gen-pdf')  || {value:''}).value.trim();
   if (!subject) { toast('Falta asunto', 'error'); return; }
-  if (!body)    { toast('Falta cuerpo', 'error'); return; }
+  if (_GEN_MODE === 'plain' && !body) { toast('Falta cuerpo', 'error'); return; }
   try {
     const r = await fetch('/api/email-tool/generic-template', {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({subject, body})
+      body: JSON.stringify({subject, body, mode:_GEN_MODE, wa_url:wa, pdf_url:pdf})
     });
     const d = await r.json();
     if (!r.ok || !d.ok) { toast(d.error || 'Error guardando', 'error'); return; }
-    toast('✓ Template guardado', 'success');
+    toast('✓ Configuración guardada', 'success');
     const info = document.getElementById('gen-saved-info');
     if (info) info.textContent = '· última edición: ' + d.updated_at;
   } catch(e){ toast('Error: '+e.message, 'error'); }
@@ -7666,12 +7743,15 @@ async function saveGenericTemplate(){
 
 async function sendGenericBatch(){
   const sub = (document.getElementById('gen-subject').value || '').trim();
-  const bod = (document.getElementById('gen-body').value    || '').trim();
-  if (!sub || !bod) { toast('Configurá asunto y cuerpo primero', 'error'); return; }
+  if (!sub) { toast('Configurá asunto primero', 'error'); return; }
+  if (_GEN_MODE === 'plain') {
+    const bod = (document.getElementById('gen-body').value || '').trim();
+    if (!bod) { toast('Configurá el cuerpo del email', 'error'); return; }
+  }
   const sz  = parseInt(document.getElementById('gen-batch-size').value) || 20;
-  if (!confirm(`¿Enviar hasta ${sz} emails genéricos? Se aplican cooldowns y filtros anti-spam.`)) return;
+  const tipoMsg = (_GEN_MODE === 'mp_html') ? 'con template MercadoPago + PDF' : 'texto plano';
+  if (!confirm(`¿Enviar hasta ${sz} emails genéricos (${tipoMsg})? Se aplican cooldowns y filtros anti-spam.`)) return;
   try {
-    // Si los cambios no se guardaron, los guardamos primero
     await saveGenericTemplate();
     const r = await fetch('/api/email-tool/generic-batch', {
       method:'POST', credentials:'same-origin',

@@ -2147,6 +2147,141 @@ def get_contacts():
     return jsonify(rows)
 
 
+def _send_mp_html_email(to_email: str, subject: str, business_name: str,
+                        wa_url: str, pdf_url: str, pdf_path: str | None = None,
+                        user_creds: dict | None = None) -> dict:
+    """
+    Envia el email genérico de MercadoPago usando el HTML preconfigurado en
+    static/email_assets/mp_generico.html. Adjunta el PDF de beneficios.
+
+    Reemplaza {{NOMBRE}}, {{WA_URL}}, {{PDF_URL}} en el HTML antes de enviar.
+    No usa el wrapper estandar — este HTML ya trae su propio header GIF
+    (animado por CSS) y firma.
+    """
+    import os, smtplib, ssl, pathlib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.application import MIMEApplication
+
+    # Resolver creds: Owner usa env vars; Sales/TL pasan user_creds
+    smtp_host = os.getenv('SMTP_HOST', 'smtp.gmail.com')
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    if user_creds and user_creds.get('smtp_user') and user_creds.get('smtp_pass'):
+        smtp_user = user_creds['smtp_user']
+        smtp_pass = user_creds['smtp_pass']
+        from_email = user_creds.get('from_email') or smtp_user
+        from_name  = user_creds.get('from_name') or 'MercadoPago'
+    else:
+        smtp_user  = os.getenv('SMTP_USER', '')
+        smtp_pass  = os.getenv('SMTP_PASS', '')
+        from_email = os.getenv('EMAIL_FROM', smtp_user)
+        from_name  = os.getenv('EMAIL_FROM_NAME', 'Juan Sebastián Pinto')
+
+    if not smtp_user:
+        return {'ok': False, 'error': 'SMTP no configurado'}
+
+    # Cargar HTML template
+    base = pathlib.Path(__file__).parent.parent / 'static' / 'email_assets'
+    html_path = base / 'mp_generico.html'
+    if not html_path.exists():
+        return {'ok': False, 'error': 'Template HTML no encontrado'}
+    html = html_path.read_text(encoding='utf-8')
+
+    # Reemplazos
+    safe_name = (business_name or 'estimado/a').replace('<', '').replace('>', '')
+    html = html.replace('{{NOMBRE}}', safe_name)
+    html = html.replace('{{WA_URL}}', wa_url or 'https://wa.me/56935103447')
+    html = html.replace('{{PDF_URL}}', pdf_url or '#')
+
+    tracking_token = _get_or_create_tracking_token(to_email)
+    # Inyectar pixel de tracking (al final del body)
+    if '</body>' in html:
+        pixel = (
+            f'<img src="{os.getenv("APP_BASE_URL","")}/api/email-tool/track/open/'
+            f'{tracking_token}" width="1" height="1" style="display:none">'
+        )
+        html = html.replace('</body>', f'{pixel}</body>')
+
+    # MIME multipart/mixed: alternative(text+html) + adjunto PDF
+    msg = MIMEMultipart('mixed')
+    msg['Subject'] = subject
+    msg['From']    = f'{from_name} <{from_email}>'
+    msg['To']      = to_email
+
+    alt = MIMEMultipart('alternative')
+    msg.attach(alt)
+    plain_fallback = (
+        f'Hola {safe_name}!\n\n'
+        f'Te escribo desde MercadoPago. Vendé más con nuestra solución.\n\n'
+        f'WhatsApp: {wa_url}\n'
+        f'PDF beneficios: {pdf_url}\n\n'
+        f'Saludos,\n{from_name}'
+    )
+    alt.attach(MIMEText(plain_fallback, 'plain', 'utf-8'))
+    alt.attach(MIMEText(html, 'html', 'utf-8'))
+
+    # Adjuntar PDF si existe
+    if pdf_path:
+        pdf_p = pathlib.Path(pdf_path)
+        if pdf_p.exists():
+            try:
+                pdf_bytes = pdf_p.read_bytes()
+                att = MIMEApplication(pdf_bytes, _subtype='pdf')
+                att.add_header('Content-Disposition', 'attachment',
+                               filename='Beneficios MercadoPago.pdf')
+                msg.attach(att)
+            except Exception as e:
+                logger.warning(f'[MPGenerico] PDF no adjuntado: {e}')
+
+    # Envio: si hay EMAIL_LOCAL_URL, usamos proxy local (igual que _send_smtp)
+    email_local_url = os.getenv('EMAIL_LOCAL_URL', '').strip()
+    email_local_token = (os.getenv('EMAIL_LOCAL_TOKEN', '').strip()
+                         or os.getenv('FAST_LOCAL_TOKEN', '').strip())
+    if email_local_url:
+        try:
+            import requests as _req
+            resp = _req.post(
+                email_local_url.rstrip('/') + '/send-email',
+                json={
+                    'to_email':   to_email,
+                    'from_email': from_email,
+                    'subject':    subject,
+                    'raw_message': msg.as_string(),
+                },
+                headers={'X-Fast-Token': email_local_token},
+                timeout=120,
+            )
+            if resp.status_code == 401:
+                return {'ok': False, 'error': 'Token invalido en servidor local'}
+            data = resp.json()
+            if data.get('ok'):
+                return {'ok': True, 'tracking_token': tracking_token}
+            if data.get('bounced'):
+                _register_bounce(to_email, data.get('error', 'unknown'))
+            return {'ok': False, 'error': data.get('error', '?')[:300],
+                    'bounced': data.get('bounced', False)}
+        except Exception as e:
+            return {'ok': False, 'error': f'Proxy local: {str(e)[:200]}'}
+
+    # SMTP directo
+    try:
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as s:
+            s.ehlo(); s.starttls(context=ctx); s.login(smtp_user, smtp_pass)
+            refused = s.sendmail(from_email, to_email, msg.as_string())
+        if refused:
+            reason = str(refused.get(to_email, 'unknown'))
+            _register_bounce(to_email, reason)
+            return {'ok': False, 'error': f'Rebote: {reason}', 'bounced': True}
+        return {'ok': True, 'tracking_token': tracking_token}
+    except smtplib.SMTPRecipientsRefused as e:
+        reason = str(e.recipients.get(to_email, e))
+        _register_bounce(to_email, reason)
+        return {'ok': False, 'error': f'Rechazado: {reason}', 'bounced': True}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)[:200]}
+
+
 @email_bp.route('/generic-template', methods=['GET'])
 @login_required
 def get_generic_template():
@@ -2156,40 +2291,60 @@ def get_generic_template():
     conn = get_db()
     rows = conn.execute(
         "SELECT key, value FROM config WHERE key IN "
-        "('generic_email_subject','generic_email_body','generic_email_updated_at')"
+        "('generic_email_subject','generic_email_body','generic_email_updated_at',"
+        " 'generic_email_mode','generic_email_wa_url','generic_email_pdf_url')"
     ).fetchall()
     conn.close()
     cfg = {r['key']: r['value'] for r in rows}
     return jsonify({
-        'subject': cfg.get('generic_email_subject', ''),
-        'body':    cfg.get('generic_email_body', ''),
+        'subject':    cfg.get('generic_email_subject', ''),
+        'body':       cfg.get('generic_email_body', ''),
         'updated_at': cfg.get('generic_email_updated_at', ''),
+        'mode':       cfg.get('generic_email_mode', 'plain'),  # 'plain' | 'mp_html'
+        'wa_url':     cfg.get('generic_email_wa_url', ''),
+        'pdf_url':    cfg.get('generic_email_pdf_url', ''),
     })
 
 
 @email_bp.route('/generic-template', methods=['POST'])
 @login_required
 def save_generic_template():
-    """Guarda subject + body para emails genericos."""
+    """Guarda subject + body + modo (plain | mp_html) para emails genericos."""
     if current_user.role not in ('owner', 'tl'):
         return jsonify({'error': 'Solo Owner/TL'}), 403
     data = request.get_json() or {}
     subject = (data.get('subject') or '').strip()
     body    = (data.get('body') or '').strip()
-    if not subject or not body:
-        return jsonify({'error': 'subject y body son requeridos'}), 400
+    mode    = (data.get('mode') or 'plain').strip().lower()
+    wa_url  = (data.get('wa_url') or '').strip()
+    pdf_url = (data.get('pdf_url') or '').strip()
+
+    if mode not in ('plain', 'mp_html'):
+        mode = 'plain'
+    if not subject:
+        return jsonify({'error': 'subject es requerido'}), 400
+    # En modo plain el body es obligatorio. En mp_html no — el HTML viene del archivo.
+    if mode == 'plain' and not body:
+        return jsonify({'error': 'body es requerido en modo plain'}), 400
     if len(subject) > 200:
         return jsonify({'error': 'subject muy largo (max 200)'}), 400
-    if len(body) > 8000:
+    if body and len(body) > 8000:
         return jsonify({'error': 'body muy largo (max 8000)'}), 400
+
     from datetime import datetime as _dt
     now = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
     conn = get_db()
-    for k, v in [
-        ('generic_email_subject', subject),
-        ('generic_email_body', body),
+    pairs = [
+        ('generic_email_subject',    subject),
+        ('generic_email_body',       body),
+        ('generic_email_mode',       mode),
         ('generic_email_updated_at', now),
-    ]:
+    ]
+    if wa_url:
+        pairs.append(('generic_email_wa_url', wa_url))
+    if pdf_url:
+        pairs.append(('generic_email_pdf_url', pdf_url))
+    for k, v in pairs:
         conn.execute(
             "INSERT INTO config (key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -2197,7 +2352,7 @@ def save_generic_template():
         )
     conn.commit()
     conn.close()
-    return jsonify({'ok': True, 'updated_at': now})
+    return jsonify({'ok': True, 'updated_at': now, 'mode': mode})
 
 
 @email_bp.route('/generic-stats', methods=['GET'])
@@ -2244,15 +2399,35 @@ def trigger_generic_batch():
     conn = get_db()
     rows = conn.execute(
         "SELECT key, value FROM config WHERE key IN "
-        "('generic_email_subject','generic_email_body')"
+        "('generic_email_subject','generic_email_body','generic_email_mode',"
+        " 'generic_email_wa_url','generic_email_pdf_url','exec_phone')"
     ).fetchall()
     cfg = {r['key']: r['value'] for r in rows}
     conn.close()
     subject = (cfg.get('generic_email_subject') or '').strip()
     body    = (cfg.get('generic_email_body') or '').strip()
-    if not subject or not body:
-        return jsonify({'error': 'No hay template generico configurado. '
-                                  'Guarda subject y body primero.'}), 400
+    mode    = (cfg.get('generic_email_mode') or 'plain').strip().lower()
+    wa_url  = (cfg.get('generic_email_wa_url') or '').strip()
+    pdf_url = (cfg.get('generic_email_pdf_url') or '').strip()
+
+    if mode == 'mp_html':
+        if not subject:
+            return jsonify({'error': 'Falta subject'}), 400
+        # WA URL: si no esta seteado, usar exec_phone formateado a wa.me
+        if not wa_url:
+            phone = (cfg.get('exec_phone') or '').strip()
+            digits = ''.join(c for c in phone if c.isdigit())
+            wa_url = f'https://wa.me/{digits}' if digits else ''
+        # PDF URL: por defecto usar el PDF servido en static
+        import os as _os
+        if not pdf_url:
+            base_url = _os.getenv('APP_BASE_URL', '').rstrip('/')
+            pdf_url = (base_url + '/static/email_assets/beneficios_mp.pdf') if base_url \
+                      else '/static/email_assets/beneficios_mp.pdf'
+    else:
+        if not subject or not body:
+            return jsonify({'error': 'No hay template generico configurado. '
+                                      'Guarda subject y body primero.'}), 400
 
     user_id = current_user.id
     if current_user.role == 'tl':
@@ -2269,11 +2444,18 @@ def trigger_generic_batch():
     def _bg():
         try:
             from jobs.email_automation import _run_generic_batch
-            _run_generic_batch(user_id, subject, body, batch_size)
+            _run_generic_batch(
+                user_id, subject, body, batch_size,
+                mode=mode, wa_url=wa_url, pdf_url=pdf_url,
+            )
         except Exception as e:
             logger.error(f'[generic-batch] {e}', exc_info=True)
     threading.Thread(target=_bg, daemon=True).start()
-    return jsonify({'ok': True, 'message': f'Enviando hasta {batch_size} emails genericos en background'})
+    return jsonify({
+        'ok': True,
+        'message': f'Enviando hasta {batch_size} emails genericos ({mode}) en background',
+        'mode': mode,
+    })
 
 
 @email_bp.route('/contacts/assign', methods=['POST'])
