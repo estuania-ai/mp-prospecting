@@ -430,8 +430,9 @@ def wa_bot_seed_rules():
 @login_required
 def wa_bot_verify_webhook():
     """
-    Consulta a Evolution para ver qué webhook tiene configurado para nuestra
-    instancia. Útil para diagnosticar por qué no llegan eventos.
+    Consulta Evolution para ver el webhook configurado.
+    Robusta: prueba múltiples paths (Evolution v1 y v2 difieren) y maneja
+    respuestas no-JSON sin crashear.
     """
     import os
     inst = _instance_for_current_user()
@@ -439,26 +440,61 @@ def wa_bot_verify_webhook():
     api_key  = os.getenv('EVOLUTION_API_KEY', '')
     if not base_url:
         return jsonify({'ok': False, 'error': 'EVOLUTION_API_URL no configurado'}), 500
+
+    # Estado de conexión (esto suele funcionar en todas las versiones)
     try:
-        import requests
-        r = requests.get(
-            f'{base_url}/webhook/find/{inst}',
-            headers={'apikey': api_key},
-            timeout=10,
-        )
-        data = r.json() if r.content else {}
-        # Estado de conexión también
         st = ev.get_connection_state(instance=inst)
-        return jsonify({
-            'ok':                r.status_code < 300,
-            'instance':          inst,
-            'webhook_status':    r.status_code,
-            'webhook_config':    data,
-            'connection_state':  st.get('state'),
-            'expected_url':      (os.getenv('APP_BASE_URL') or '').rstrip('/') + '/api/whatsapp/webhook',
-        })
+        conn_state = st.get('state')
     except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
+        conn_state = f'error: {e}'
+
+    # Probar múltiples paths de webhook find (varía entre v1 y v2)
+    paths_to_try = [
+        f'/webhook/find/{inst}',
+        f'/webhook/{inst}/find',
+        f'/webhook/{inst}',
+    ]
+    found_data = None
+    last_status = None
+    last_body_excerpt = None
+    used_path = None
+    for path in paths_to_try:
+        try:
+            import requests
+            r = requests.get(
+                base_url + path,
+                headers={'apikey': api_key},
+                timeout=10,
+            )
+            last_status = r.status_code
+            body = r.text or ''
+            last_body_excerpt = body[:300]
+            if r.status_code < 300 and body.strip().startswith('{'):
+                try:
+                    found_data = r.json()
+                    used_path = path
+                    break
+                except Exception:
+                    pass
+        except Exception as e:
+            last_body_excerpt = f'request err: {e}'
+            continue
+
+    expected_url = (os.getenv('APP_BASE_URL') or '').rstrip('/') + '/api/whatsapp/webhook'
+
+    return jsonify({
+        'ok':                bool(found_data) or conn_state == 'open',
+        'instance':          inst,
+        'connection_state':  conn_state,
+        'webhook_config':    found_data,
+        'webhook_path_used': used_path,
+        'last_status':       last_status,
+        'last_body_excerpt': last_body_excerpt,
+        'expected_url':      expected_url,
+        'note':              ('webhook_config OK' if found_data
+                              else 'No pudimos leer la config del webhook desde Evolution. '
+                                   'Si conexión está OK y los mensajes llegan al bot, ignorá este error.'),
+    })
 
 
 @bp.post('/bot/config')

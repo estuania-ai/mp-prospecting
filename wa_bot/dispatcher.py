@@ -125,10 +125,16 @@ def _find_matching_rule(conn, user_id: int, text: str) -> dict | None:
         'ORDER BY priority ASC, id ASC',
         (user_id,)
     ).fetchall()
+    logger.info(
+        f'[BotWA-rules] msg_norm="{norm[:80]}" rules_count={len(rules)}'
+    )
     for r in rules:
         kws = [k.strip() for k in (r['keywords'] or '').lower().split(',') if k.strip()]
-        if any(kw in norm for kw in kws):
-            return dict(r)
+        for kw in kws:
+            if kw in norm:
+                logger.info(f'[BotWA-rules] MATCH "{kw}" -> rule "{r["label"]}"')
+                return dict(r)
+    logger.info(f'[BotWA-rules] NO MATCH para "{norm[:80]}"')
     return None
 
 
