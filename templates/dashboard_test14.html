@@ -10723,8 +10723,12 @@ async function botHealthCheck(){
 
   // WhatsApp connection + webhook
   try {
-    const r = await fetch('/api/whatsapp/me/bot/verify-webhook', {credentials:'same-origin'});
-    const d = await r.json();
+    const [verifyR, debugR] = await Promise.all([
+      fetch('/api/whatsapp/me/bot/verify-webhook', {credentials:'same-origin'}),
+      fetch('/api/whatsapp/webhook-debug',          {credentials:'same-origin'}),
+    ]);
+    const d  = await verifyR.json();
+    const dbg = await debugR.json();
     const waBadge = document.getElementById('health-wa-state');
     const whBadge = document.getElementById('health-webhook');
 
@@ -10746,20 +10750,27 @@ async function botHealthCheck(){
       }
     }
 
-    // Webhook
+    // Webhook health basado en eventos REALES recibidos en los ultimos 30 min
     if (whBadge) {
-      // Si tenemos webhook_config OK -> verde
-      // Si conexión está open pero no podemos leer config -> amarillo (puede funcionar)
-      // Si todo falla -> rojo
-      if (d.webhook_config && d.webhook_config.enabled !== false) {
-        whBadge.textContent = '🟢 Webhook listo';
+      const hasEvents     = dbg && dbg.has_recent_events;
+      const recentCount   = (dbg && dbg.recent_30min) || 0;
+      const hasConfig     = d.webhook_config && d.webhook_config.enabled !== false;
+      if (hasEvents) {
+        // Verde firme: estamos recibiendo eventos
+        whBadge.textContent = `🟢 Webhook OK (${recentCount} eventos 30min)`;
         whBadge.style.background = '#DCFCE7';
         whBadge.style.color = '#166534';
+        whBadge.title = `${recentCount} eventos webhook recibidos en los últimos 30 minutos`;
+      } else if (hasConfig && state === 'open') {
+        whBadge.textContent = '🟢 Webhook configurado';
+        whBadge.style.background = '#DCFCE7';
+        whBadge.style.color = '#166534';
+        whBadge.title = 'Configurado en Evolution. Esperando primer evento.';
       } else if (state === 'open') {
-        whBadge.textContent = '🟡 Webhook ?';
+        whBadge.textContent = '🟡 Webhook sin eventos';
         whBadge.style.background = '#FEF3C7';
         whBadge.style.color = '#92400E';
-        whBadge.title = 'No pudimos leer la config en Evolution. Si llegan mensajes al bot, ignorá esto.';
+        whBadge.title = 'WA conectada pero sin eventos recientes. Mandate un msg para validar.';
       } else {
         whBadge.textContent = '🔴 Webhook offline';
         whBadge.style.background = '#FEE2E2';
@@ -11000,27 +11011,91 @@ async function botRefreshKBStats(){
     const wrap = document.getElementById('bot-kb-sources');
     if (wrap) {
       const sources = d.by_source || [];
-      if (!sources.length) {
+      // También revisar uploads recientes desde localStorage para mostrar fallidos
+      let recentUploads = [];
+      try { recentUploads = JSON.parse(localStorage.getItem('bot_recent_uploads') || '[]'); } catch(e){}
+
+      if (!sources.length && !recentUploads.length) {
         wrap.innerHTML = '<span style="color:#92400E;opacity:.7">— sin documentos cargados —</span>';
       } else {
-        wrap.innerHTML = sources.map(s => {
-          // Ícono según prefijo del source: doc:* es documento, lo demás es chat
+        // Tabla con columnas: estado / nombre / entradas / acción
+        const sourceNames = new Set(sources.map(s => s.source_chat));
+        // Filtrar uploads que ya están reflejados en sources (evitar duplicados)
+        const failedUploads = recentUploads.filter(u => {
+          const src = u.is_doc ? ('doc:' + u.name) : u.name;
+          return !sourceNames.has(src) && (u.status === 'failed' || u.status === 'pending');
+        });
+
+        let html = `<table cellpadding="0" cellspacing="0" border="0" style="width:100%;font-size:11px;border-collapse:collapse">
+          <tr style="background:#FCD34D;color:#78350F">
+            <th style="padding:4px 6px;text-align:center;width:30px;border-radius:4px 0 0 4px">✓</th>
+            <th style="padding:4px 6px;text-align:left">Archivo</th>
+            <th style="padding:4px 6px;text-align:right;width:80px">Entradas</th>
+            <th style="padding:4px 6px;text-align:center;width:30px;border-radius:0 4px 4px 0"></th>
+          </tr>`;
+
+        // Sources cargados (con entradas en el KB)
+        sources.forEach(s => {
           const isDoc = (s.source_chat || '').startsWith('doc:');
           const ico = isDoc ? '📄' : '💬';
           const cleanName = (s.source_chat || '').replace(/^doc:/, '');
           const safe = cleanName.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:#fff;border-radius:6px;margin-bottom:4px;border:1px solid #FDE68A">
-            <span style="font-size:11px;color:#1A1A2E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:6px" title="${safe}">${ico} ${safe}</span>
-            <span style="font-size:10px;color:#6B7280;font-weight:600;margin-right:6px">${s.n} pares</span>
-            <button onclick="botDeleteSource('${safe.replace(/'/g, '\\\'')}', ${isDoc ? 1 : 0})" title="Eliminar este documento"
-                    style="background:none;border:none;cursor:pointer;color:#C0392B;font-size:14px;padding:0 4px">🗑</button>
-          </div>`;
-        }).join('');
+          // Estado: ✅ si tiene entradas (>0), ⚠️ si tiene 1-2 (pocas)
+          const statusIco = s.n >= 3 ? '✅' : (s.n > 0 ? '⚠️' : '❌');
+          const statusBg = s.n >= 3 ? '#DCFCE7' : (s.n > 0 ? '#FEF3C7' : '#FEE2E2');
+          html += `<tr style="background:#fff;border-top:1px solid #FDE68A">
+            <td style="padding:6px;text-align:center;font-size:14px;background:${statusBg}">${statusIco}</td>
+            <td style="padding:6px;color:#1A1A2E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px" title="${safe}">${ico} ${safe}</td>
+            <td style="padding:6px;text-align:right;color:#6B7280;font-weight:600">${s.n}</td>
+            <td style="padding:6px;text-align:center">
+              <button onclick="botDeleteSource('${safe.replace(/'/g, '\\\'')}', ${isDoc ? 1 : 0})" title="Eliminar"
+                      style="background:none;border:none;cursor:pointer;color:#C0392B;font-size:13px">🗑</button>
+            </td>
+          </tr>`;
+        });
+
+        // Uploads que fallaron (no tienen entradas en KB)
+        failedUploads.forEach(u => {
+          const safe = u.name.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+          const ico = u.is_doc ? '📄' : '💬';
+          html += `<tr style="background:#FEF2F2;border-top:1px solid #FCA5A5">
+            <td style="padding:6px;text-align:center;font-size:14px;background:#FEE2E2">❌</td>
+            <td style="padding:6px;color:#991B1B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px" title="${u.error || 'falló indexar'}">${ico} ${safe}</td>
+            <td style="padding:6px;text-align:right;color:#991B1B;font-size:10px">${u.error ? u.error.slice(0, 30) : 'fail'}</td>
+            <td style="padding:6px;text-align:center">
+              <button onclick="botDismissFailed('${safe.replace(/'/g, '\\\'')}')" title="Quitar de la lista"
+                      style="background:none;border:none;cursor:pointer;color:#6B7280;font-size:13px">✕</button>
+            </td>
+          </tr>`;
+        });
+
+        html += '</table>';
+        wrap.innerHTML = html;
       }
     }
   } catch(e){
     console.error('botRefreshKBStats', e);
   }
+}
+
+function _botRecordUpload(name, is_doc, status, error){
+  try {
+    const list = JSON.parse(localStorage.getItem('bot_recent_uploads') || '[]');
+    list.push({name, is_doc, status, error: error || null, ts: Date.now()});
+    // Mantener solo últimos 30 + descartar viejos > 1 día
+    const cutoff = Date.now() - 24*60*60*1000;
+    const filtered = list.filter(u => u.ts > cutoff).slice(-30);
+    localStorage.setItem('bot_recent_uploads', JSON.stringify(filtered));
+  } catch(e){}
+}
+
+function botDismissFailed(name){
+  try {
+    const list = JSON.parse(localStorage.getItem('bot_recent_uploads') || '[]');
+    const filtered = list.filter(u => u.name !== name);
+    localStorage.setItem('bot_recent_uploads', JSON.stringify(filtered));
+    botRefreshKBStats();
+  } catch(e){}
 }
 
 async function botDeleteSource(cleanName, isDoc){

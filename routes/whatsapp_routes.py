@@ -150,13 +150,30 @@ def _push_debug(entry: dict):
 @bp.get('/webhook-debug')
 @login_required
 def wa_webhook_debug():
-    """Devuelve los últimos N eventos de webhook recibidos (memoria volátil)."""
+    """Devuelve los últimos N eventos de webhook recibidos + métricas para health."""
     if current_user.role != 'owner':
         return jsonify({'error': 'Solo Owner'}), 403
+
+    # Calcular si hubo eventos recientes (proxy mejor que GET /webhook/find)
+    from datetime import datetime as _dt, timedelta as _td
+    threshold = _dt.now() - _td(minutes=30)
+    recent_count = 0
+    for e in _WEBHOOK_DEBUG_BUFFER:
+        try:
+            ts = _dt.strptime(e.get('_received_at', ''), '%Y-%m-%d %H:%M:%S')
+            if ts >= threshold:
+                recent_count += 1
+        except Exception:
+            pass
+
     return jsonify({
-        'events':       list(reversed(_WEBHOOK_DEBUG_BUFFER)),
-        'total_buffer': len(_WEBHOOK_DEBUG_BUFFER),
-        'note':         'Buffer en memoria — se pierde al reiniciar Railway. Si está vacío, Evolution no está pusheando.'
+        'events':           list(reversed(_WEBHOOK_DEBUG_BUFFER)),
+        'total_buffer':     len(_WEBHOOK_DEBUG_BUFFER),
+        'recent_30min':     recent_count,
+        'has_recent_events': recent_count > 0,
+        'note':             ('Recibiendo eventos en los últimos 30 min — webhook OK'
+                              if recent_count > 0
+                              else 'Sin eventos recientes. Si la WA está open, mandate un msg de prueba.'),
     })
 
 
