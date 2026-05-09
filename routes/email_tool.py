@@ -2216,35 +2216,55 @@ def _email_safe_html(html: str) -> tuple[str, list[tuple[str, str, bytes]]]:
     return html_inline, inline_imgs
 
 
-def _normalize_wa_url(raw: str) -> str:
+# Mensaje pre-cargado al hacer clic en el botón WhatsApp del email genérico.
+# Se anexa como ?text=... al wa.me/<digits>.
+MP_GENERICO_WA_PREFILL_MSG = (
+    "Hola Seba, me interesa saber más acerca del POS de Mercado Pago "
+    "y como implementarlo en mi negocio"
+)
+
+
+def _normalize_wa_url(raw: str, prefill_text: str | None = None) -> str:
     """
-    Normaliza cualquier input al formato https://wa.me/<digits>
+    Normaliza cualquier input al formato https://wa.me/<digits>[?text=<encoded>]
+
     Acepta:
       '+56931985364'              -> https://wa.me/56931985364
       '56931985364'                -> https://wa.me/56931985364
       '9 3198 5364'                -> https://wa.me/56931985364 (asume CL)
       'wa.me/56931985364'          -> https://wa.me/56931985364
-      'https://wa.me/56931985364'  -> sin cambios
+      'https://wa.me/56931985364'  -> sin cambios (preserva ?text= existente)
       '' o invalido               -> ''
+
+    Si `prefill_text` viene dado, lo anexa como ?text=<urlencoded> (a menos
+    que el URL original ya tenga ?text=).
     """
     if not raw:
         return ''
     s = raw.strip()
-    # Si ya viene como URL https/http, asegurar https
+    # Resolver URL base
     if s.lower().startswith(('http://', 'https://')):
         if 'wa.me/' in s.lower():
-            return s.replace('http://', 'https://')
-        return s  # otra URL — la dejamos
-    if s.lower().startswith('wa.me/'):
-        return 'https://' + s
-    # Si no es URL, asumir que es un teléfono
-    digits = ''.join(c for c in s if c.isdigit())
-    if not digits:
-        return ''
-    # Si parece móvil chileno sin código país (9 dígitos comienzan con 9), prepend 56
-    if len(digits) == 9 and digits.startswith('9'):
-        digits = '56' + digits
-    return f'https://wa.me/{digits}'
+            base = s.replace('http://', 'https://')
+        else:
+            return s  # otra URL — no tocar
+    elif s.lower().startswith('wa.me/'):
+        base = 'https://' + s
+    else:
+        # Asumir teléfono
+        digits = ''.join(c for c in s if c.isdigit())
+        if not digits:
+            return ''
+        if len(digits) == 9 and digits.startswith('9'):
+            digits = '56' + digits
+        base = f'https://wa.me/{digits}'
+
+    # Anexar prefill_text si corresponde y no hay texto previo
+    if prefill_text and '?text=' not in base.lower() and '&text=' not in base.lower():
+        from urllib.parse import quote_plus
+        sep = '&' if '?' in base else '?'
+        base = f'{base}{sep}text={quote_plus(prefill_text)}'
+    return base
 
 
 def _build_mp_generico_body(business_name: str, wa_url: str, pdf_url: str) -> str:
@@ -2365,8 +2385,10 @@ def _send_mp_html_email(to_email: str, subject: str, business_name: str,
     if not smtp_user:
         return {'ok': False, 'error': 'SMTP no configurado'}
 
-    # Normalizar wa_url para que siempre sea https://wa.me/<digits>
-    wa_url = _normalize_wa_url(wa_url) or 'https://wa.me/56931985364'
+    # Normalizar wa_url + anexar mensaje pre-cargado (?text=...) para que el
+    # cliente al hacer clic en el botón abra WhatsApp con texto listo para enviar
+    wa_url = _normalize_wa_url(wa_url, prefill_text=MP_GENERICO_WA_PREFILL_MSG) \
+             or _normalize_wa_url('+56931985364', prefill_text=MP_GENERICO_WA_PREFILL_MSG)
 
     # ── Construir HTML completo: wrapper estandar (header GIF + card + firma) ──
     #     con el cuerpo de 2 columnas en el medio ─────────────────────────────
