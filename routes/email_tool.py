@@ -2277,7 +2277,7 @@ def _build_mp_generico_body(business_name: str, wa_url: str, pdf_url: str) -> st
     safe_name = (business_name or 'estimado/a').replace('<', '').replace('>', '')
     return f"""
 <p style="margin:0 0 14px;font-size:15px;color:#555;">
-  Hola Equipo de <strong style="font-weight:700;color:#1A1A2E;">{safe_name}</strong>,
+  Hola <strong style="font-weight:700;color:#1A1A2E;">{safe_name}</strong>,
 </p>
 <p style="margin:0 0 22px;font-size:14px;color:#444;line-height:1.65;">
   Soy <strong style="color:#1A1A2E;">Juan Sebastián Pinto</strong> de Mercado Pago.
