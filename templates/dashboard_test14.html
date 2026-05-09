@@ -2173,18 +2173,24 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
         </div>
         <div style="margin-bottom:10px;padding:10px;background:#F0F9FF;border-radius:8px">
           <div style="font-size:12px;font-weight:600;color:#0C4A6E;margin-bottom:4px">💬 Chats reales con clientes</div>
-          <div style="font-size:10px;color:#0369A1;margin-bottom:6px">Bot aprende tu estilo de conversación</div>
-          <input type="file" id="bot-kb-file" accept=".txt" style="font-size:11px;width:100%;margin-bottom:6px">
-          <button class="btn btn-primary" onclick="botUploadKB()" style="width:100%;font-size:12px;padding:6px">⬆ Subir chat .txt</button>
+          <div style="font-size:10px;color:#0369A1;margin-bottom:6px">Bot aprende tu estilo de conversación · podés subir varios .txt a la vez</div>
+          <input type="file" id="bot-kb-file" accept=".txt" multiple style="font-size:11px;width:100%;margin-bottom:6px">
+          <button class="btn btn-primary" onclick="botUploadKB()" style="width:100%;font-size:12px;padding:6px">⬆ Subir chat(s) .txt</button>
         </div>
         <div style="margin-bottom:10px;padding:10px;background:#FEF3C7;border-radius:8px">
           <div style="font-size:12px;font-weight:600;color:#78350F;margin-bottom:4px">📄 Documentos propios (FAQ, info, brochures, precios, scripts)</div>
           <div style="font-size:10px;color:#92400E;margin-bottom:6px;line-height:1.5">
-            Formatos aceptados: <strong>.pdf .docx .xlsx .pptx .txt</strong> (max 20MB)<br>
-            Para .txt: formato <code>P: pregunta</code> / <code>R: respuesta</code> es ideal. Para PDFs/Word/Excel: el bot extrae texto y arma entradas auto.
+            Formatos aceptados: <strong>.pdf .docx .xlsx .pptx .txt</strong> (max 20MB c/u, podés subir varios a la vez)<br>
+            Para .txt: formato <code>P: pregunta</code> / <code>R: respuesta</code> es ideal. PDFs/Word/Excel/PPT: el bot extrae texto auto.
           </div>
-          <input type="file" id="bot-doc-file" accept=".txt,.pdf,.docx,.xlsx,.pptx" style="font-size:11px;width:100%;margin-bottom:6px">
-          <button class="btn btn-primary" onclick="botUploadDoc()" style="width:100%;font-size:12px;padding:6px;background:#D97706">⬆ Subir documento</button>
+          <input type="file" id="bot-doc-file" accept=".txt,.pdf,.docx,.xlsx,.pptx" multiple style="font-size:11px;width:100%;margin-bottom:6px">
+          <button class="btn btn-primary" onclick="botUploadDoc()" style="width:100%;font-size:12px;padding:6px;background:#D97706">⬆ Subir documento(s)</button>
+
+          <!-- Lista de docs cargados -->
+          <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #FBBF24">
+            <div style="font-size:11px;font-weight:600;color:#78350F;margin-bottom:6px">📚 Cargados:</div>
+            <div id="bot-kb-sources" style="font-size:11px;color:#444">— sin documentos —</div>
+          </div>
         </div>
         <div style="display:flex;gap:6px;margin-bottom:10px">
           <button class="btn btn-ghost" onclick="botClearKB()" style="flex:1;font-size:11px;padding:6px;color:#C0392B">🗑 Limpiar TODO el KB</button>
@@ -10862,54 +10868,135 @@ async function botRefreshKBStats(){
     if (_BOT_CONFIG) {
       document.getElementById('bot-llm-toggle').checked = !!_BOT_CONFIG.llm_enabled;
     }
-  } catch(e){}
+    // Render lista de sources cargados
+    const wrap = document.getElementById('bot-kb-sources');
+    if (wrap) {
+      const sources = d.by_source || [];
+      if (!sources.length) {
+        wrap.innerHTML = '<span style="color:#92400E;opacity:.7">— sin documentos cargados —</span>';
+      } else {
+        wrap.innerHTML = sources.map(s => {
+          // Ícono según prefijo del source: doc:* es documento, lo demás es chat
+          const isDoc = (s.source_chat || '').startsWith('doc:');
+          const ico = isDoc ? '📄' : '💬';
+          const cleanName = (s.source_chat || '').replace(/^doc:/, '');
+          const safe = cleanName.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:#fff;border-radius:6px;margin-bottom:4px;border:1px solid #FDE68A">
+            <span style="font-size:11px;color:#1A1A2E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:6px" title="${safe}">${ico} ${safe}</span>
+            <span style="font-size:10px;color:#6B7280;font-weight:600;margin-right:6px">${s.n} pares</span>
+            <button onclick="botDeleteSource('${safe.replace(/'/g, '\\\'')}', ${isDoc ? 1 : 0})" title="Eliminar este documento"
+                    style="background:none;border:none;cursor:pointer;color:#C0392B;font-size:14px;padding:0 4px">🗑</button>
+          </div>`;
+        }).join('');
+      }
+    }
+  } catch(e){
+    console.error('botRefreshKBStats', e);
+  }
+}
+
+async function botDeleteSource(cleanName, isDoc){
+  if (!confirm(`¿Eliminar este documento?\n\n${cleanName}`)) return;
+  const sourceFull = isDoc ? ('doc:' + cleanName) : cleanName;
+  try {
+    const r = await fetch('/api/whatsapp/bot/kb', {
+      method:'DELETE', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({source_chat: sourceFull})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      toast(`🗑 ${d.deleted} pares borrados de ${cleanName}`, 'info');
+      botRefreshKBStats();
+    } else {
+      toast(d.error || 'Error', 'error');
+    }
+  } catch(e){ toast('Error: '+e.message, 'error'); }
 }
 
 async function botUploadKB(){
   const input = document.getElementById('bot-kb-file');
-  if (!input.files || !input.files.length) { toast('Elegí un archivo .txt', 'error'); return; }
-  const f = input.files[0];
-  if (!f.name.toLowerCase().endsWith('.txt')) { toast('Solo .txt de WhatsApp', 'error'); return; }
-  const fd = new FormData();
-  fd.append('chat_file', f);
-  toast('📤 Subiendo y parseando ' + f.name + '...', 'info');
-  try {
-    const r = await fetch('/api/whatsapp/bot/kb/upload', {
-      method:'POST', credentials:'same-origin', body: fd
-    });
-    const d = await r.json();
-    if (!r.ok || !d.ok) { toast(d.error || 'Error', 'error'); return; }
-    toast(`📚 ${d.qa_pairs} pares Q→A detectados (owner=${d.detected_owner}). Indexando en background...`, 'success');
-    input.value = '';
-    setTimeout(botRefreshKBStats, 5000);
-    setTimeout(botRefreshKBStats, 15000);
-  } catch(e){ toast('Error: '+e.message, 'error'); }
+  if (!input.files || !input.files.length) { toast('Elegí archivo(s) .txt', 'error'); return; }
+  const files = Array.from(input.files);
+  for (const f of files) {
+    if (!f.name.toLowerCase().endsWith('.txt')) {
+      toast(`"${f.name}" no es .txt`, 'error');
+      return;
+    }
+  }
+  toast(`📤 Subiendo ${files.length} chat(s)...`, 'info');
+
+  let okCount = 0, errCount = 0, totalPairs = 0;
+  for (const f of files) {
+    try {
+      const fd = new FormData();
+      fd.append('chat_file', f);
+      const r = await fetch('/api/whatsapp/bot/kb/upload', {
+        method:'POST', credentials:'same-origin', body: fd
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) {
+        errCount++;
+        toast(`⚠️ ${f.name}: ${d.error || 'error'}`, 'warning');
+      } else {
+        okCount++;
+        totalPairs += (d.qa_pairs || 0);
+        toast(`📚 ${f.name}: ${d.qa_pairs} pares Q→A (owner=${d.detected_owner})`, 'success');
+      }
+    } catch(e){
+      errCount++;
+      toast(`❌ ${f.name}: ${e.message}`, 'error');
+    }
+  }
+  toast(`✅ ${okCount}/${files.length} chats OK · ${totalPairs} pares en cola de indexación`, 'success');
+  input.value = '';
+  setTimeout(botRefreshKBStats, 4000);
+  setTimeout(botRefreshKBStats, 12000);
+  setTimeout(botRefreshKBStats, 25000);
 }
 
 async function botUploadDoc(){
   const input = document.getElementById('bot-doc-file');
-  if (!input.files || !input.files.length) { toast('Elegí un archivo', 'error'); return; }
-  const f = input.files[0];
+  if (!input.files || !input.files.length) { toast('Elegí uno o más archivos', 'error'); return; }
   const ok_exts = ['.txt', '.pdf', '.docx', '.xlsx', '.pptx'];
-  const fname_lower = f.name.toLowerCase();
-  if (!ok_exts.some(e => fname_lower.endsWith(e))) {
-    toast('Formato no soportado. Acepta: ' + ok_exts.join(' / '), 'error');
-    return;
+  const files = Array.from(input.files);
+  // Validar todos antes de empezar
+  for (const f of files) {
+    if (!ok_exts.some(e => f.name.toLowerCase().endsWith(e))) {
+      toast(`"${f.name}" no es un formato válido. Acepta: ${ok_exts.join(' / ')}`, 'error');
+      return;
+    }
   }
-  const fd = new FormData();
-  fd.append('doc_file', f);
-  toast('📤 Subiendo y extrayendo texto de ' + f.name + '...', 'info');
-  try {
-    const r = await fetch('/api/whatsapp/bot/kb/upload-doc', {
-      method:'POST', credentials:'same-origin', body: fd
-    });
-    const d = await r.json();
-    if (!r.ok || !d.ok) { toast(d.error || 'Error', 'error'); return; }
-    toast(`📄 ${d.pairs} entradas detectadas (${(d.format||'?').toUpperCase()}). Indexando...`, 'success');
-    input.value = '';
-    setTimeout(botRefreshKBStats, 5000);
-    setTimeout(botRefreshKBStats, 15000);
-  } catch(e){ toast('Error: '+e.message, 'error'); }
+  toast(`📤 Subiendo ${files.length} archivo(s)...`, 'info');
+
+  let okCount = 0, errCount = 0, totalPairs = 0;
+  for (const f of files) {
+    try {
+      const fd = new FormData();
+      fd.append('doc_file', f);
+      const r = await fetch('/api/whatsapp/bot/kb/upload-doc', {
+        method:'POST', credentials:'same-origin', body: fd
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) {
+        errCount++;
+        toast(`⚠️ ${f.name}: ${d.error || 'error'}`, 'warning');
+      } else {
+        okCount++;
+        totalPairs += (d.pairs || 0);
+        toast(`📄 ${f.name}: ${d.pairs} entradas (${(d.format||'?').toUpperCase()})`, 'success');
+      }
+    } catch(e){
+      errCount++;
+      toast(`❌ ${f.name}: ${e.message}`, 'error');
+    }
+  }
+
+  toast(`✅ ${okCount}/${files.length} documentos OK · ${totalPairs} entradas en cola de indexación`, 'success');
+  input.value = '';
+  setTimeout(botRefreshKBStats, 4000);
+  setTimeout(botRefreshKBStats, 12000);
+  setTimeout(botRefreshKBStats, 25000);
 }
 
 async function botClearKB(){
