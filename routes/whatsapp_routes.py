@@ -369,7 +369,9 @@ def wa_me_setup_webhook():
     result = ev.set_webhook(webhook_url, instance=inst)
     result['webhook_url'] = webhook_url
     result['instance']    = inst
-    return jsonify(result)
+    # Si fallaron ambos formatos, devolver 502 para que el dashboard lo marque rojo
+    status = 200 if result.get('ok') else 502
+    return jsonify(result), status
 
 
 # ═══════════════════════════════════════════════════════════════════

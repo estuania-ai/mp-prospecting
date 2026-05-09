@@ -10990,10 +10990,14 @@ async function botSetupWebhook(){
       method:'POST', credentials:'same-origin'
     });
     const d = await r.json();
-    if (d.ok || d.data) {
-      toast('🔗 Webhook configurado: ' + (d.webhook_url || ''), 'success');
+    if (d.ok) {
+      const fmt = d.format ? ` (formato ${d.format})` : '';
+      toast('✅ Webhook configurado' + fmt + ': ' + (d.webhook_url || ''), 'success');
+      // Re-chequear inmediatamente para confirmar
+      setTimeout(() => { try { botVerifyWebhook(); } catch(_){} }, 1500);
     } else {
-      toast(d.error || 'Error', 'error');
+      toast('❌ Falló set_webhook: ' + (d.error || 'desconocido'), 'error');
+      console.error('[setup-webhook] respuesta:', d);
     }
   } catch(e){ toast('Error: '+e.message, 'error'); }
 }
