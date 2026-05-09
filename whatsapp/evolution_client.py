@@ -257,8 +257,14 @@ def send_message(phone: str, message: str, image_url: Optional[str] = None,
 # ── WEBHOOK ──────────────────────────────────────────────────────
 def set_webhook(webhook_url: str, instance: Optional[str] = None) -> dict:
     """
-    Configura el webhook de la instancia. Intenta primero el formato Evolution v2
-    (payload anidado en {"webhook": {...}}), si falla cae al formato v1 plano.
+    Configura el webhook de la instancia. Intenta varios formatos de payload
+    porque Evolution cambió la shape entre v1 / v2.0 / v2.1+:
+      - v2.1: {"webhook": {url, enabled, events, webhookByEvents, webhookBase64}}
+      - v2.0: {"webhook": {url, enabled, events, byEvents, base64}}
+      - v1:   {url, enabled, events}
+    Eventos en SCREAMING_SNAKE; v2 también acepta dotted lowercase pero queda
+    documentado lo primero. Probamos todos hasta que uno responda 2xx + setee
+    los events. Devuelve el response crudo del primero que aceptó.
     """
     inst = _resolve_instance(instance)
     events = [
@@ -268,8 +274,16 @@ def set_webhook(webhook_url: str, instance: Optional[str] = None) -> dict:
     ]
     url = f"{_base_url()}/webhook/set/{inst}"
 
-    # Formato v2 (anidado) — el que usan las versiones nuevas de Evolution
-    body_v2 = {
+    body_v21 = {
+        "webhook": {
+            "enabled":         True,
+            "url":             webhook_url,
+            "events":          events,
+            "webhookByEvents": False,
+            "webhookBase64":   False,
+        }
+    }
+    body_v20 = {
         "webhook": {
             "enabled":  True,
             "url":      webhook_url,
@@ -278,27 +292,41 @@ def set_webhook(webhook_url: str, instance: Optional[str] = None) -> dict:
             "base64":   False,
         }
     }
-    # Formato v1 (plano) — fallback para versiones viejas
     body_v1 = {
         "url":     webhook_url,
         "enabled": True,
         "events":  events,
     }
 
-    last_err = None
-    for label, body in (("v2", body_v2), ("v1", body_v1)):
+    attempts = []
+    for label, body in (("v2.1", body_v21), ("v2.0", body_v20), ("v1", body_v1)):
         try:
             r = requests.post(url, headers=_headers(), json=body, timeout=_timeout())
-            data = r.json() if r.content else {}
+            try:
+                data = r.json() if r.content else {}
+            except Exception:
+                data = {"_raw": r.text[:300]}
+            attempt = {
+                "format": label,
+                "status": r.status_code,
+                "body":   data,
+            }
+            attempts.append(attempt)
             if r.status_code < 300:
-                logger.info(f"[Evolution {inst}] webhook set OK con formato {label}")
-                return {"ok": True, "format": label, "data": data}
-            last_err = f"{label} status={r.status_code} body={r.text[:200]}"
-            logger.warning(f"[Evolution {inst}] webhook {label} fail: {last_err}")
+                logger.info(f"[Evolution {inst}] webhook set OK formato {label}: {data}")
+                return {
+                    "ok":       True,
+                    "format":   label,
+                    "data":     data,
+                    "attempts": attempts,
+                }
+            logger.warning(
+                f"[Evolution {inst}] webhook {label} status={r.status_code} body={r.text[:200]}"
+            )
         except Exception as e:
-            last_err = f"{label} exc={e}"
+            attempts.append({"format": label, "exception": str(e)})
             logger.warning(f"[Evolution {inst}] webhook {label} exc: {e}")
-    return {"ok": False, "error": last_err}
+    return {"ok": False, "error": "Todos los formatos fallaron", "attempts": attempts}
 
 
 # ── HEALTH CHECK ─────────────────────────────────────────────────

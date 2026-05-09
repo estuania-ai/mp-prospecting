@@ -498,10 +498,10 @@ def wa_bot_verify_webhook():
     last_status = None
     last_body_excerpt = None
     used_path = None
+    import requests as _rq
     for path in paths_to_try:
         try:
-            import requests
-            r = requests.get(
+            r = _rq.get(
                 base_url + path,
                 headers={'apikey': api_key},
                 timeout=10,
@@ -519,6 +519,37 @@ def wa_bot_verify_webhook():
         except Exception as e:
             last_body_excerpt = f'request err: {e}'
             continue
+
+    # Fallback v2: leer webhook desde /instance/fetchInstances
+    if not found_data:
+        try:
+            r = _rq.get(
+                base_url + '/instance/fetchInstances',
+                headers={'apikey': api_key},
+                params={'instanceName': inst},
+                timeout=10,
+            )
+            if r.status_code < 300:
+                body = r.json()
+                rows = body if isinstance(body, list) else [body]
+                for row in rows:
+                    name = (
+                        row.get('instance', {}).get('instanceName')
+                        or row.get('name')
+                        or row.get('instanceName')
+                    )
+                    if name == inst:
+                        wh = (
+                            row.get('Webhook')
+                            or row.get('webhook')
+                            or row.get('instance', {}).get('webhook')
+                        )
+                        if wh:
+                            found_data = wh if isinstance(wh, dict) else {'raw': wh}
+                            used_path = '/instance/fetchInstances'
+                            break
+        except Exception as e:
+            logger.warning(f'[verify-webhook] fetchInstances fail: {e}')
 
     expected_url = (os.getenv('APP_BASE_URL') or '').rstrip('/') + '/api/whatsapp/webhook'
 
