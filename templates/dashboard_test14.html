@@ -2201,7 +2201,10 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
           <div style="font-size:14px;font-weight:700;color:#1A1A2E">📋 Reglas (keyword → respuesta)</div>
-          <button class="btn btn-ghost" onclick="botNewRule()" style="font-size:12px;padding:6px 10px">+ Nueva regla</button>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost" onclick="botSeedRules()" style="font-size:11px;padding:5px 10px" title="Carga 4 reglas predefinidas (info, agendar, saludo, despedida)">⚡ Cargar predefinidas</button>
+            <button class="btn btn-ghost" onclick="botNewRule()" style="font-size:12px;padding:5px 10px">+ Nueva regla</button>
+          </div>
         </div>
         <div style="font-size:11px;color:#888;margin-bottom:10px">
           Cuando llega un mensaje, el bot busca la primera regla cuya lista de keywords matchea (case-insensitive). Menor prioridad = corre primero.
@@ -2231,6 +2234,13 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
       Si el bot no responde, usá estas dos herramientas:
       <br>1️⃣ <strong>Test manual</strong> — simula un mensaje sin pasar por Evolution.
       <br>2️⃣ <strong>Webhook events</strong> — muestra si Evolution está pusheando mensajes.
+    </div>
+
+    <div style="margin-bottom:10px">
+      <button class="btn btn-ghost" onclick="botVerifyWebhook()" style="font-size:11px;padding:6px 10px;width:100%;background:#fff;border:1px solid #FDE68A">
+        🔍 Verificar configuración del webhook en Evolution
+      </button>
+      <div id="bot-verify-result" style="display:none;font-size:10px;color:#666;background:#FAFAFA;padding:8px;border-radius:6px;margin-top:6px;font-family:monospace;white-space:pre-wrap;max-height:200px;overflow:auto"></div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
@@ -10941,6 +10951,52 @@ async function botTestMessage(){
     }
   } catch(e){
     out.textContent = 'ERROR: ' + e.message;
+  }
+}
+
+async function botSeedRules(){
+  if (!confirm('¿Cargar 4 reglas predefinidas (info, agendar, saludo, despedida)?')) return;
+  try {
+    const r = await fetch('/api/whatsapp/bot/rules/seed', {
+      method:'POST', credentials:'same-origin'
+    });
+    const d = await r.json();
+    if (d.ok) {
+      toast('⚡ ' + d.message, 'success');
+      loadBotPage();
+    } else {
+      toast(d.error || 'Error', 'error');
+    }
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+async function botVerifyWebhook(){
+  const out = document.getElementById('bot-verify-result');
+  out.style.display = 'block';
+  out.textContent = 'Consultando Evolution...';
+  try {
+    const r = await fetch('/api/whatsapp/me/bot/verify-webhook', {credentials:'same-origin'});
+    const d = await r.json();
+    out.textContent = JSON.stringify(d, null, 2);
+    if (!d.ok) {
+      toast('⚠️ Problema: ' + (d.error || 'webhook no encontrado'), 'error');
+      return;
+    }
+    const wh = d.webhook_config || {};
+    const url_set = wh.url || (wh.webhook && wh.webhook.url) || '';
+    const enabled = wh.enabled !== undefined ? wh.enabled : (wh.webhook && wh.webhook.enabled);
+    const events = wh.events || (wh.webhook && wh.webhook.events) || [];
+    let msg = '';
+    if (!url_set) msg = '❌ Evolution NO tiene webhook registrado. Click "🔗 Conectar webhook" arriba.';
+    else if (url_set !== d.expected_url) msg = `⚠️ Webhook apunta a "${url_set}" pero esperamos "${d.expected_url}". Click "🔗 Conectar webhook".`;
+    else if (!enabled) msg = '⚠️ Webhook configurado pero DESHABILITADO en Evolution.';
+    else if (!events.includes('MESSAGES_UPSERT') && !events.includes('messages.upsert')) msg = '⚠️ Webhook no escucha MESSAGES_UPSERT. Click "🔗 Conectar webhook".';
+    else if (d.connection_state !== 'open') msg = `⚠️ Estado WA: ${d.connection_state}. Reconectá WhatsApp.`;
+    else msg = '✅ Todo OK — webhook configurado, WA conectado, listo para recibir.';
+    toast(msg, msg.startsWith('✅') ? 'success' : 'warning');
+  } catch(e){
+    out.textContent = 'Error: ' + e.message;
+    toast('Error: '+e.message, 'error');
   }
 }
 

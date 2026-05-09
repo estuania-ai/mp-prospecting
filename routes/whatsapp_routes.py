@@ -337,6 +337,51 @@ def wa_me_setup_webhook():
 # ═══════════════════════════════════════════════════════════════════
 # BOT — Config + reglas + conversaciones
 # ═══════════════════════════════════════════════════════════════════
+_SEED_RULES = [
+    ('Pide info / precio',
+     'info,precio,costo,cuanto,cuánto,máquina,maquina,beneficios,detalles,interesa',
+     'Te cuento rápido: con MercadoPago Point Smart 2 cobrás con tarjeta sin '
+     'arriendo mensual, plata al instante (incluso findes), cuotas sin interés '
+     'Visa/Master, y aceptás valeras (Edenred, Pluxee, Junaeb). Te paso un PDF '
+     'con todos los beneficios 👇',
+     1, 10),
+    ('Quiere agendar reunión',
+     'reunion,reunión,agendar,llamar,hablar persona,asesor,visita,calendario',
+     'Listo, te paso mi link de calendario para que elijas el día y la hora '
+     'que más te acomode: https://calendly.com/juansebastian-pinto/mercadopago',
+     0, 20),
+    ('Saludo simple',
+     'hola,buenos dias,buenos días,buenas,hi,hey,holi',
+     'Hola! Soy Juan Sebastián de MercadoPago 👋 ¿En qué te puedo ayudar? '
+     'Si querés, te paso info sobre nuestras máquinas POS y beneficios.',
+     0, 50),
+    ('Gracias / despedida',
+     'gracias,muchas gracias,bye,chao,adios,adiós,nos vemos',
+     '¡Gracias a vos! Cualquier duda, me escribís. Que tengas un gran día 💛',
+     0, 80),
+]
+
+
+def _seed_default_rules_if_empty(user_id: int) -> int:
+    """Si el user no tiene ninguna regla, inserta las 4 seed."""
+    conn = get_db()
+    n = conn.execute(
+        'SELECT COUNT(*) FROM wa_bot_rules WHERE user_id = ?', (user_id,)
+    ).fetchone()[0]
+    if n > 0:
+        conn.close()
+        return 0
+    for label, kw, resp, send_pdf, pri in _SEED_RULES:
+        conn.execute(
+            'INSERT INTO wa_bot_rules (user_id, label, keywords, response_text, send_pdf, priority) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            (user_id, label, kw, resp, send_pdf, pri)
+        )
+    conn.commit()
+    conn.close()
+    return len(_SEED_RULES)
+
+
 @bp.get('/bot/config')
 @login_required
 def wa_bot_get_config():
@@ -348,12 +393,17 @@ def wa_bot_get_config():
         'SELECT * FROM wa_bot_config WHERE user_id = ?', (current_user.id,)
     ).fetchone()
     if not cfg:
-        # Crear con defaults
         conn.execute('INSERT INTO wa_bot_config (user_id) VALUES (?)', (current_user.id,))
         conn.commit()
         cfg = conn.execute(
             'SELECT * FROM wa_bot_config WHERE user_id = ?', (current_user.id,)
         ).fetchone()
+    conn.close()
+
+    # Auto-seed si no tiene reglas (cubre el caso del init_db que no las cargó)
+    _seed_default_rules_if_empty(current_user.id)
+
+    conn = get_db()
     rules = conn.execute(
         'SELECT * FROM wa_bot_rules WHERE user_id = ? ORDER BY priority ASC, id ASC',
         (current_user.id,)
@@ -363,6 +413,52 @@ def wa_bot_get_config():
         'config': dict(cfg),
         'rules':  [dict(r) for r in rules],
     })
+
+
+@bp.post('/bot/rules/seed')
+@login_required
+def wa_bot_seed_rules():
+    """Re-instala las 4 reglas seed por defecto."""
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    n = _seed_default_rules_if_empty(current_user.id)
+    return jsonify({'ok': True, 'seeded': n,
+                    'message': f'{n} reglas predefinidas cargadas' if n > 0 else 'Ya tenés reglas — no se cargaron seed'})
+
+
+@bp.get('/me/bot/verify-webhook')
+@login_required
+def wa_bot_verify_webhook():
+    """
+    Consulta a Evolution para ver qué webhook tiene configurado para nuestra
+    instancia. Útil para diagnosticar por qué no llegan eventos.
+    """
+    import os
+    inst = _instance_for_current_user()
+    base_url = os.getenv('EVOLUTION_API_URL', '').rstrip('/')
+    api_key  = os.getenv('EVOLUTION_API_KEY', '')
+    if not base_url:
+        return jsonify({'ok': False, 'error': 'EVOLUTION_API_URL no configurado'}), 500
+    try:
+        import requests
+        r = requests.get(
+            f'{base_url}/webhook/find/{inst}',
+            headers={'apikey': api_key},
+            timeout=10,
+        )
+        data = r.json() if r.content else {}
+        # Estado de conexión también
+        st = ev.get_connection_state(instance=inst)
+        return jsonify({
+            'ok':                r.status_code < 300,
+            'instance':          inst,
+            'webhook_status':    r.status_code,
+            'webhook_config':    data,
+            'connection_state':  st.get('state'),
+            'expected_url':      (os.getenv('APP_BASE_URL') or '').rstrip('/') + '/api/whatsapp/webhook',
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @bp.post('/bot/config')
