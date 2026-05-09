@@ -2487,8 +2487,23 @@ def _send_mp_html_email(to_email: str, subject: str, business_name: str,
     # ── MIME: mixed > alternative > related (html + header_gif + sig_photo + pos_gif) + pdf ──
     msg = MIMEMultipart('mixed')
     msg['Subject'] = subject
-    msg['From']    = f'{from_name} <{from_email}>'
-    msg['To']      = to_email
+
+    # Headers de identidad — usar formato "Name <email>" RFC 2047 compliant
+    # para que Gmail muestre solo el nombre y respete BIMI/DKIM/SPF.
+    from email.utils import formataddr, make_msgid
+    msg['From']     = formataddr((from_name, from_email))
+    msg['To']       = to_email
+    # Reply-To explícito → Gmail no muestra "via" ni duplica la dirección.
+    # Si hay alguien diferente que debe recibir respuestas, sobreescribir aquí.
+    msg['Reply-To'] = formataddr((from_name, from_email))
+    # Message-ID con dominio del remitente — refuerza autenticidad para Gmail
+    try:
+        msg_domain = from_email.split('@', 1)[1] if '@' in from_email else 'mercadolibre.cl'
+        msg['Message-ID'] = make_msgid(domain=msg_domain)
+    except Exception:
+        pass
+    # X-Mailer para ser explícito sobre el origen — algunos clientes lo respetan
+    msg['X-Mailer'] = 'MP Prospecting System'
 
     alt = MIMEMultipart('alternative')
     msg.attach(alt)
