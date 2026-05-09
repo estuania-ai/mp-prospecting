@@ -274,7 +274,18 @@ def set_webhook(webhook_url: str, instance: Optional[str] = None) -> dict:
     ]
     url = f"{_base_url()}/webhook/set/{inst}"
 
-    body_v21 = {
+    # Evolution v2 (flat camelCase) — confirmado por response {"ok":true,"webhook":null}
+    # cuando se manda el body anidado: el server acepta el JSON pero no encuentra
+    # los campos en el shape esperado y guarda un webhook vacío.
+    body_v2_flat = {
+        "enabled":         True,
+        "url":             webhook_url,
+        "events":          events,
+        "webhookByEvents": False,
+        "webhookBase64":   False,
+    }
+    # Evolution v2 (anidado, algunas versiones intermedias lo aceptan)
+    body_v2_nested = {
         "webhook": {
             "enabled":         True,
             "url":             webhook_url,
@@ -283,15 +294,7 @@ def set_webhook(webhook_url: str, instance: Optional[str] = None) -> dict:
             "webhookBase64":   False,
         }
     }
-    body_v20 = {
-        "webhook": {
-            "enabled":  True,
-            "url":      webhook_url,
-            "events":   events,
-            "byEvents": False,
-            "base64":   False,
-        }
-    }
+    # v1 plano legacy
     body_v1 = {
         "url":     webhook_url,
         "enabled": True,
@@ -299,7 +302,11 @@ def set_webhook(webhook_url: str, instance: Optional[str] = None) -> dict:
     }
 
     attempts = []
-    for label, body in (("v2.1", body_v21), ("v2.0", body_v20), ("v1", body_v1)):
+    for label, body in (
+        ("v2-flat",   body_v2_flat),
+        ("v2-nested", body_v2_nested),
+        ("v1",        body_v1),
+    ):
         try:
             r = requests.post(url, headers=_headers(), json=body, timeout=_timeout())
             try:
@@ -312,14 +319,26 @@ def set_webhook(webhook_url: str, instance: Optional[str] = None) -> dict:
                 "body":   data,
             }
             attempts.append(attempt)
+            # Evolution v2 puede responder 200 + {"ok":true,"webhook":null} cuando
+            # ignora el body por shape incorrecta. Validamos que efectivamente
+            # haya guardado la URL antes de aceptar.
             if r.status_code < 300:
-                logger.info(f"[Evolution {inst}] webhook set OK formato {label}: {data}")
-                return {
-                    "ok":       True,
-                    "format":   label,
-                    "data":     data,
-                    "attempts": attempts,
-                }
+                wh = data.get("webhook") if isinstance(data, dict) else None
+                saved_url = (
+                    (wh or {}).get("url") if isinstance(wh, dict)
+                    else (data.get("url") if isinstance(data, dict) else None)
+                )
+                if saved_url == webhook_url or (wh and wh != {} and wh is not None):
+                    logger.info(f"[Evolution {inst}] webhook set OK formato {label}: {data}")
+                    return {
+                        "ok":       True,
+                        "format":   label,
+                        "data":     data,
+                        "attempts": attempts,
+                    }
+                logger.warning(
+                    f"[Evolution {inst}] webhook {label} 200 pero NO persistido (webhook={wh}); probando siguiente"
+                )
             logger.warning(
                 f"[Evolution {inst}] webhook {label} status={r.status_code} body={r.text[:200]}"
             )
