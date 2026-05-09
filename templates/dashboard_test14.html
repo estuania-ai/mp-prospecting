@@ -2171,10 +2171,22 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
           Subí <strong>exports .txt</strong> de tus chats con clientes. El bot aprende tu estilo y responde imitándote cuando no hay match de reglas.
           <br><span style="color:#888">Cómo exportar: WhatsApp → chat → ⋮ → Más → <strong>Exportar chat</strong> → Sin medios.</span>
         </div>
-        <input type="file" id="bot-kb-file" accept=".txt" style="font-size:11px;margin-bottom:8px;width:100%">
+        <div style="margin-bottom:10px;padding:10px;background:#F0F9FF;border-radius:8px">
+          <div style="font-size:12px;font-weight:600;color:#0C4A6E;margin-bottom:4px">💬 Chats reales con clientes</div>
+          <div style="font-size:10px;color:#0369A1;margin-bottom:6px">Bot aprende tu estilo de conversación</div>
+          <input type="file" id="bot-kb-file" accept=".txt" style="font-size:11px;width:100%;margin-bottom:6px">
+          <button class="btn btn-primary" onclick="botUploadKB()" style="width:100%;font-size:12px;padding:6px">⬆ Subir chat .txt</button>
+        </div>
+        <div style="margin-bottom:10px;padding:10px;background:#FEF3C7;border-radius:8px">
+          <div style="font-size:12px;font-weight:600;color:#78350F;margin-bottom:4px">📄 Documentos propios (FAQ, info productos, scripts)</div>
+          <div style="font-size:10px;color:#92400E;margin-bottom:6px">
+            Formato preferido: <code>P: pregunta</code> / <code>R: respuesta</code> (también acepta Markdown <code>##</code> o párrafos sueltos).
+          </div>
+          <input type="file" id="bot-doc-file" accept=".txt" style="font-size:11px;width:100%;margin-bottom:6px">
+          <button class="btn btn-primary" onclick="botUploadDoc()" style="width:100%;font-size:12px;padding:6px;background:#D97706">⬆ Subir documento .txt</button>
+        </div>
         <div style="display:flex;gap:6px;margin-bottom:10px">
-          <button class="btn btn-primary" onclick="botUploadKB()" style="flex:1;font-size:12px;padding:8px">⬆ Subir e indexar</button>
-          <button class="btn btn-ghost" onclick="botClearKB()" style="font-size:12px;padding:8px;color:#C0392B">🗑 Limpiar todo</button>
+          <button class="btn btn-ghost" onclick="botClearKB()" style="flex:1;font-size:11px;padding:6px;color:#C0392B">🗑 Limpiar TODO el KB</button>
         </div>
         <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;padding:8px;background:#F9FAFB;border-radius:8px">
           <input type="checkbox" id="bot-llm-toggle" onchange="botToggleLLM()">
@@ -10826,6 +10838,26 @@ async function botUploadKB(){
     input.value = '';
     setTimeout(botRefreshKBStats, 5000);
     setTimeout(botRefreshKBStats, 15000);
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+async function botUploadDoc(){
+  const input = document.getElementById('bot-doc-file');
+  if (!input.files || !input.files.length) { toast('Elegí un archivo .txt', 'error'); return; }
+  const f = input.files[0];
+  if (!f.name.toLowerCase().endsWith('.txt')) { toast('Solo .txt', 'error'); return; }
+  const fd = new FormData();
+  fd.append('doc_file', f);
+  toast('📤 Subiendo documento ' + f.name + '...', 'info');
+  try {
+    const r = await fetch('/api/whatsapp/bot/kb/upload-doc', {
+      method:'POST', credentials:'same-origin', body: fd
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { toast(d.error || 'Error', 'error'); return; }
+    toast(`📄 ${d.pairs} entradas FAQ detectadas. Indexando en background...`, 'success');
+    input.value = '';
+    setTimeout(botRefreshKBStats, 5000);
   } catch(e){ toast('Error: '+e.message, 'error'); }
 }
 

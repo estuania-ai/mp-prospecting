@@ -488,6 +488,63 @@ def wa_bot_kb_upload():
     })
 
 
+@bp.post('/bot/kb/upload-doc')
+@login_required
+def wa_bot_kb_upload_doc():
+    """
+    Sube un documento .txt con info propia (FAQ, scripts, productos, etc.).
+    Parser detecta automáticamente:
+    - Formato P:/R: (Q&A explícito)
+    - Markdown ## headings
+    - Free-form (párrafos separados por doble salto)
+    Indexa en wa_bot_kb con prefijo 'doc:' en source_chat.
+    """
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    if 'doc_file' not in request.files:
+        return jsonify({'error': 'No se envió archivo'}), 400
+    f = request.files['doc_file']
+    if not f or not f.filename:
+        return jsonify({'error': 'Archivo vacío'}), 400
+    if not f.filename.lower().endswith('.txt'):
+        return jsonify({'error': 'Solo .txt por ahora'}), 400
+
+    raw = f.read()
+    if len(raw) > 5 * 1024 * 1024:
+        return jsonify({'error': 'Max 5MB'}), 400
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeDecodeError:
+        try:
+            text = raw.decode('latin-1')
+        except Exception:
+            return jsonify({'error': 'No se pudo decodificar'}), 400
+
+    from wa_bot.parser import parse_faq_document
+    pairs = parse_faq_document(text)
+    if not pairs:
+        return jsonify({'error': 'No se detectaron preguntas/respuestas en el documento'}), 400
+
+    source = f'doc:{f.filename[:200]}'
+
+    import threading
+    def _index_bg():
+        try:
+            from wa_bot.rag import index_qa_pairs
+            saved = index_qa_pairs(current_user.id, source, pairs)
+            logger.info(f'[Bot KB Doc] {f.filename}: {saved} pares indexados')
+        except Exception as e:
+            logger.error(f'[Bot KB Doc] index fail: {e}', exc_info=True)
+    threading.Thread(target=_index_bg, daemon=True).start()
+
+    return jsonify({
+        'ok':       True,
+        'filename': f.filename,
+        'pairs':    len(pairs),
+        'message':  f'Indexando {len(pairs)} entradas del documento en background.',
+    })
+
+
 @bp.get('/bot/kb/stats')
 @login_required
 def wa_bot_kb_stats():

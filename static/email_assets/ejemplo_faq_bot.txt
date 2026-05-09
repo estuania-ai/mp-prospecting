@@ -1,0 +1,51 @@
+# FAQ MercadoPago — Documento ejemplo para el Bot WhatsApp
+# Formato: P: pregunta / R: respuesta (multilínea OK)
+# Subí este archivo en Bot WhatsApp → Knowledge Base → Documentos propios
+
+P: ¿Cuál es la máquina que ofrece MercadoPago?
+R: Trabajamos con la Point Smart 2, una máquina de cobro autónoma con pantalla táctil, 4G + Wi-Fi, multiadquirencia. El equipo es 100% tuyo, sin arriendo mensual.
+
+P: ¿Cuánto cuesta la máquina?
+R: La inversión depende del plan que elijas. Te dejo mi calendario para coordinar una llamada corta donde te paso valores actualizados según tu rubro y volumen de ventas: https://calendly.com/juansebastian-pinto/mercadopago
+
+P: ¿Cuál es la comisión por transacción?
+R: La comisión varía según el medio de pago (débito, crédito, cuotas) y el rubro del negocio. En la reunión te muestro la tabla completa para tu caso. Sin letra chica, todo transparente.
+
+P: ¿Necesito tener cuenta MercadoPago para usar la máquina?
+R: Sí, te ayudamos a abrir la cuenta MercadoPago en el mismo proceso. Es gratis y queda activa al toque.
+
+P: ¿La plata cuándo me llega?
+R: Al instante. Apenas se cobra una venta, la plata aparece en tu cuenta MercadoPago — incluso fines de semana y feriados. Después la podés transferir a tu banco habitual sin costo.
+
+P: ¿Acepta tarjetas internacionales?
+R: Sí, todas las tarjetas Visa, Mastercard, American Express, Diners. Y también billeteras digitales internacionales como Google Pay, Apple Pay, Samsung Pay.
+
+P: ¿Acepta valeras y tarjetas de comida?
+R: Sí: Edenred, Pluxee, Junaeb. Sin necesidad de equipos extra.
+
+P: ¿Funciona sin internet?
+R: La máquina tiene 4G integrado, así que funciona aunque se caiga el Wi-Fi. Y es multiadquirencia (Entel + otras). En zonas sin señal igual podés cobrar con código QR.
+
+P: ¿Da boletas electrónicas?
+R: Sí, integrada con SII. Emite boleta electrónica en el momento de la venta, sin equipos extra ni licencias.
+
+P: ¿Cómo es el soporte técnico?
+R: Tenés asesor comercial directo (yo) — sin call center. Cualquier duda me escribís y respondemos en máximo 2 horas hábiles.
+
+P: ¿Hay un plazo de contrato?
+R: No. Cuando dejás de usar la máquina, simplemente la dejás de usar. Como el equipo es tuyo, no hay devolución ni penalidad.
+
+P: ¿Para qué tipo de negocio sirve?
+R: Para todos: locales de comida, retail, peluquerías, talleres, profesionales, ferias. Si vendés cosas y tu cliente paga con tarjeta, te sirve.
+
+P: ¿Puedo pagar la máquina en cuotas?
+R: Sí, hay opciones de financiamiento. Te paso los detalles en la reunión.
+
+P: ¿Cómo es la integración con mi software actual de venta?
+R: Compatible con la mayoría de POS comerciales del mercado. Si tenés un software específico, contame cuál y te confirmo si hay integración nativa.
+
+P: ¿Quién hace la instalación?
+R: La instalación la hacés vos en 2 minutos: enchufás, prendés, escaneás un QR para conectarla a tu cuenta. Si necesitás apoyo, te llamo y la configuramos juntos.
+
+P: ¿Cuánto demora desde que firmo hasta que tengo la máquina?
+R: Despacho 24-48 horas en RM. Regiones, 3-5 días hábiles. Cuando llegue, en 2 minutos está operativa.

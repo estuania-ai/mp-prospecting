@@ -102,6 +102,99 @@ def detect_owner(messages: list[dict], hint: str | None = None) -> str | None:
     return max(counts.items(), key=lambda x: x[1])[0]
 
 
+def parse_faq_document(text: str) -> list[dict]:
+    """
+    Parsea un documento de texto plano y extrae pares Q→A.
+
+    Soporta 3 formatos (auto-detectados):
+
+    Formato A — Q&A explícito (preferido):
+        P: ¿Cuánto cobran de comisión?
+        R: La comisión depende del tipo de tarjeta...
+
+    Formato B — Markdown headings:
+        ## ¿Cuánto cobran de comisión?
+        La comisión depende del tipo de tarjeta...
+
+    Formato C — Free-form (fallback):
+        Se splittea en bloques separados por dobles saltos de línea.
+        Primer renglón se asume como "tema/pregunta", resto como "respuesta".
+
+    Returns: list of {'client_msg': str, 'owner_response': str}
+    """
+    if not text:
+        return []
+    pairs = []
+    lines = text.split('\n')
+
+    # ── Formato A: P:/R: o Q:/A: ────────────────────────────────
+    # Junto pares P+R consecutivos, soporta multilínea en R hasta el próximo P.
+    formato_qa = re.compile(r'^\s*(?:P|Q|Pregunta|Question|❓|🔸)\s*[:\-]\s*(.+)', re.IGNORECASE)
+    formato_a  = re.compile(r'^\s*(?:R|A|Respuesta|Answer|✅|🔹)\s*[:\-]\s*(.+)', re.IGNORECASE)
+
+    current_q = None
+    current_a_lines: list[str] = []
+    in_answer = False
+
+    def flush_pair():
+        nonlocal current_q, current_a_lines
+        if current_q and current_a_lines:
+            ans = '\n'.join(current_a_lines).strip()
+            if len(current_q) >= 5 and len(ans) >= 10:
+                pairs.append({'client_msg': current_q, 'owner_response': ans})
+        current_q = None
+        current_a_lines = []
+
+    for line in lines:
+        m_q = formato_qa.match(line)
+        m_a = formato_a.match(line)
+        if m_q:
+            flush_pair()
+            current_q = m_q.group(1).strip()
+            in_answer = False
+        elif m_a:
+            current_a_lines = [m_a.group(1).strip()]
+            in_answer = True
+        elif in_answer and current_q:
+            stripped = line.strip()
+            if stripped:
+                current_a_lines.append(stripped)
+    flush_pair()
+
+    if pairs:
+        return pairs
+
+    # ── Formato B: Markdown ## headings ─────────────────────────
+    blocks = re.split(r'\n(?=##\s)', text)
+    for block in blocks:
+        m = re.match(r'^##\s+(.+?)\n(.+)', block, re.DOTALL)
+        if m:
+            q = m.group(1).strip().rstrip('?').rstrip('.') + '?'
+            a = m.group(2).strip()
+            if len(q) >= 5 and len(a) >= 10:
+                pairs.append({'client_msg': q, 'owner_response': a})
+    if pairs:
+        return pairs
+
+    # ── Formato C: free-form (split por doble salto) ───────────
+    paragraphs = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
+    for para in paragraphs:
+        # Tomar la primera oración como "tema" y todo como respuesta
+        first_line = para.split('\n', 1)[0].strip()
+        # Si la primera línea es muy corta, tratarla como título; sino,
+        # generar una pregunta genérica del contenido
+        if len(first_line) < 200 and len(para) > len(first_line) + 20:
+            q = first_line
+            a = para
+        else:
+            # Bloque sin título claro: usar primeras 80 chars como pregunta
+            q = first_line[:80] + ('...' if len(first_line) > 80 else '')
+            a = para
+        if len(q) >= 5 and len(a) >= 30:
+            pairs.append({'client_msg': q, 'owner_response': a})
+    return pairs
+
+
 def extract_qa_pairs(messages: list[dict], owner: str) -> list[dict]:
     """
     Extrae pares (cliente → owner) consecutivos.
