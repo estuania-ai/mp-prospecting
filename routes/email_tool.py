@@ -2216,6 +2216,37 @@ def _email_safe_html(html: str) -> tuple[str, list[tuple[str, str, bytes]]]:
     return html_inline, inline_imgs
 
 
+def _normalize_wa_url(raw: str) -> str:
+    """
+    Normaliza cualquier input al formato https://wa.me/<digits>
+    Acepta:
+      '+56931985364'              -> https://wa.me/56931985364
+      '56931985364'                -> https://wa.me/56931985364
+      '9 3198 5364'                -> https://wa.me/56931985364 (asume CL)
+      'wa.me/56931985364'          -> https://wa.me/56931985364
+      'https://wa.me/56931985364'  -> sin cambios
+      '' o invalido               -> ''
+    """
+    if not raw:
+        return ''
+    s = raw.strip()
+    # Si ya viene como URL https/http, asegurar https
+    if s.lower().startswith(('http://', 'https://')):
+        if 'wa.me/' in s.lower():
+            return s.replace('http://', 'https://')
+        return s  # otra URL — la dejamos
+    if s.lower().startswith('wa.me/'):
+        return 'https://' + s
+    # Si no es URL, asumir que es un teléfono
+    digits = ''.join(c for c in s if c.isdigit())
+    if not digits:
+        return ''
+    # Si parece móvil chileno sin código país (9 dígitos comienzan con 9), prepend 56
+    if len(digits) == 9 and digits.startswith('9'):
+        digits = '56' + digits
+    return f'https://wa.me/{digits}'
+
+
 def _build_mp_generico_body(business_name: str, wa_url: str, pdf_url: str) -> str:
     """
     Cuerpo HTML del email genérico — solo la sección central con las
@@ -2333,6 +2364,9 @@ def _send_mp_html_email(to_email: str, subject: str, business_name: str,
 
     if not smtp_user:
         return {'ok': False, 'error': 'SMTP no configurado'}
+
+    # Normalizar wa_url para que siempre sea https://wa.me/<digits>
+    wa_url = _normalize_wa_url(wa_url) or 'https://wa.me/56931985364'
 
     # ── Construir HTML completo: wrapper estandar (header GIF + card + firma) ──
     #     con el cuerpo de 2 columnas en el medio ─────────────────────────────
@@ -2682,11 +2716,11 @@ def trigger_generic_batch():
     if mode == 'mp_html':
         if not subject:
             return jsonify({'error': 'Falta subject'}), 400
-        # WA URL: si no esta seteado, usar exec_phone formateado a wa.me
+        # WA URL: si no está seteado, usar exec_phone como base
         if not wa_url:
-            phone = (cfg.get('exec_phone') or '').strip()
-            digits = ''.join(c for c in phone if c.isdigit())
-            wa_url = f'https://wa.me/{digits}' if digits else ''
+            wa_url = (cfg.get('exec_phone') or '').strip()
+        # Normalizar a formato https://wa.me/<digits>
+        wa_url = _normalize_wa_url(wa_url)
         # PDF URL: por defecto usar el PDF servido en static
         import os as _os
         if not pdf_url:
@@ -2766,9 +2800,9 @@ def send_generic_test():
     # Resolver wa_url y pdf_url si vienen vacios (igual logica que el batch)
     if mode == 'mp_html':
         if not wa_url:
-            phone = (cfg.get('exec_phone') or '').strip()
-            digits = ''.join(c for c in phone if c.isdigit())
-            wa_url = f'https://wa.me/{digits}' if digits else ''
+            wa_url = (cfg.get('exec_phone') or '').strip()
+        # Normalizar a formato wa.me valido
+        wa_url = _normalize_wa_url(wa_url)
         if not pdf_url:
             base_url = os.getenv('APP_BASE_URL', '').rstrip('/')
             pdf_url = (base_url + '/static/email_assets/beneficios_mp.pdf') if base_url \
