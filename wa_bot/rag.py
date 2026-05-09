@@ -18,11 +18,120 @@ LLM: Claude Haiku 3.5 (claude-haiku-4-5 o claude-3-5-haiku-latest).
 """
 from __future__ import annotations
 import os
+import re
+import math
 import logging
 import struct
+from collections import Counter
 from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+# ─── TF-IDF puro Python (sin embeddings externos) ──────────────────
+# Si no tenés Voyage ni OpenAI, este retrieval funciona razonablemente bien
+# para matching de preguntas similares en el KB. Es 100% gratis.
+
+_STOPWORDS_ES = {
+    'a','al','algo','algunos','algunas','ante','antes','aquel','aquella','aquello',
+    'aqui','aquí','ahora','así','bajo','bien','cada','como','cómo','con','contra',
+    'cual','cuál','cuando','cuándo','de','del','desde','donde','dónde','el','él',
+    'ella','ellas','ellos','en','entre','era','eran','eres','es','esa','ese','eso',
+    'esos','está','están','este','esta','esto','estos','fue','fueron','ha','han',
+    'hace','hacia','hasta','hay','la','las','le','les','lo','los','más','me','mi',
+    'mis','muy','ni','no','nos','nosotros','o','os','para','pero','poco','por',
+    'porque','que','qué','quien','quién','se','sea','sean','ser','si','sí','sin',
+    'sobre','solo','sólo','son','soy','su','sus','también','tan','te','tengo',
+    'ti','tiene','todo','todos','tu','tus','un','una','unas','unos','uno','y',
+    'ya','yo',
+}
+
+
+def _tokenize(text: str) -> list[str]:
+    """Tokeniza a lower + remueve stopwords + filtra tokens muy cortos."""
+    if not text:
+        return []
+    text = text.lower()
+    # Reemplaza puntuación por espacios
+    text = re.sub(r'[^a-záéíóúñü0-9\s]', ' ', text)
+    tokens = [t for t in text.split() if len(t) >= 3 and t not in _STOPWORDS_ES]
+    return tokens
+
+
+def _bm25_score(query_tokens: list[str], doc_tokens: list[str],
+                 doc_freq: dict[str, int], total_docs: int,
+                 avg_doc_len: float, k1: float = 1.5, b: float = 0.75) -> float:
+    """
+    BM25 — variante mejorada de TF-IDF, mejor performance para retrieval.
+    Implementación pura Python.
+    """
+    if not query_tokens or not doc_tokens:
+        return 0.0
+    doc_len = len(doc_tokens)
+    doc_tf  = Counter(doc_tokens)
+    score   = 0.0
+    for term in query_tokens:
+        df = doc_freq.get(term, 0)
+        if df == 0:
+            continue
+        idf = math.log((total_docs - df + 0.5) / (df + 0.5) + 1)
+        tf  = doc_tf.get(term, 0)
+        if tf == 0:
+            continue
+        norm = 1 - b + b * (doc_len / (avg_doc_len or 1))
+        score += idf * (tf * (k1 + 1)) / (tf + k1 * norm)
+    return score
+
+
+def _bm25_retrieve(user_id: int, query_text: str, top_k: int) -> list[dict]:
+    """
+    Retrieval con BM25 sobre todos los pares Q→A del usuario.
+    No requiere API externa. Funciona en Python puro.
+    """
+    from database import get_db
+    query_tokens = _tokenize(query_text)
+    if not query_tokens:
+        return []
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT id, client_msg, owner_response FROM wa_bot_kb WHERE user_id = ?',
+        (user_id,)
+    ).fetchall()
+    conn.close()
+    if not rows:
+        return []
+
+    # Pre-tokenizar todos los docs y calcular doc_freq
+    docs = []
+    doc_freq: Counter = Counter()
+    for r in rows:
+        toks = _tokenize(r['client_msg'])
+        docs.append({
+            'id':             r['id'],
+            'client_msg':     r['client_msg'],
+            'owner_response': r['owner_response'],
+            'tokens':         toks,
+        })
+        for term in set(toks):
+            doc_freq[term] += 1
+
+    total_docs  = len(docs)
+    avg_doc_len = (sum(len(d['tokens']) for d in docs) / total_docs) if total_docs else 0
+
+    scored = []
+    for d in docs:
+        score = _bm25_score(query_tokens, d['tokens'],
+                             doc_freq, total_docs, avg_doc_len)
+        if score > 0:
+            scored.append({
+                'id':             d['id'],
+                'client_msg':     d['client_msg'],
+                'owner_response': d['owner_response'],
+                'score':          score,
+            })
+    scored.sort(key=lambda x: x['score'], reverse=True)
+    return scored[:top_k]
+
 
 # Configuración
 ANTHROPIC_MODEL = os.getenv('ANTHROPIC_BOT_MODEL', 'claude-3-5-haiku-latest')
@@ -112,34 +221,44 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 def index_qa_pairs(user_id: int, source_chat: str,
                     pairs: list[dict]) -> int:
     """
-    Inserta los pares (client_msg, owner_response) con embeddings en wa_bot_kb.
-    Retorna cuántos se indexaron.
+    Inserta los pares (client_msg, owner_response) en wa_bot_kb.
+
+    Embedding es OPCIONAL: si hay Voyage o OpenAI configurado, lo genera y guarda.
+    Si no, guarda solo el texto y el retrieval usa BM25 (puro Python, gratis).
     """
     from database import get_db
     if not pairs:
         return 0
+
+    has_emb_provider = bool(
+        os.getenv('VOYAGE_API_KEY', '').strip() or
+        os.getenv('OPENAI_API_KEY', '').strip()
+    )
+
     conn = get_db()
     saved = 0
+    skipped_short = 0
     for p in pairs:
         client_msg = p.get('client_msg', '').strip()
         owner_resp = p.get('owner_response', '').strip()
         if not client_msg or not owner_resp:
             continue
-        # Skip muy cortos (saludos sueltos, "ok", etc.)
         if len(client_msg) < 8 or len(owner_resp) < 15:
+            skipped_short += 1
             continue
-        # Dedup: si ya tenemos esta exacta combinación, skip
         existing = conn.execute(
             'SELECT id FROM wa_bot_kb WHERE user_id = ? AND client_msg = ? AND owner_response = ?',
             (user_id, client_msg, owner_resp)
         ).fetchone()
         if existing:
             continue
-        emb = _get_embedding(client_msg)
-        if not emb:
-            logger.warning('[RAG] sin embedding, skip pair')
-            continue
-        emb_blob = _serialize_embedding(emb)
+
+        emb_blob = None
+        if has_emb_provider:
+            emb = _get_embedding(client_msg)
+            if emb:
+                emb_blob = _serialize_embedding(emb)
+
         conn.execute(
             'INSERT INTO wa_bot_kb (user_id, source_chat, client_msg, owner_response, embedding) '
             'VALUES (?, ?, ?, ?, ?)',
@@ -148,7 +267,10 @@ def index_qa_pairs(user_id: int, source_chat: str,
         saved += 1
     conn.commit()
     conn.close()
-    logger.info(f'[RAG] indexados {saved} pares para user {user_id} desde "{source_chat}"')
+    mode = 'embeddings' if has_emb_provider else 'BM25 (sin embeddings, gratis)'
+    logger.info(
+        f'[RAG] indexados {saved} pares para user {user_id} desde "{source_chat}" — modo {mode}'
+    )
     return saved
 
 
@@ -156,32 +278,45 @@ def index_qa_pairs(user_id: int, source_chat: str,
 def find_similar_qa(user_id: int, query_text: str, top_k: int = TOP_K) -> list[dict]:
     """
     Encuentra los top-k pares más similares en wa_bot_kb para este user.
-    Cosine similarity sobre los embeddings.
+
+    Estrategia:
+    1. Si hay embedding provider configurado Y los items del KB tienen embeddings
+       → cosine similarity (mejor calidad semántica).
+    2. Si no → BM25 puro Python sobre el texto (gratis, sin APIs externas,
+       funciona razonablemente bien para matching de preguntas).
     """
     from database import get_db
-    query_emb = _get_embedding(query_text)
-    if not query_emb:
-        return []
-    conn = get_db()
-    rows = conn.execute(
-        'SELECT id, client_msg, owner_response, embedding FROM wa_bot_kb WHERE user_id = ?',
-        (user_id,)
-    ).fetchall()
-    conn.close()
-    scored = []
-    for r in rows:
-        if not r['embedding']:
-            continue
-        emb = _deserialize_embedding(r['embedding'])
-        score = _cosine_similarity(query_emb, emb)
-        scored.append({
-            'id':             r['id'],
-            'client_msg':     r['client_msg'],
-            'owner_response': r['owner_response'],
-            'score':          score,
-        })
-    scored.sort(key=lambda x: x['score'], reverse=True)
-    return scored[:top_k]
+    has_emb_provider = bool(
+        os.getenv('VOYAGE_API_KEY', '').strip() or
+        os.getenv('OPENAI_API_KEY', '').strip()
+    )
+
+    if has_emb_provider:
+        query_emb = _get_embedding(query_text)
+        if query_emb:
+            conn = get_db()
+            rows = conn.execute(
+                'SELECT id, client_msg, owner_response, embedding FROM wa_bot_kb '
+                'WHERE user_id = ? AND embedding IS NOT NULL',
+                (user_id,)
+            ).fetchall()
+            conn.close()
+            if rows:
+                scored = []
+                for r in rows:
+                    emb = _deserialize_embedding(r['embedding'])
+                    score = _cosine_similarity(query_emb, emb)
+                    scored.append({
+                        'id':             r['id'],
+                        'client_msg':     r['client_msg'],
+                        'owner_response': r['owner_response'],
+                        'score':          score,
+                    })
+                scored.sort(key=lambda x: x['score'], reverse=True)
+                return scored[:top_k]
+
+    # Fallback: BM25 (sin APIs)
+    return _bm25_retrieve(user_id, query_text, top_k)
 
 
 # ─── LLM con Claude ────────────────────────────────────────────────
@@ -231,13 +366,19 @@ def generate_rag_response(user_id: int, client_msg: str) -> str | None:
 
     similar = find_similar_qa(user_id, client_msg, top_k=TOP_K)
     if not similar:
-        # Sin KB del usuario, no podemos personalizar — pasamos al hand-off
         logger.info(f'[RAG] sin KB para user {user_id}')
         return None
 
-    # Filtrar por score mínimo (si la mejor está muy baja, mejor no responder)
-    if similar[0]['score'] < 0.40:
-        logger.info(f'[RAG] best score {similar[0]["score"]:.3f} < 0.40, hand-off')
+    # Threshold según el método usado:
+    # - Cosine (embeddings): valores 0-1, threshold 0.40
+    # - BM25 (sin embeddings): valores 0-+inf, threshold 1.0 (1+ palabras coincidentes)
+    using_embeddings = bool(
+        os.getenv('VOYAGE_API_KEY', '').strip() or
+        os.getenv('OPENAI_API_KEY', '').strip()
+    )
+    min_score = 0.40 if using_embeddings else 1.0
+    if similar[0]['score'] < min_score:
+        logger.info(f'[RAG] best score {similar[0]["score"]:.3f} < {min_score}, hand-off')
         return None
 
     ejemplos_txt = '\n\n'.join([
