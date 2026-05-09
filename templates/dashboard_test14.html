@@ -9944,6 +9944,41 @@ async function loadMiPerfil() {
       ` : ''}
 
       ${isOwner ? '' : `
+      <!-- Mi Fast (per-Sales tunnel) -->
+      <div class="card" style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700;color:#1A1A2E">⚡ Mi Fast Registro</div>
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${p.fast_configured?'#E8F5E9':'#FEECEB'};color:${p.fast_configured?'#1B5E20':'#C0392B'}">
+            ${p.fast_configured?'CONFIGURADO':'NO CONFIGURADO'}
+          </span>
+        </div>
+        <div style="font-size:12px;color:#666;margin-bottom:12px">
+          Conectá tu PC propia para registrar leads en MP Fast con tu cuenta. <strong>Setup:</strong>
+          <ol style="font-size:11px;margin:6px 0 0 18px;padding:0;line-height:1.5">
+            <li>Corré <code>fast_local_server.py</code> en tu PC con tus creds MP en <code>.env</code></li>
+            <li>Expone localhost:5050 con Cloudflare Tunnel (o ngrok)</li>
+            <li>Pegá la URL pública + el token compartido acá abajo</li>
+          </ol>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">URL pública de tu Fast</label>
+          <input id="prof-fast-url" value="${p.fast_local_url || ''}" placeholder="https://miusuario.gestorapp.cl"
+                 style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px;font-family:monospace">
+        </div>
+        <div style="margin-bottom:6px">
+          <label style="font-size:11px;color:#666;display:block;margin-bottom:4px">Token compartido (X-Fast-Token de tu PC)</label>
+          <input id="prof-fast-token" type="password" placeholder="${p.has_fast_token?'••••••••••••••••':'Pegá tu FAST_LOCAL_TOKEN'}"
+                 style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px;font-family:monospace">
+        </div>
+        <div style="font-size:10px;color:#888;margin-bottom:12px">
+          🔐 El token se guarda encriptado. Debe ser idéntico al <code>FAST_LOCAL_TOKEN</code> del <code>.env</code> de tu PC.
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="saveProfileFast()" style="flex:1">💾 Guardar</button>
+          <button class="btn btn-ghost"   onclick="testProfileFast()" style="flex:1">🧪 Probar conexión</button>
+        </div>
+      </div>
+
       <div class="card" style="margin-bottom:18px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div style="font-size:14px;font-weight:700;color:#1A1A2E">📱 Mi WhatsApp</div>
@@ -10115,6 +10150,40 @@ async function testProfileSmtp() {
     const d = await r.json();
     if (d.ok) toast('✓ ' + d.mensaje, 'success');
     else toast('❌ ' + (d.error || 'Error'), 'error');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function saveProfileFast() {
+  const fast_local_url = (document.getElementById('prof-fast-url').value || '').trim();
+  const fast_local_token = (document.getElementById('prof-fast-token').value || '').trim();
+  if (!fast_local_url) { toast('Pegá la URL pública de tu Fast', 'error'); return; }
+  if (!/^https?:\/\//.test(fast_local_url)) { toast('La URL debe empezar con http:// o https://', 'error'); return; }
+  const body = { fast_local_url };
+  if (fast_local_token) body.fast_local_token = fast_local_token;
+  try {
+    const r = await fetch('/auth/profile', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (d.ok) { toast('✓ Fast guardado', 'success'); loadMiPerfil(); }
+    else toast(d.error || 'Error', 'error');
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function testProfileFast() {
+  toast('Probando conexión a tu Fast...', 'info');
+  try {
+    const r = await fetch('/api/leads/me/fast/test', {
+      method: 'POST', credentials: 'same-origin'
+    });
+    const d = await r.json();
+    if (d.ok) {
+      toast('✓ ' + d.mensaje, 'success');
+    } else {
+      toast('❌ ' + (d.mensaje || 'Error'), 'error');
+    }
   } catch(e) { toast('Error: ' + e.message, 'error'); }
 }
 

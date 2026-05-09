@@ -350,18 +350,19 @@ def get_profile():
         SELECT id, email, username, name, role,
                sig_title, sig_phone, sig_photo_path,
                smtp_user, evolution_instance, whatsapp_number, apify_token,
-               (smtp_pass_enc IS NOT NULL AND smtp_pass_enc != '') AS has_smtp_pass
+               fast_local_url,
+               (smtp_pass_enc IS NOT NULL AND smtp_pass_enc != '') AS has_smtp_pass,
+               (fast_local_token_enc IS NOT NULL AND fast_local_token_enc != '') AS has_fast_token
         FROM users WHERE id = ?
     ''', (current_user.id,)).fetchone()
     conn.close()
     if not row:
         return jsonify({'error': 'no encontrado'}), 404
     d = dict(row)
-    # Detectar si el perfil está completo para el wizard
     d['profile_complete'] = bool(d.get('sig_title') and d.get('sig_phone'))
     d['email_configured'] = bool(d.get('smtp_user') and d.get('has_smtp_pass'))
     d['has_apify_token'] = bool(d.get('apify_token'))
-    # No devolvemos el token completo — solo si está seteado
+    d['fast_configured'] = bool(d.get('fast_local_url') and d.get('has_fast_token'))
     if d.get('apify_token'):
         d['apify_token_masked'] = d['apify_token'][:8] + '...' + d['apify_token'][-4:]
     d.pop('apify_token', None)
@@ -416,6 +417,29 @@ def update_profile():
             return jsonify({'error': 'Apify token inválido'}), 400
         set_pairs.append('apify_token=?')
         params.append(token if token else None)
+    # ── Fast Registro per-user ──────────────────────────────────
+    if 'fast_local_url' in data:
+        fast_url = (data.get('fast_local_url') or '').strip()
+        # Solo Sales/TL — el Owner usa env vars
+        if current_user.role == 'owner':
+            return jsonify({'error': 'Owner usa env vars FAST_LOCAL_URL — no setees por perfil'}), 400
+        if fast_url and not fast_url.lower().startswith(('http://', 'https://')):
+            return jsonify({'error': 'URL Fast debe empezar con http:// o https://'}), 400
+        if fast_url and len(fast_url) > 256:
+            return jsonify({'error': 'URL Fast muy larga'}), 400
+        set_pairs.append('fast_local_url=?')
+        params.append(fast_url if fast_url else None)
+    if 'fast_local_token' in data:
+        fast_tok = (data.get('fast_local_token') or '').strip()
+        if current_user.role == 'owner':
+            return jsonify({'error': 'Owner usa env vars FAST_LOCAL_TOKEN — no setees por perfil'}), 400
+        if fast_tok and len(fast_tok) < 16:
+            return jsonify({'error': 'Token Fast muy corto (mínimo 16 chars)'}), 400
+        if fast_tok and len(fast_tok) > 200:
+            return jsonify({'error': 'Token Fast muy largo'}), 400
+        encrypted = encrypt(fast_tok) if fast_tok else None
+        set_pairs.append('fast_local_token_enc=?')
+        params.append(encrypted)
 
     if not set_pairs:
         return jsonify({'error': 'No hay cambios para guardar'}), 400

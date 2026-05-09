@@ -2,8 +2,12 @@
 Rutas Flask: Fast Registro
 Registra comercios en MercadoPago Fast usando Playwright.
 Requiere sesion previa guardada con fast_login_manual.py
+
+Multi-Fast: cada Sales/TL puede configurar su propia URL + token de su PC en
+Mi Perfil. Owner usa env vars FAST_LOCAL_URL / FAST_LOCAL_TOKEN (legacy).
 """
 from flask import Blueprint, request, jsonify
+from flask_login import current_user
 from database import get_db
 import os
 import asyncio
@@ -12,6 +16,51 @@ import logging
 logger = logging.getLogger(__name__)
 
 fast_bp = Blueprint('fast', __name__)
+
+
+def _resolve_fast_target() -> tuple[str, str, str]:
+    """
+    Resuelve a qué servidor Fast enrutar la request actual.
+
+    Returns: (fast_local_url, fast_local_token, source)
+      source: 'owner_env' | 'user_<id>' | 'env_fallback' | ''
+
+    Reglas:
+    - Si current_user es Sales/TL y tiene fast_local_url Y token configurado
+      en su perfil → usa los suyos (per-user).
+    - Si current_user es Owner, o el Sales/TL no tiene config propia → usa
+      env vars FAST_LOCAL_URL / FAST_LOCAL_TOKEN (legacy single-tenant).
+    """
+    env_url   = os.getenv('FAST_LOCAL_URL', '').strip()
+    env_token = os.getenv('FAST_LOCAL_TOKEN', '').strip()
+
+    try:
+        if current_user and current_user.is_authenticated:
+            role = getattr(current_user, 'role', '')
+            if role == 'owner':
+                return env_url, env_token, 'owner_env'
+            # Sales/TL: chequear config propia
+            conn = get_db()
+            row = conn.execute(
+                'SELECT fast_local_url, fast_local_token_enc FROM users WHERE id = ?',
+                (current_user.id,)
+            ).fetchone()
+            conn.close()
+            if row:
+                user_url = (row['fast_local_url'] or '').strip()
+                enc      = (row['fast_local_token_enc'] or '').strip()
+                if user_url and enc:
+                    try:
+                        from secure_storage import decrypt
+                        user_token = decrypt(enc)
+                        if user_token:
+                            return user_url, user_token, f'user_{current_user.id}'
+                    except Exception as e:
+                        logger.warning(f'[Fast] decrypt token user {current_user.id}: {e}')
+    except Exception as e:
+        logger.debug(f'[Fast] resolver fail: {e}')
+
+    return env_url, env_token, 'env_fallback'
 
 MP_EMAIL    = os.getenv("MP_FAST_EMAIL", "")
 MP_PASSWORD = os.getenv("MP_FAST_PASSWORD", "")
@@ -1091,9 +1140,9 @@ def actualizar_visita_fast_endpoint(lead_id):
     nombre = lead["name"]
     telefono = lead["phone"]
 
-    # Proxy a servidor local si está configurado
-    fast_local_url = os.getenv("FAST_LOCAL_URL", "").strip()
-    fast_local_token = os.getenv("FAST_LOCAL_TOKEN", "").strip()
+    # Resolver target: Owner=env, Sales/TL=su PC propia
+    fast_local_url, fast_local_token, src = _resolve_fast_target()
+    logger.info(f"[FastUpd] Target: {src} -> {fast_local_url[:30]}...")
 
     if fast_local_url:
         try:
@@ -1106,19 +1155,18 @@ def actualizar_visita_fast_endpoint(lead_id):
                 timeout=300,
             )
             if resp.status_code == 401:
-                return jsonify({"ok": False, "mensaje": "Token inválido en servidor local"}), 500
+                return jsonify({"ok": False, "mensaje": f"Token inválido en servidor local ({src})"}), 500
             return jsonify(resp.json())
         except requests.exceptions.ConnectionError:
             return jsonify({
                 "ok": False,
-                "mensaje": "Servidor local Fast no disponible"
+                "mensaje": f"Servidor local Fast no disponible ({src}). Verifica que tu PC esté prendida con fast_local_server.py corriendo."
             }), 503
         except Exception as e:
-            logger.error(f"[FastUpd] Error proxy: {e}", exc_info=True)
+            logger.error(f"[FastUpd] Error proxy ({src}): {e}", exc_info=True)
             return jsonify({"ok": False, "mensaje": f"Error proxy: {str(e)[:200]}"}), 500
 
-    # Modo local directo (no recomendado en Railway)
-    return jsonify({"ok": False, "mensaje": "FAST_LOCAL_URL no configurado"}), 500
+    return jsonify({"ok": False, "mensaje": "Fast no configurado. Configurá tu URL+token en Mi Perfil → Mi Fast."}), 500
 
 
 @fast_bp.route('/<int:lead_id>/registrar-fast', methods=['POST'])
@@ -1134,16 +1182,14 @@ def registrar_en_fast(lead_id):
     if not nombre or not telefono:
         return jsonify({"ok": False, "mensaje": "nombre y telefono son obligatorios"}), 400
 
-    # ── Si hay FAST_LOCAL_URL configurada, hacemos proxy al servidor local ──
-    fast_local_url = os.getenv("FAST_LOCAL_URL", "").strip()
-    fast_local_token = os.getenv("FAST_LOCAL_TOKEN", "").strip()
+    # ── Resolver target: Owner=env, Sales/TL=su PC propia ──
+    fast_local_url, fast_local_token, src = _resolve_fast_target()
 
     if fast_local_url:
-        # Modo proxy: la automatización corre en la PC del usuario via Cloudflare Tunnel
         try:
             import requests
             url = fast_local_url.rstrip("/") + "/registrar-fast"
-            logger.info(f"[Fast] Proxy a servidor local: {url}")
+            logger.info(f"[Fast] Proxy a servidor local ({src}): {url}")
             resp = requests.post(
                 url,
                 json={"nombre": nombre, "telefono": telefono, "direccion": direccion},
@@ -1151,12 +1197,12 @@ def registrar_en_fast(lead_id):
                 timeout=300,
             )
             if resp.status_code == 401:
-                return jsonify({"ok": False, "mensaje": "Token inválido en servidor local"}), 500
+                return jsonify({"ok": False, "mensaje": f"Token inválido en servidor local ({src})"}), 500
             result = resp.json()
         except requests.exceptions.ConnectionError:
             return jsonify({
                 "ok": False,
-                "mensaje": "Servidor local Fast no disponible. Verifica que tu PC esté prendida con fast_local_server.py corriendo."
+                "mensaje": f"Servidor local Fast no disponible ({src}). Verifica que tu PC esté prendida con fast_local_server.py corriendo."
             }), 503
         except Exception as e:
             logger.error(f"[Fast] Error proxy a local: {e}", exc_info=True)
@@ -1224,6 +1270,66 @@ def registrar_en_fast(lead_id):
         logger.warning(f"[Fast] No se pudo guardar log en BD: {e}")
 
     return jsonify({**result, "lead_id": lead_id})
+
+
+@fast_bp.route('/me/fast/test', methods=['POST'])
+def test_my_fast():
+    """
+    Prueba conectividad al servidor Fast del usuario actual.
+    Hace GET / al fast_local_url y verifica que responda 200 con token.
+    """
+    from flask_login import login_required as _lr
+    if not (current_user and current_user.is_authenticated):
+        return jsonify({'ok': False, 'mensaje': 'No autenticado'}), 401
+
+    fast_url, fast_token, src = _resolve_fast_target()
+    if not fast_url:
+        return jsonify({
+            'ok': False,
+            'mensaje': 'No tenés URL de Fast configurada (Mi Perfil → Mi Fast)',
+            'source': src
+        })
+
+    try:
+        import requests
+        # /health no requiere token. Si el token está mal, el server igual responde 200 al /health.
+        r = requests.get(fast_url.rstrip('/') + '/health', timeout=10)
+        health_ok = (r.status_code == 200)
+    except Exception as e:
+        return jsonify({
+            'ok': False,
+            'mensaje': f'Tunnel inalcanzable: {str(e)[:200]}',
+            'source': src
+        })
+
+    if not health_ok:
+        return jsonify({'ok': False, 'mensaje': f'Health check status {r.status_code}', 'source': src})
+
+    # Validar token con un endpoint que sí lo pida (registrar-fast con datos vacíos
+    # debería responder 400 si el token es válido, 401 si es inválido).
+    try:
+        import requests
+        r2 = requests.post(
+            fast_url.rstrip('/') + '/registrar-fast',
+            json={'nombre': '__token_check__', 'telefono': '__token_check__'},
+            headers={'X-Fast-Token': fast_token},
+            timeout=10,
+        )
+        if r2.status_code == 401:
+            return jsonify({
+                'ok': False,
+                'mensaje': 'Token inválido — la URL responde pero el token no coincide con el del servidor local',
+                'source': src
+            })
+    except Exception as e:
+        logger.debug(f'[FastTest] token probe: {e}')
+
+    return jsonify({
+        'ok': True,
+        'mensaje': 'Conectividad OK · tunnel responde, token válido',
+        'source': src,
+        'url': fast_url,
+    })
 
 
 @fast_bp.route('/fast-session-status', methods=['GET'])

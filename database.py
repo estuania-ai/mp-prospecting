@@ -137,6 +137,8 @@ def init_db():
         )
     ''')
     # Migraciones por si la tabla ya existía
+    # Fast Registro per-user: URL del túnel + token encriptado
+    _add_col(c, 'users', 'fast_local_token_enc', 'TEXT')
     _add_col(c, 'user_scheduler_config', 'email_lote1_active',    'INTEGER DEFAULT 0')
     _add_col(c, 'user_scheduler_config', 'email_lote2_active',    'INTEGER DEFAULT 0')
     _add_col(c, 'user_scheduler_config', 'email_lote3_active',    'INTEGER DEFAULT 0')
