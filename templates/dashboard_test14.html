@@ -2113,6 +2113,19 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     </div>
   </div>
 
+  <!-- Panel de estado / health del bot -->
+  <div id="bot-health-panel" style="margin-bottom:14px;padding:12px 16px;background:#fff;border-radius:10px;border:1px solid #E5E7EB;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <div style="font-size:13px;font-weight:700;color:#1A1A2E">🩺 Salud del bot:</div>
+    <div id="health-bot-toggle" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:10px;background:#F3F4F6;color:#6B7280">— bot —</div>
+    <div id="health-wa-state" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:10px;background:#F3F4F6;color:#6B7280">— WA —</div>
+    <div id="health-webhook" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:10px;background:#F3F4F6;color:#6B7280">— webhook —</div>
+    <div id="health-llm" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:10px;background:#F3F4F6;color:#6B7280">— IA —</div>
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button onclick="botGoToWhatsApp()" style="background:#10B981;color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:11px;font-weight:600">📱 Reconectar QR</button>
+      <button onclick="botHealthCheck()" style="background:#3B82F6;color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:11px;font-weight:600">🔄 Re-chequear</button>
+    </div>
+  </div>
+
   <!-- Toggle on/off + métricas top -->
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:16px">
     <div class="card" style="margin:0;padding:14px">
@@ -10667,10 +10680,93 @@ async function loadBotPage(){
     renderBotRules();
     renderBotConversations(convs);
     botRefreshKBStats();
+    botHealthCheck();
   } catch(e){
     console.error('loadBotPage', e);
     toast('Error: ' + e.message, 'error');
   }
+}
+
+function botGoToWhatsApp(){
+  const navItem = document.querySelector('.nav-item[onclick*="whatsapp"]');
+  if (navItem) navItem.click();
+  else showPage('whatsapp', null, 'WhatsApp');
+}
+
+async function botHealthCheck(){
+  // Bot enabled?
+  const botBadge = document.getElementById('health-bot-toggle');
+  if (botBadge && _BOT_CONFIG) {
+    if (_BOT_CONFIG.enabled) {
+      botBadge.textContent = '🟢 Bot activo';
+      botBadge.style.background = '#DCFCE7';
+      botBadge.style.color = '#166534';
+    } else {
+      botBadge.textContent = '⚪ Bot inactivo';
+      botBadge.style.background = '#FEE2E2';
+      botBadge.style.color = '#991B1B';
+    }
+  }
+  // LLM enabled?
+  const llmBadge = document.getElementById('health-llm');
+  if (llmBadge && _BOT_CONFIG) {
+    if (_BOT_CONFIG.llm_enabled) {
+      llmBadge.textContent = '🤖 IA activa';
+      llmBadge.style.background = '#E9D5FF';
+      llmBadge.style.color = '#6B21A8';
+    } else {
+      llmBadge.textContent = '⏸ IA inactiva';
+      llmBadge.style.background = '#FEF3C7';
+      llmBadge.style.color = '#92400E';
+    }
+  }
+
+  // WhatsApp connection + webhook
+  try {
+    const r = await fetch('/api/whatsapp/me/bot/verify-webhook', {credentials:'same-origin'});
+    const d = await r.json();
+    const waBadge = document.getElementById('health-wa-state');
+    const whBadge = document.getElementById('health-webhook');
+
+    // WA connection
+    const state = d.connection_state || 'unknown';
+    if (waBadge) {
+      if (state === 'open') {
+        waBadge.textContent = '🟢 WA conectado';
+        waBadge.style.background = '#DCFCE7';
+        waBadge.style.color = '#166534';
+      } else if (state === 'connecting') {
+        waBadge.textContent = '🟡 WA conectando…';
+        waBadge.style.background = '#FEF3C7';
+        waBadge.style.color = '#92400E';
+      } else {
+        waBadge.textContent = '🔴 WA desconectado';
+        waBadge.style.background = '#FEE2E2';
+        waBadge.style.color = '#991B1B';
+      }
+    }
+
+    // Webhook
+    if (whBadge) {
+      // Si tenemos webhook_config OK -> verde
+      // Si conexión está open pero no podemos leer config -> amarillo (puede funcionar)
+      // Si todo falla -> rojo
+      if (d.webhook_config && d.webhook_config.enabled !== false) {
+        whBadge.textContent = '🟢 Webhook listo';
+        whBadge.style.background = '#DCFCE7';
+        whBadge.style.color = '#166534';
+      } else if (state === 'open') {
+        whBadge.textContent = '🟡 Webhook ?';
+        whBadge.style.background = '#FEF3C7';
+        whBadge.style.color = '#92400E';
+        whBadge.title = 'No pudimos leer la config en Evolution. Si llegan mensajes al bot, ignorá esto.';
+      } else {
+        whBadge.textContent = '🔴 Webhook offline';
+        whBadge.style.background = '#FEE2E2';
+        whBadge.style.color = '#991B1B';
+      }
+    }
+  } catch(e){ console.error('healthCheck', e); }
 }
 
 function renderBotRules(){
