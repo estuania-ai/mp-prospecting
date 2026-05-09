@@ -7,6 +7,7 @@ from flask_login import current_user, login_required
 from database import get_db
 import asyncio
 import logging
+import os
 import re
 import time
 import uuid
@@ -2456,6 +2457,96 @@ def trigger_generic_batch():
         'message': f'Enviando hasta {batch_size} emails genericos ({mode}) en background',
         'mode': mode,
     })
+
+
+@email_bp.route('/generic-test', methods=['POST'])
+@login_required
+def send_generic_test():
+    """
+    Envia 1 email de prueba con la configuracion guardada del template generico.
+    No toca pool, cooldown, ni asignaciones — solo manda al to_email indicado.
+
+    Body: { to_email: 'estuania@gmail.com', business_name (opcional): 'Test' }
+    """
+    if current_user.role not in ('owner', 'tl'):
+        return jsonify({'error': 'Solo Owner/TL'}), 403
+    data = request.get_json() or {}
+    to_email = (data.get('to_email') or '').strip().lower()
+    business = (data.get('business_name') or 'estimado/a').strip()
+    if not to_email or '@' not in to_email:
+        return jsonify({'error': 'to_email invalido'}), 400
+
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT key, value FROM config WHERE key IN "
+        "('generic_email_subject','generic_email_body','generic_email_mode',"
+        " 'generic_email_wa_url','generic_email_pdf_url','exec_phone')"
+    ).fetchall()
+    conn.close()
+    cfg = {r['key']: r['value'] for r in rows}
+    subject = (cfg.get('generic_email_subject') or '').strip()
+    body    = (cfg.get('generic_email_body') or '').strip()
+    mode    = (cfg.get('generic_email_mode') or 'plain').strip().lower()
+    wa_url  = (cfg.get('generic_email_wa_url') or '').strip()
+    pdf_url = (cfg.get('generic_email_pdf_url') or '').strip()
+
+    if not subject:
+        return jsonify({'error': 'No hay subject guardado en el template'}), 400
+    if mode == 'plain' and not body:
+        return jsonify({'error': 'No hay body guardado en modo plain'}), 400
+
+    # Resolver wa_url y pdf_url si vienen vacios (igual logica que el batch)
+    if mode == 'mp_html':
+        if not wa_url:
+            phone = (cfg.get('exec_phone') or '').strip()
+            digits = ''.join(c for c in phone if c.isdigit())
+            wa_url = f'https://wa.me/{digits}' if digits else ''
+        if not pdf_url:
+            base_url = os.getenv('APP_BASE_URL', '').rstrip('/')
+            pdf_url = (base_url + '/static/email_assets/beneficios_mp.pdf') if base_url \
+                      else '/static/email_assets/beneficios_mp.pdf'
+
+    # Resolver creds del current_user (Owner=env, Sales/TL=propias)
+    user_creds = None
+    if current_user.role != 'owner':
+        try:
+            from jobs.email_automation import _resolve_user_creds
+            user_creds = _resolve_user_creds(current_user.id)
+            if not user_creds:
+                return jsonify({'error': 'No tenés SMTP configurado en Mi Perfil'}), 400
+        except Exception as e:
+            return jsonify({'error': f'Error resolviendo SMTP: {e}'}), 500
+
+    # Saludo inteligente
+    try:
+        from jobs.email_automation import smart_business_greeting_name, smart_email_body_replace
+        friendly = smart_business_greeting_name(business) or business
+    except Exception:
+        friendly = business
+
+    if mode == 'mp_html':
+        import pathlib as _pl
+        pdf_path = str(_pl.Path(__file__).parent.parent / 'static' /
+                        'email_assets' / 'beneficios_mp.pdf')
+        result = _send_mp_html_email(
+            to_email, subject, friendly,
+            wa_url=wa_url, pdf_url=pdf_url,
+            pdf_path=pdf_path, user_creds=user_creds,
+        )
+    else:
+        body_final = smart_email_body_replace(body, business)
+        result = _send_smtp(
+            to_email=to_email, subject=subject, body_text=body_final,
+            rubro='', contact_name=business,
+            booking_url=os.getenv('BOOKING_URL', ''),
+            user_creds=user_creds,
+        )
+
+    if result.get('ok'):
+        return jsonify({'ok': True, 'mode': mode, 'to': to_email,
+                        'message': 'Email de prueba enviado'})
+    return jsonify({'ok': False, 'error': result.get('error') or 'Falla SMTP',
+                    'bounced': result.get('bounced', False)}), 500
 
 
 @email_bp.route('/contacts/assign', methods=['POST'])
