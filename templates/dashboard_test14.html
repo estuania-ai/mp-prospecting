@@ -2220,6 +2220,40 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     </div>
   </div>
 
+  <!-- Diagnóstico (debug) -->
+  <div class="card" style="margin-top:16px;background:#FEF9C3;border-left:3px solid #CA8A04">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:14px;font-weight:700;color:#713F12">🔧 Diagnóstico</div>
+      <button class="btn btn-ghost" onclick="botRefreshDebug()" style="font-size:11px;padding:5px 10px">↻ Refrescar</button>
+    </div>
+    <div style="font-size:11px;color:#713F12;margin-bottom:10px;line-height:1.5">
+      Si el bot no responde, usá estas dos herramientas:
+      <br>1️⃣ <strong>Test manual</strong> — simula un mensaje sin pasar por Evolution.
+      <br>2️⃣ <strong>Webhook events</strong> — muestra si Evolution está pusheando mensajes.
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <!-- Test manual -->
+      <div style="background:#fff;padding:10px;border-radius:8px;border:1px solid #FDE68A">
+        <div style="font-size:12px;font-weight:600;color:#713F12;margin-bottom:6px">1️⃣ Test manual del dispatcher</div>
+        <input id="bot-test-text" placeholder="Mensaje del cliente (ej: precio)" value="info"
+               style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid #FDE68A;font-size:12px;margin-bottom:6px">
+        <input id="bot-test-phone" placeholder="56912345678" value="56912345678"
+               style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid #FDE68A;font-size:12px;margin-bottom:6px">
+        <button class="btn btn-primary" onclick="botTestMessage()" style="width:100%;font-size:12px;padding:6px;background:#CA8A04">▶ Simular mensaje</button>
+      </div>
+      <!-- Webhook events -->
+      <div style="background:#fff;padding:10px;border-radius:8px;border:1px solid #FDE68A">
+        <div style="font-size:12px;font-weight:600;color:#713F12;margin-bottom:6px">2️⃣ Últimos webhooks recibidos</div>
+        <div id="bot-debug-events" style="font-size:10px;color:#666;max-height:200px;overflow:auto;background:#FAFAFA;padding:6px;border-radius:6px">
+          (click ↻ Refrescar para cargar)
+        </div>
+      </div>
+    </div>
+
+    <div id="bot-test-result" style="font-size:11px;color:#666;background:#FAFAFA;padding:10px;border-radius:8px;display:none;font-family:monospace;white-space:pre-wrap;max-height:240px;overflow:auto"></div>
+  </div>
+
   <!-- Modal: editar regla -->
   <div id="bot-rule-modal" style="display:none;position:fixed;inset:0;background:rgba(20,20,40,.55);z-index:9999;align-items:center;justify-content:center;padding:20px">
     <div style="background:#fff;border-radius:14px;padding:24px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
@@ -10875,6 +10909,60 @@ async function botClearKB(){
       botRefreshKBStats();
     }
   } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+async function botTestMessage(){
+  const text  = document.getElementById('bot-test-text').value.trim();
+  const phone = document.getElementById('bot-test-phone').value.trim();
+  const out   = document.getElementById('bot-test-result');
+  if (!text) { toast('Ingresá un texto', 'error'); return; }
+  out.style.display = 'block';
+  out.textContent = 'Testeando...';
+  try {
+    const r = await fetch('/api/whatsapp/bot/test-message', {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text, client_phone: phone || undefined})
+    });
+    const d = await r.json();
+    if (!r.ok) { out.textContent = 'ERROR: ' + (d.error || 'unknown'); return; }
+    out.textContent = JSON.stringify(d, null, 2);
+    if (d.dispatcher && d.bot_response && d.bot_response.length > 0) {
+      toast('✅ Bot respondería: ' + (d.bot_response[0].message || d.bot_response[0].caption || '').slice(0, 80), 'success');
+    } else if (d.dispatcher) {
+      toast('⚠️ ' + d.dispatcher.action + ' (no se generó respuesta)', 'warning');
+    }
+  } catch(e){
+    out.textContent = 'ERROR: ' + e.message;
+  }
+}
+
+async function botRefreshDebug(){
+  const wrap = document.getElementById('bot-debug-events');
+  if (!wrap) return;
+  wrap.textContent = 'Cargando...';
+  try {
+    const r = await fetch('/api/whatsapp/webhook-debug', {credentials:'same-origin'});
+    const d = await r.json();
+    if (!r.ok) { wrap.textContent = 'Error: ' + (d.error || ''); return; }
+    if (!d.events || d.events.length === 0) {
+      wrap.innerHTML = '<div style="color:#C0392B;font-weight:600">⚠️ Sin eventos recibidos</div>' +
+                       '<div style="margin-top:6px;color:#666">Evolution NO está pusheando al webhook. Verificá:</div>' +
+                       '<ul style="margin:6px 0 0 18px;padding:0;color:#666"><li>WA conectado en Evolution</li>' +
+                       '<li>Click "🔗 Conectar webhook" arriba</li>' +
+                       '<li>APP_BASE_URL correcto en Railway</li></ul>';
+      return;
+    }
+    wrap.innerHTML = '<div style="font-weight:600;color:#16a34a;margin-bottom:6px">' +
+                     '✓ ' + d.events.length + ' eventos en buffer</div>' +
+                     d.events.slice(0, 15).map(e =>
+      `<div style="border-bottom:1px solid #E5E7EB;padding:4px 0">
+        <strong>${e._received_at}</strong><br>
+        event=${e.event||'?'} instance=${e.instance||'-'}<br>
+        keys: ${(e.payload_keys||[]).join(',')}
+      </div>`
+    ).join('');
+  } catch(e){ wrap.textContent = 'Error: ' + e.message; }
 }
 
 async function botToggleLLM(){

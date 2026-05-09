@@ -132,6 +132,81 @@ def wa_me_restart():
     return jsonify(result)
 
 
+# Ring buffer en memoria para los últimos 50 webhooks recibidos
+# (sirve para diagnóstico si el bot no responde)
+_WEBHOOK_DEBUG_BUFFER: list = []
+_WEBHOOK_DEBUG_MAX = 50
+
+
+def _push_debug(entry: dict):
+    """Agrega una entrada al ring buffer de debug (en memoria)."""
+    from datetime import datetime as _dt
+    entry['_received_at'] = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
+    _WEBHOOK_DEBUG_BUFFER.append(entry)
+    if len(_WEBHOOK_DEBUG_BUFFER) > _WEBHOOK_DEBUG_MAX:
+        _WEBHOOK_DEBUG_BUFFER.pop(0)
+
+
+@bp.get('/webhook-debug')
+@login_required
+def wa_webhook_debug():
+    """Devuelve los últimos N eventos de webhook recibidos (memoria volátil)."""
+    if current_user.role != 'owner':
+        return jsonify({'error': 'Solo Owner'}), 403
+    return jsonify({
+        'events':       list(reversed(_WEBHOOK_DEBUG_BUFFER)),
+        'total_buffer': len(_WEBHOOK_DEBUG_BUFFER),
+        'note':         'Buffer en memoria — se pierde al reiniciar Railway. Si está vacío, Evolution no está pusheando.'
+    })
+
+
+@bp.post('/bot/test-message')
+@login_required
+def wa_bot_test_message():
+    """
+    Simula un mensaje entrante al dispatcher del bot — útil para validar la
+    lógica sin depender de Evolution. NO envía mensaje real por WA.
+    Body: { "text": "info", "client_phone": "56999999999" }
+    """
+    if current_user.role != 'owner':
+        return jsonify({'error': 'Solo Owner'}), 403
+    data = request.get_json() or {}
+    text = (data.get('text') or '').strip()
+    phone = (data.get('client_phone') or '56999999999').strip()
+    if not text:
+        return jsonify({'error': 'text requerido'}), 400
+
+    # Cliente "fake" que NO envía nada real, solo loguea.
+    sent_log = []
+    class _FakeClient:
+        def send_text(self, phone, message, instance=None):
+            sent_log.append({'type': 'text', 'phone': phone, 'message': message, 'instance': instance})
+            return {'ok': True, 'simulated': True}
+        def send_image(self, phone, image_url, caption='', instance=None):
+            sent_log.append({'type': 'image', 'phone': phone, 'caption': caption, 'image_url': image_url, 'instance': instance})
+            return {'ok': True, 'simulated': True}
+
+    try:
+        from wa_bot.dispatcher import handle_incoming_message
+        result = handle_incoming_message(
+            user_id=current_user.id,
+            client_phone=phone,
+            text=text,
+            client=_FakeClient(),
+            instance=None,
+            is_from_me=False,
+        )
+        return jsonify({
+            'ok':            True,
+            'dispatcher':    result,
+            'bot_response':  sent_log,
+            'note':          'Simulación. NO se envió mensaje real al WhatsApp.',
+        })
+    except Exception as e:
+        logger.error(f'[BotTest] error: {e}', exc_info=True)
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 # ═══════════════════════════════════════════════════════════════════
 # BOT — Webhook receptor de Evolution API
 # ═══════════════════════════════════════════════════════════════════
@@ -148,9 +223,19 @@ def wa_webhook_receiver():
     payload = request.get_json(silent=True) or {}
     event = payload.get('event') or ''
 
+    # Loguear TODO lo que llega (para diagnóstico)
+    _push_debug({
+        'event':           event,
+        'instance':        payload.get('instance'),
+        'has_data':        bool(payload.get('data')),
+        'payload_keys':    list(payload.keys()),
+        'data_keys':       list((payload.get('data') or {}).keys()) if payload.get('data') else [],
+    })
+    logger.info(f'[BotWebhook] event={event} instance={payload.get("instance")} keys={list(payload.keys())}')
+
     # Solo nos interesan mensajes entrantes
     if event not in ('messages.upsert', 'MESSAGES_UPSERT'):
-        return jsonify({'ok': True, 'ignored': 'event_not_message'})
+        return jsonify({'ok': True, 'ignored': 'event_not_message', 'event': event})
 
     data = payload.get('data') or {}
     # Evolution payload structure: { key: { remoteJid, fromMe, id }, message: { conversation } }
@@ -168,6 +253,11 @@ def wa_webhook_receiver():
         or (msg.get('imageMessage') or {}).get('caption')
         or ''
     ).strip()
+
+    logger.info(
+        f'[BotWebhook] msg jid={remote_jid} fromMe={from_me} '
+        f'text="{text[:80]}" instance={instance_received}'
+    )
 
     if not remote_jid or '@' not in remote_jid:
         return jsonify({'ok': True, 'ignored': 'no_jid'})
