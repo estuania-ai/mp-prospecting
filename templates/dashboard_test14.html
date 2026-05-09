@@ -711,6 +711,9 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
     <span class="nav-icon">💬</span> WhatsApp
     <span id="badgeWaStatus" style="position:absolute;top:8px;right:8px;width:8px;height:8px;border-radius:50%;background:#9CA3AF;display:inline-block" title="Desconectado"></span>
   </div>
+  <div class="nav-item" data-roles="owner" onclick="showPage('wabot',this,'Bot WhatsApp')">
+    <span class="nav-icon">🤖</span> Bot WhatsApp
+  </div>
   <div class="nav-item" data-roles="owner" onclick="showPage('config',this,'Configuración')">
     <span class="nav-icon">⚙️</span> Configuración
   </div>
@@ -2097,6 +2100,129 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   </div>
 </div>
 
+<!-- ══════════════ PAGE: BOT WHATSAPP ══════════════ -->
+<div class="page" id="page-wabot">
+  <div class="page-header">
+    <div>
+      <div class="page-title">🤖 Bot WhatsApp</div>
+      <div class="page-sub">Auto-respuestas + reglas keyword + opt-out automático · solo Owner por ahora</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="botSetupWebhook()">🔗 Conectar webhook</button>
+      <button class="btn btn-primary" onclick="loadBotPage()">↻ Actualizar</button>
+    </div>
+  </div>
+
+  <!-- Toggle on/off + métricas top -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:16px">
+    <div class="card" style="margin:0;padding:14px">
+      <div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Estado</div>
+      <div id="bot-status-text" style="font-size:14px;font-weight:700;color:#1A1A2E">—</div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:12px">
+        <input type="checkbox" id="bot-enabled-toggle" onchange="botToggleEnabled()">
+        <span>Activar bot</span>
+      </label>
+    </div>
+    <div class="card" style="margin:0;padding:14px">
+      <div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Conversaciones activas</div>
+      <div id="bot-active-count" style="font-size:24px;font-weight:800;color:#0c63e7">0</div>
+    </div>
+    <div class="card" style="margin:0;padding:14px">
+      <div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Hand-off humano</div>
+      <div id="bot-handoff-count" style="font-size:24px;font-weight:800;color:#d97706">0</div>
+    </div>
+    <div class="card" style="margin:0;padding:14px">
+      <div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Opt-outs</div>
+      <div id="bot-optout-count" style="font-size:24px;font-weight:800;color:#c62828">0</div>
+    </div>
+  </div>
+
+  <!-- Templates de respuestas + reglas + conversaciones -->
+  <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:16px">
+
+    <!-- COL 1: Reglas + Templates -->
+    <div>
+      <div class="card" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700;color:#1A1A2E">📝 Templates base</div>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:11px;color:#666">Footer opt-out (se agrega a cada respuesta del bot)</label>
+          <textarea id="bot-footer" rows="2" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #ddd;font-size:12px;resize:vertical"></textarea>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:11px;color:#666">Respuesta opt-out (cuando el cliente dice "BAJA")</label>
+          <textarea id="bot-optout-resp" rows="2" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #ddd;font-size:12px;resize:vertical"></textarea>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:11px;color:#666">Respuesta hand-off (cuando bot no entiende → pasa a humano)</label>
+          <textarea id="bot-handoff-resp" rows="2" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #ddd;font-size:12px;resize:vertical"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="botSaveTemplates()" style="width:100%">💾 Guardar templates</button>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700;color:#1A1A2E">📋 Reglas (keyword → respuesta)</div>
+          <button class="btn btn-ghost" onclick="botNewRule()" style="font-size:12px;padding:6px 10px">+ Nueva regla</button>
+        </div>
+        <div style="font-size:11px;color:#888;margin-bottom:10px">
+          Cuando llega un mensaje, el bot busca la primera regla cuya lista de keywords matchea (case-insensitive). Menor prioridad = corre primero.
+        </div>
+        <div id="bot-rules-list"></div>
+      </div>
+    </div>
+
+    <!-- COL 2: Conversaciones -->
+    <div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700;color:#1A1A2E">💬 Últimas conversaciones</div>
+        </div>
+        <div id="bot-conv-list" style="max-height:600px;overflow-y:auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: editar regla -->
+  <div id="bot-rule-modal" style="display:none;position:fixed;inset:0;background:rgba(20,20,40,.55);z-index:9999;align-items:center;justify-content:center;padding:20px">
+    <div style="background:#fff;border-radius:14px;padding:24px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <div style="font-size:16px;font-weight:700;color:#1A1A2E;margin-bottom:16px" id="bot-rule-modal-title">Nueva regla</div>
+      <input type="hidden" id="bot-rule-id" value="">
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;color:#666">Etiqueta (interno, identificador)</label>
+        <input id="bot-rule-label" placeholder="ej: Pregunta precio"
+               style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px">
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;color:#666">Keywords (separados por coma, lowercase)</label>
+        <input id="bot-rule-keywords" placeholder="precio,costo,cuanto,cuánto"
+               style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px">
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;color:#666">Respuesta del bot</label>
+        <textarea id="bot-rule-response" rows="5" placeholder="Hola! Te paso la info..."
+                  style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid #ddd;font-size:13px;resize:vertical"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+          <input type="checkbox" id="bot-rule-pdf">
+          <span>Adjuntar PDF beneficios</span>
+        </label>
+        <div>
+          <label style="font-size:11px;color:#666;display:block;margin-bottom:2px">Prioridad (menor = corre antes)</label>
+          <input id="bot-rule-priority" type="number" value="100" min="1" max="999"
+                 style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:12px">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="botCloseModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="botSaveRule()">💾 Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════ PAGE: CONFIG ══════════════ -->
 <div class="page" id="page-config">
   <div class="page-header">
@@ -3298,6 +3424,7 @@ function showPage(id, el, label){
     'email-generico':     function(){ loadGenericPage(); },
     'email-scheduler':    function(){ loadEmailScheduler(); },
     'whatsapp':           function(){ waRefreshStatus(); waLoadMessages(); waLoadStats(); waLoadConfig(); },
+    'wabot':              function(){ loadBotPage(); },
   };
   if(loaders[id]) loaders[id]();
 }
@@ -10387,6 +10514,262 @@ async function _initOnboarding() {
   maybeShowOnboarding();
 }
 setTimeout(_initOnboarding, 1000);
+
+// ════════════════════════════════════════════════════════════════
+// BOT WHATSAPP — Fase 1
+// ════════════════════════════════════════════════════════════════
+let _BOT_CONFIG = null;
+let _BOT_RULES  = [];
+
+async function loadBotPage(){
+  try {
+    const [cfgR, convR] = await Promise.all([
+      fetch('/api/whatsapp/bot/config',        {credentials:'same-origin'}),
+      fetch('/api/whatsapp/bot/conversations', {credentials:'same-origin'}),
+    ]);
+    if (!cfgR.ok || !convR.ok) {
+      toast('Error cargando bot config', 'error');
+      return;
+    }
+    const data = await cfgR.json();
+    const convs = await convR.json();
+    _BOT_CONFIG = data.config || {};
+    _BOT_RULES  = data.rules  || [];
+
+    // Estado + toggle
+    const enabled = !!_BOT_CONFIG.enabled;
+    document.getElementById('bot-status-text').textContent = enabled ? '🟢 Activo' : '⚪ Inactivo';
+    document.getElementById('bot-status-text').style.color = enabled ? '#16a34a' : '#9ca3af';
+    document.getElementById('bot-enabled-toggle').checked = enabled;
+
+    // Templates
+    document.getElementById('bot-footer').value      = _BOT_CONFIG.footer_optout || '';
+    document.getElementById('bot-optout-resp').value = _BOT_CONFIG.opt_out_response || '';
+    document.getElementById('bot-handoff-resp').value= _BOT_CONFIG.handoff_response || '';
+
+    // Métricas top
+    const counts = (convs || []).reduce((acc, c) => {
+      acc[c.state] = (acc[c.state] || 0) + 1;
+      return acc;
+    }, {});
+    document.getElementById('bot-active-count').textContent  = counts['active']   || 0;
+    document.getElementById('bot-handoff-count').textContent = counts['hand_off'] || 0;
+    document.getElementById('bot-optout-count').textContent  = counts['opt_out']  || 0;
+
+    renderBotRules();
+    renderBotConversations(convs);
+  } catch(e){
+    console.error('loadBotPage', e);
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+function renderBotRules(){
+  const wrap = document.getElementById('bot-rules-list');
+  if (!wrap) return;
+  if (!_BOT_RULES.length) {
+    wrap.innerHTML = '<div style="text-align:center;color:#aaa;padding:24px;font-size:13px">Sin reglas. Click + Nueva regla.</div>';
+    return;
+  }
+  wrap.innerHTML = _BOT_RULES.map(r => {
+    const kw = (r.keywords || '').split(',').slice(0,5).map(k => k.trim()).filter(Boolean)
+      .map(k => `<span style="background:#EFF6FF;color:#1D4ED8;font-size:10px;padding:1px 6px;border-radius:8px;margin-right:3px">${k}</span>`)
+      .join('');
+    const active = r.active ? '🟢' : '⚪';
+    return `<div style="border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <div style="font-size:13px;font-weight:600;color:#1A1A2E">${active} ${r.label} <span style="font-size:10px;color:#888;font-weight:400">· prio ${r.priority}${r.send_pdf?' · 📎 PDF':''}</span></div>
+        <div style="display:flex;gap:4px">
+          <button class="btn-ghost" onclick="botEditRule(${r.id})" style="border:none;background:none;cursor:pointer;font-size:14px;padding:2px 5px" title="Editar">✏️</button>
+          <button class="btn-ghost" onclick="botToggleRuleActive(${r.id}, ${r.active?0:1})" style="border:none;background:none;cursor:pointer;font-size:14px;padding:2px 5px" title="${r.active?'Desactivar':'Activar'}">${r.active?'⏸':'▶'}</button>
+          <button class="btn-ghost" onclick="botDeleteRule(${r.id})" style="border:none;background:none;cursor:pointer;font-size:14px;padding:2px 5px;color:#C0392B" title="Eliminar">🗑</button>
+        </div>
+      </div>
+      <div style="margin-bottom:5px">${kw}</div>
+      <div style="font-size:11px;color:#666;line-height:1.45">${(r.response_text || '').slice(0,150)}${(r.response_text||'').length>150?'…':''}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderBotConversations(convs){
+  const wrap = document.getElementById('bot-conv-list');
+  if (!wrap) return;
+  if (!convs || !convs.length) {
+    wrap.innerHTML = '<div style="text-align:center;color:#aaa;padding:24px;font-size:13px">Sin conversaciones todavía</div>';
+    return;
+  }
+  const stateMap = {
+    active:   { ico:'🟢', label:'Activa',     bg:'#DCFCE7', fg:'#166534' },
+    hand_off: { ico:'👤', label:'Hand-off',   bg:'#FEF3C7', fg:'#92400E' },
+    opt_out:  { ico:'❌', label:'Opt-out',    bg:'#FEE2E2', fg:'#991B1B' },
+    closed:   { ico:'🔒', label:'Cerrada',    bg:'#F3F4F6', fg:'#4B5563' },
+  };
+  wrap.innerHTML = convs.map(c => {
+    const s = stateMap[c.state] || stateMap.active;
+    const name = c.lead_name || c.client_phone;
+    const hint = c.hand_off_reason ? ` · ${c.hand_off_reason}` : '';
+    return `<div onclick="botOpenConv(${c.id})" style="border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:all .15s" onmouseover="this.style.background='#F9FAFB'" onmouseout="this.style.background='#fff'">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div style="font-size:12px;font-weight:600;color:#1A1A2E">${s.ico} ${name}</div>
+        <span style="background:${s.bg};color:${s.fg};font-size:9px;font-weight:700;padding:2px 7px;border-radius:8px">${s.label}</span>
+      </div>
+      <div style="font-size:10px;color:#888">📞 ${c.client_phone} · ${c.messages_count} msgs${hint}</div>
+      <div style="font-size:10px;color:#aaa;margin-top:2px">${c.last_msg_at || '—'}</div>
+    </div>`;
+  }).join('');
+}
+
+async function botToggleEnabled(){
+  const enabled = document.getElementById('bot-enabled-toggle').checked;
+  try {
+    const r = await fetch('/api/whatsapp/bot/config', {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({enabled})
+    });
+    if (r.ok) {
+      toast(enabled ? '🤖 Bot activado' : '🤖 Bot desactivado', 'success');
+      loadBotPage();
+    } else {
+      toast('Error', 'error');
+    }
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+async function botSaveTemplates(){
+  const body = {
+    footer_optout:    document.getElementById('bot-footer').value.trim(),
+    opt_out_response: document.getElementById('bot-optout-resp').value.trim(),
+    handoff_response: document.getElementById('bot-handoff-resp').value.trim(),
+  };
+  try {
+    const r = await fetch('/api/whatsapp/bot/config', {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (r.ok) toast('💾 Templates guardados', 'success');
+    else toast('Error', 'error');
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+function botNewRule(){
+  document.getElementById('bot-rule-modal-title').textContent = 'Nueva regla';
+  document.getElementById('bot-rule-id').value = '';
+  document.getElementById('bot-rule-label').value = '';
+  document.getElementById('bot-rule-keywords').value = '';
+  document.getElementById('bot-rule-response').value = '';
+  document.getElementById('bot-rule-pdf').checked = false;
+  document.getElementById('bot-rule-priority').value = 100;
+  document.getElementById('bot-rule-modal').style.display = 'flex';
+}
+
+function botEditRule(id){
+  const r = (_BOT_RULES || []).find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('bot-rule-modal-title').textContent = 'Editar regla';
+  document.getElementById('bot-rule-id').value = r.id;
+  document.getElementById('bot-rule-label').value = r.label || '';
+  document.getElementById('bot-rule-keywords').value = r.keywords || '';
+  document.getElementById('bot-rule-response').value = r.response_text || '';
+  document.getElementById('bot-rule-pdf').checked = !!r.send_pdf;
+  document.getElementById('bot-rule-priority').value = r.priority || 100;
+  document.getElementById('bot-rule-modal').style.display = 'flex';
+}
+
+function botCloseModal(){
+  document.getElementById('bot-rule-modal').style.display = 'none';
+}
+
+async function botSaveRule(){
+  const id = document.getElementById('bot-rule-id').value;
+  const body = {
+    label:         document.getElementById('bot-rule-label').value.trim(),
+    keywords:      document.getElementById('bot-rule-keywords').value.trim(),
+    response_text: document.getElementById('bot-rule-response').value.trim(),
+    send_pdf:      document.getElementById('bot-rule-pdf').checked,
+    priority:      parseInt(document.getElementById('bot-rule-priority').value) || 100,
+  };
+  if (!body.label || !body.keywords || !body.response_text) {
+    toast('Falta label, keywords o respuesta', 'error');
+    return;
+  }
+  try {
+    let r;
+    if (id) {
+      r = await fetch('/api/whatsapp/bot/rules/' + id, {
+        method:'PUT', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+    } else {
+      r = await fetch('/api/whatsapp/bot/rules', {
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+    }
+    if (r.ok) {
+      toast('💾 Regla guardada', 'success');
+      botCloseModal();
+      loadBotPage();
+    } else {
+      const d = await r.json();
+      toast(d.error || 'Error', 'error');
+    }
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+async function botToggleRuleActive(id, newVal){
+  try {
+    await fetch('/api/whatsapp/bot/rules/' + id, {
+      method:'PUT', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({active: newVal})
+    });
+    loadBotPage();
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+async function botDeleteRule(id){
+  if (!confirm('¿Eliminar esta regla?')) return;
+  try {
+    await fetch('/api/whatsapp/bot/rules/' + id, {
+      method:'DELETE', credentials:'same-origin'
+    });
+    toast('🗑 Regla eliminada', 'info');
+    loadBotPage();
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+async function botOpenConv(convId){
+  try {
+    const r = await fetch('/api/whatsapp/bot/conversations/' + convId + '/messages', {
+      credentials:'same-origin'
+    });
+    const msgs = await r.json();
+    let txt = msgs.map(m =>
+      `[${m.sent_at}] ${m.direction === 'in' ? '👤' : '🤖'} ${m.text || ''}`
+    ).join('\n\n');
+    if (!txt) txt = '(sin mensajes)';
+    alert('Conversación #' + convId + '\n\n' + txt);
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+async function botSetupWebhook(){
+  toast('Configurando webhook en Evolution...', 'info');
+  try {
+    const r = await fetch('/api/whatsapp/me/bot/setup-webhook', {
+      method:'POST', credentials:'same-origin'
+    });
+    const d = await r.json();
+    if (d.ok || d.data) {
+      toast('🔗 Webhook configurado: ' + (d.webhook_url || ''), 'success');
+    } else {
+      toast(d.error || 'Error', 'error');
+    }
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
 
 // Cargar usuario actual al iniciar
 document.addEventListener('DOMContentLoaded', loadCurrentUser);
