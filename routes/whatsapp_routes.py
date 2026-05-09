@@ -425,6 +425,115 @@ def wa_bot_get_conv_messages(conv_id):
     return jsonify([dict(m) for m in msgs])
 
 
+@bp.post('/bot/kb/upload')
+@login_required
+def wa_bot_kb_upload():
+    """
+    Sube un export de WhatsApp (.txt). Parsea pares Q→A y los indexa
+    en wa_bot_kb del current_user con embeddings.
+    """
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    if 'chat_file' not in request.files:
+        return jsonify({'error': 'No se envió archivo'}), 400
+    f = request.files['chat_file']
+    if not f or not f.filename:
+        return jsonify({'error': 'Archivo vacío'}), 400
+    if not f.filename.lower().endswith('.txt'):
+        return jsonify({'error': 'Solo .txt (export WhatsApp)'}), 400
+
+    raw = f.read()
+    if len(raw) > 10 * 1024 * 1024:
+        return jsonify({'error': 'Archivo muy grande (max 10MB)'}), 400
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeDecodeError:
+        try:
+            text = raw.decode('latin-1')
+        except Exception:
+            return jsonify({'error': 'No se pudo decodificar el archivo'}), 400
+
+    owner_hint = (request.form.get('owner_name') or current_user.name or '').strip()
+    source_chat = f.filename[:200]
+
+    from wa_bot.parser import parse_whatsapp_export, detect_owner, extract_qa_pairs
+    msgs = parse_whatsapp_export(text, owner_name_hint=owner_hint)
+    if not msgs:
+        return jsonify({'error': 'No se detectaron mensajes en el archivo'}), 400
+
+    owner = detect_owner(msgs, hint=owner_hint)
+    if not owner:
+        return jsonify({'error': 'No se pudo detectar el owner del chat'}), 400
+
+    pairs = extract_qa_pairs(msgs, owner)
+    logger.info(f'[Bot KB] {f.filename}: {len(msgs)} mensajes, owner={owner}, {len(pairs)} pares')
+
+    # Indexar (puede tardar — corre en thread y respondemos rápido)
+    import threading
+    def _index_bg():
+        try:
+            from wa_bot.rag import index_qa_pairs
+            saved = index_qa_pairs(current_user.id, source_chat, pairs)
+            logger.info(f'[Bot KB] {source_chat}: {saved} pares guardados')
+        except Exception as e:
+            logger.error(f'[Bot KB] index fail: {e}', exc_info=True)
+    threading.Thread(target=_index_bg, daemon=True).start()
+
+    return jsonify({
+        'ok': True,
+        'detected_owner': owner,
+        'messages_count': len(msgs),
+        'qa_pairs':       len(pairs),
+        'message': f'Indexando {len(pairs)} pares en background. Aparece en KB cuando termine.',
+    })
+
+
+@bp.get('/bot/kb/stats')
+@login_required
+def wa_bot_kb_stats():
+    """Cuántos pares Q→A tiene indexados el current_user."""
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    conn = get_db()
+    total = conn.execute(
+        'SELECT COUNT(*) FROM wa_bot_kb WHERE user_id = ?', (current_user.id,)
+    ).fetchone()[0]
+    by_source = conn.execute(
+        'SELECT source_chat, COUNT(*) as n FROM wa_bot_kb WHERE user_id = ? '
+        'GROUP BY source_chat ORDER BY n DESC',
+        (current_user.id,)
+    ).fetchall()
+    conn.close()
+    return jsonify({
+        'total':     total,
+        'by_source': [dict(r) for r in by_source],
+    })
+
+
+@bp.delete('/bot/kb')
+@login_required
+def wa_bot_kb_clear():
+    """Borra todo el KB del current_user (sin filtro)."""
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    data = request.get_json(silent=True) or {}
+    source = (data.get('source_chat') or '').strip()
+    conn = get_db()
+    if source:
+        cur = conn.execute(
+            'DELETE FROM wa_bot_kb WHERE user_id = ? AND source_chat = ?',
+            (current_user.id, source)
+        )
+    else:
+        cur = conn.execute(
+            'DELETE FROM wa_bot_kb WHERE user_id = ?', (current_user.id,)
+        )
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'deleted': deleted})
+
+
 @bp.post('/bot/conversations/<int:conv_id>/state')
 @login_required
 def wa_bot_set_conv_state(conv_id):

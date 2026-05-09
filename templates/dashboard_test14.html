@@ -2161,6 +2161,30 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
         <button class="btn btn-primary" onclick="botSaveTemplates()" style="width:100%">💾 Guardar templates</button>
       </div>
 
+      <!-- Knowledge Base (RAG con tus chats reales) -->
+      <div class="card" style="margin-bottom:14px;border-left:3px solid #7c3aed">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:14px;font-weight:700;color:#1A1A2E">🧠 Knowledge Base (IA)</div>
+          <span id="bot-kb-count" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#F3E8FF;color:#6B21A8">0 pares</span>
+        </div>
+        <div style="font-size:11px;color:#666;margin-bottom:10px;line-height:1.5">
+          Subí <strong>exports .txt</strong> de tus chats con clientes. El bot aprende tu estilo y responde imitándote cuando no hay match de reglas.
+          <br><span style="color:#888">Cómo exportar: WhatsApp → chat → ⋮ → Más → <strong>Exportar chat</strong> → Sin medios.</span>
+        </div>
+        <input type="file" id="bot-kb-file" accept=".txt" style="font-size:11px;margin-bottom:8px;width:100%">
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <button class="btn btn-primary" onclick="botUploadKB()" style="flex:1;font-size:12px;padding:8px">⬆ Subir e indexar</button>
+          <button class="btn btn-ghost" onclick="botClearKB()" style="font-size:12px;padding:8px;color:#C0392B">🗑 Limpiar todo</button>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;padding:8px;background:#F9FAFB;border-radius:8px">
+          <input type="checkbox" id="bot-llm-toggle" onchange="botToggleLLM()">
+          <span>🤖 Activar respuestas IA (cuando ninguna regla matchea)</span>
+        </label>
+        <div style="font-size:10px;color:#888;margin-top:6px">
+          Requiere <code>ANTHROPIC_API_KEY</code> en Railway env. Costo aprox: $0.001 por respuesta.
+        </div>
+      </div>
+
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
           <div style="font-size:14px;font-weight:700;color:#1A1A2E">📋 Reglas (keyword → respuesta)</div>
@@ -10558,6 +10582,7 @@ async function loadBotPage(){
 
     renderBotRules();
     renderBotConversations(convs);
+    botRefreshKBStats();
   } catch(e){
     console.error('loadBotPage', e);
     toast('Error: ' + e.message, 'error');
@@ -10767,6 +10792,69 @@ async function botSetupWebhook(){
       toast('🔗 Webhook configurado: ' + (d.webhook_url || ''), 'success');
     } else {
       toast(d.error || 'Error', 'error');
+    }
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+// ── Knowledge Base + LLM ─────────────────────────────────────
+async function botRefreshKBStats(){
+  try {
+    const r = await fetch('/api/whatsapp/bot/kb/stats', {credentials:'same-origin'});
+    const d = await r.json();
+    document.getElementById('bot-kb-count').textContent = (d.total || 0) + ' pares';
+    if (_BOT_CONFIG) {
+      document.getElementById('bot-llm-toggle').checked = !!_BOT_CONFIG.llm_enabled;
+    }
+  } catch(e){}
+}
+
+async function botUploadKB(){
+  const input = document.getElementById('bot-kb-file');
+  if (!input.files || !input.files.length) { toast('Elegí un archivo .txt', 'error'); return; }
+  const f = input.files[0];
+  if (!f.name.toLowerCase().endsWith('.txt')) { toast('Solo .txt de WhatsApp', 'error'); return; }
+  const fd = new FormData();
+  fd.append('chat_file', f);
+  toast('📤 Subiendo y parseando ' + f.name + '...', 'info');
+  try {
+    const r = await fetch('/api/whatsapp/bot/kb/upload', {
+      method:'POST', credentials:'same-origin', body: fd
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { toast(d.error || 'Error', 'error'); return; }
+    toast(`📚 ${d.qa_pairs} pares Q→A detectados (owner=${d.detected_owner}). Indexando en background...`, 'success');
+    input.value = '';
+    setTimeout(botRefreshKBStats, 5000);
+    setTimeout(botRefreshKBStats, 15000);
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+async function botClearKB(){
+  if (!confirm('¿Borrar TODO el knowledge base? El bot va a perder tu estilo aprendido.')) return;
+  try {
+    const r = await fetch('/api/whatsapp/bot/kb', {
+      method:'DELETE', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      toast(`🗑 Borrados ${d.deleted} pares`, 'info');
+      botRefreshKBStats();
+    }
+  } catch(e){ toast('Error: '+e.message, 'error'); }
+}
+
+async function botToggleLLM(){
+  const enabled = document.getElementById('bot-llm-toggle').checked;
+  try {
+    const r = await fetch('/api/whatsapp/bot/config', {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({llm_enabled: enabled})
+    });
+    if (r.ok) {
+      toast(enabled ? '🤖 IA activada — el bot responde con tu estilo' : 'IA desactivada', 'success');
     }
   } catch(e){ toast('Error: '+e.message, 'error'); }
 }
