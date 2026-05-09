@@ -256,27 +256,49 @@ def send_message(phone: str, message: str, image_url: Optional[str] = None,
 
 # ── WEBHOOK ──────────────────────────────────────────────────────
 def set_webhook(webhook_url: str, instance: Optional[str] = None) -> dict:
+    """
+    Configura el webhook de la instancia. Intenta primero el formato Evolution v2
+    (payload anidado en {"webhook": {...}}), si falla cae al formato v1 plano.
+    """
     inst = _resolve_instance(instance)
-    try:
-        r = requests.post(
-            f"{_base_url()}/webhook/set/{inst}",
-            headers=_headers(),
-            json={
-                "url":     webhook_url,
-                "enabled": True,
-                "events":  [
-                    "MESSAGES_UPSERT",
-                    "CONNECTION_UPDATE",
-                    "MESSAGES_UPDATE",
-                ],
-            },
-            timeout=_timeout(),
-        )
-        data = r.json() if r.content else {}
-        return {"ok": r.status_code < 300, "data": data}
-    except Exception as e:
-        logger.error(f"[Evolution {inst}] Error configurando webhook: {e}")
-        return {"ok": False, "error": str(e)}
+    events = [
+        "MESSAGES_UPSERT",
+        "CONNECTION_UPDATE",
+        "MESSAGES_UPDATE",
+    ]
+    url = f"{_base_url()}/webhook/set/{inst}"
+
+    # Formato v2 (anidado) — el que usan las versiones nuevas de Evolution
+    body_v2 = {
+        "webhook": {
+            "enabled":  True,
+            "url":      webhook_url,
+            "events":   events,
+            "byEvents": False,
+            "base64":   False,
+        }
+    }
+    # Formato v1 (plano) — fallback para versiones viejas
+    body_v1 = {
+        "url":     webhook_url,
+        "enabled": True,
+        "events":  events,
+    }
+
+    last_err = None
+    for label, body in (("v2", body_v2), ("v1", body_v1)):
+        try:
+            r = requests.post(url, headers=_headers(), json=body, timeout=_timeout())
+            data = r.json() if r.content else {}
+            if r.status_code < 300:
+                logger.info(f"[Evolution {inst}] webhook set OK con formato {label}")
+                return {"ok": True, "format": label, "data": data}
+            last_err = f"{label} status={r.status_code} body={r.text[:200]}"
+            logger.warning(f"[Evolution {inst}] webhook {label} fail: {last_err}")
+        except Exception as e:
+            last_err = f"{label} exc={e}"
+            logger.warning(f"[Evolution {inst}] webhook {label} exc: {e}")
+    return {"ok": False, "error": last_err}
 
 
 # ── HEALTH CHECK ─────────────────────────────────────────────────
