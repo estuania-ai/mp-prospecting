@@ -105,6 +105,48 @@ def _set_conversation_state(conn, conv_id: int, state: str, reason: str = '') ->
     conn.commit()
 
 
+def _maybe_notify_handoff(conn, conv_id: int, user_id: int,
+                            client_phone: str, client_msg: str,
+                            reason: str) -> None:
+    """
+    Si la config del bot tiene notify_on_handoff=1 y notify_email seteado,
+    dispara un email al Owner avisando del hand-off.
+    Corre en background para no bloquear la respuesta al cliente.
+    """
+    cfg = conn.execute(
+        'SELECT notify_email, notify_on_handoff FROM wa_bot_config WHERE user_id = ?',
+        (user_id,)
+    ).fetchone()
+    if not cfg:
+        return
+    notify_email = (cfg['notify_email'] or '').strip()
+    if not (cfg['notify_on_handoff'] and notify_email):
+        return
+    # Buscar lead_name si está
+    lead = conn.execute(
+        'SELECT l.name FROM wa_bot_conversations c '
+        'LEFT JOIN leads l ON l.id = c.lead_id '
+        'WHERE c.id = ?', (conv_id,)
+    ).fetchone()
+    lead_name = lead['name'] if lead and lead['name'] else None
+
+    import threading
+    def _bg():
+        try:
+            from wa_bot.notify import send_handoff_notification
+            send_handoff_notification(
+                to_email=notify_email,
+                client_phone=client_phone,
+                client_msg=client_msg,
+                conv_id=conv_id,
+                handoff_reason=reason,
+                lead_name=lead_name,
+            )
+        except Exception as e:
+            logger.warning(f'[BotWA] notify hand-off fail: {e}')
+    threading.Thread(target=_bg, daemon=True).start()
+
+
 def _mark_lead_opt_out(conn, client_phone: str) -> None:
     """Marca el lead como opt_out en lead_status si existe."""
     try:
@@ -241,12 +283,14 @@ def handle_incoming_message(
 
         # ── Detectar hand-off explícito ──────────────────────────
         if _matches_any(text, _HANDOFF_KEYWORDS):
-            response = cfg.get('handoff_response') or 'Te paso con un asesor.'
+            response = cfg.get('handoff_response') or 'Dame un momento porfis.'
             _send_response(client, instance, client_phone, response)
             _log_message(conn, conv_id, 'out', response,
                          response_source='handoff')
             _set_conversation_state(conn, conv_id, 'hand_off',
                                      reason='cliente pidió humano')
+            _maybe_notify_handoff(conn, conv_id, user_id, client_phone, text,
+                                    'cliente pidió humano')
             logger.info(f'[BotWA] {client_phone}: HAND-OFF (cliente pidió)')
             return {'action': 'handoff_explicit'}
 
@@ -288,13 +332,15 @@ def handle_incoming_message(
                 logger.warning(f'[BotWA] RAG fail: {e}')
 
         # ── Sin match: hand-off al humano ────────────────────────
-        response = cfg.get('handoff_response') or 'Te paso con un asesor.'
+        response = cfg.get('handoff_response') or 'Dame un momento porfis.'
         _send_response(client, instance, client_phone, response)
         _log_message(conn, conv_id, 'out', response,
                      response_source='handoff')
         _set_conversation_state(conn, conv_id, 'hand_off',
                                  reason='no se entendió mensaje')
-        logger.info(f'[BotWA] {client_phone}: HAND-OFF (no match)')
+        _maybe_notify_handoff(conn, conv_id, user_id, client_phone, text,
+                                'no se entendió mensaje')
+        logger.info(f'[BotWA] {client_phone}: HAND-OFF (no match) — notificando email')
         return {'action': 'handoff_no_match'}
 
     finally:

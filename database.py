@@ -148,12 +148,16 @@ def init_db():
             enabled            INTEGER DEFAULT 0,
             greeting_template  TEXT DEFAULT 'Hola! Soy Juan Sebastián de MercadoPago. ¿En qué te puedo ayudar?',
             opt_out_response   TEXT DEFAULT 'Listo, no te volvemos a contactar. ¡Que tengas un gran día!',
-            handoff_response   TEXT DEFAULT 'Te paso con un asesor humano para que te ayude. Te respondemos pronto!',
+            handoff_response   TEXT DEFAULT 'Dame un momento porfis, te respondo en un toque.',
             footer_optout      TEXT DEFAULT 'ℹ️ Si no querés recibir más mensajes, respondé "BAJA".',
-            llm_enabled        INTEGER DEFAULT 0,                           -- usar RAG/LLM cuando no hay match de reglas
+            llm_enabled        INTEGER DEFAULT 0,
+            notify_email       TEXT DEFAULT '',                              -- email para avisar hand-offs
+            notify_on_handoff  INTEGER DEFAULT 1,                            -- enviar email al hand-off
             updated_at         TEXT DEFAULT (datetime('now','localtime'))
         )
     ''')
+    _add_col(c, 'wa_bot_config', 'notify_email', 'TEXT DEFAULT ""')
+    _add_col(c, 'wa_bot_config', 'notify_on_handoff', 'INTEGER DEFAULT 1')
 
     # Reglas keyword → respuesta (configurables por user)
     c.execute('''
@@ -223,6 +227,13 @@ def init_db():
     if owners:
         owner_id = owners[0][0]
         c.execute('INSERT OR IGNORE INTO wa_bot_config (user_id) VALUES (?)', (owner_id,))
+        # Setear el email de notificación al email del Owner si está vacío
+        c.execute(
+            'UPDATE wa_bot_config SET notify_email = '
+            '(SELECT email FROM users WHERE id = ?) '
+            'WHERE user_id = ? AND (notify_email IS NULL OR notify_email = "")',
+            (owner_id, owner_id)
+        )
         # Reglas seed (solo si la tabla está vacía para este user)
         existing = c.execute(
             'SELECT COUNT(*) FROM wa_bot_rules WHERE user_id = ?', (owner_id,)

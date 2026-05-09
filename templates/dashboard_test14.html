@@ -2158,6 +2158,21 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
           <label style="font-size:11px;color:#666">Respuesta hand-off (cuando bot no entiende → pasa a humano)</label>
           <textarea id="bot-handoff-resp" rows="2" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #ddd;font-size:12px;resize:vertical"></textarea>
         </div>
+
+        <!-- Notificaciones por email -->
+        <div style="margin-bottom:10px;padding:10px;background:#FEF3C7;border-radius:8px;border:1px solid #FDE68A">
+          <div style="font-size:12px;font-weight:600;color:#78350F;margin-bottom:6px">📬 Notificación email cuando hay hand-off</div>
+          <div style="font-size:10px;color:#92400E;margin-bottom:8px">
+            Cada vez que el bot no entiende y deriva al humano, te llega un mail con el número del cliente y su mensaje, para que respondas vos directo.
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin-bottom:8px">
+            <input type="checkbox" id="bot-notify-toggle" onchange="botSaveTemplates()">
+            <span>Activar notificaciones por email</span>
+          </label>
+          <input id="bot-notify-email" placeholder="juansebastian.pinto@mercadolibre.cl"
+                 style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #FDE68A;font-size:12px;background:#fff">
+        </div>
+
         <button class="btn btn-primary" onclick="botSaveTemplates()" style="width:100%">💾 Guardar templates</button>
       </div>
 
@@ -10634,6 +10649,12 @@ async function loadBotPage(){
     document.getElementById('bot-optout-resp').value = _BOT_CONFIG.opt_out_response || '';
     document.getElementById('bot-handoff-resp').value= _BOT_CONFIG.handoff_response || '';
 
+    // Notificaciones
+    const notifyTog = document.getElementById('bot-notify-toggle');
+    const notifyEm  = document.getElementById('bot-notify-email');
+    if (notifyTog) notifyTog.checked = !!_BOT_CONFIG.notify_on_handoff;
+    if (notifyEm)  notifyEm.value    = _BOT_CONFIG.notify_email || '';
+
     // Métricas top
     const counts = (convs || []).reduce((acc, c) => {
       acc[c.state] = (acc[c.state] || 0) + 1;
@@ -10726,18 +10747,29 @@ async function botToggleEnabled(){
 
 async function botSaveTemplates(){
   const body = {
-    footer_optout:    document.getElementById('bot-footer').value.trim(),
-    opt_out_response: document.getElementById('bot-optout-resp').value.trim(),
-    handoff_response: document.getElementById('bot-handoff-resp').value.trim(),
+    footer_optout:     document.getElementById('bot-footer').value.trim(),
+    opt_out_response:  document.getElementById('bot-optout-resp').value.trim(),
+    handoff_response:  document.getElementById('bot-handoff-resp').value.trim(),
+    notify_on_handoff: document.getElementById('bot-notify-toggle').checked,
+    notify_email:      document.getElementById('bot-notify-email').value.trim(),
   };
+  if (body.notify_on_handoff && !body.notify_email) {
+    toast('⚠️ Si activás notificaciones, ingresá un email destino', 'warning');
+    return;
+  }
+  if (body.notify_email && !body.notify_email.includes('@')) {
+    toast('Email destino inválido', 'error');
+    return;
+  }
   try {
     const r = await fetch('/api/whatsapp/bot/config', {
       method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify(body)
     });
-    if (r.ok) toast('💾 Templates guardados', 'success');
-    else toast('Error', 'error');
+    const d = await r.json();
+    if (r.ok && d.ok) toast('💾 Configuración guardada', 'success');
+    else toast(d.error || 'Error', 'error');
   } catch(e){ toast('Error: '+e.message, 'error'); }
 }
 

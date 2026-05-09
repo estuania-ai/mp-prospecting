@@ -505,7 +505,7 @@ def wa_bot_save_config():
         return jsonify({'error': 'No autorizado'}), 403
     data = request.get_json() or {}
     set_pairs, params = [], []
-    for col in ('enabled', 'llm_enabled'):
+    for col in ('enabled', 'llm_enabled', 'notify_on_handoff'):
         if col in data:
             set_pairs.append(f'{col}=?')
             params.append(1 if data[col] else 0)
@@ -516,6 +516,12 @@ def wa_bot_save_config():
                 return jsonify({'error': f'{col} muy largo'}), 400
             set_pairs.append(f'{col}=?')
             params.append(v)
+    if 'notify_email' in data:
+        v = (data.get('notify_email') or '').strip()
+        if v and ('@' not in v or len(v) > 200):
+            return jsonify({'error': 'notify_email inválido'}), 400
+        set_pairs.append('notify_email=?')
+        params.append(v)
     if not set_pairs:
         return jsonify({'error': 'sin cambios'}), 400
     params.append(current_user.id)
