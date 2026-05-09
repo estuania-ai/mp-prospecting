@@ -132,6 +132,325 @@ def wa_me_restart():
     return jsonify(result)
 
 
+# ═══════════════════════════════════════════════════════════════════
+# BOT — Webhook receptor de Evolution API
+# ═══════════════════════════════════════════════════════════════════
+@bp.post('/webhook')
+def wa_webhook_receiver():
+    """
+    Endpoint público al que Evolution API envía MESSAGES_UPSERT y otros eventos.
+    Lo dispara el bot dispatcher en background si el mensaje es entrante.
+
+    NO requiere @login_required — Evolution se autentica vía request body.
+    Filtra mensajes salientes (fromMe=true) como hand-off automático.
+    """
+    import threading
+    payload = request.get_json(silent=True) or {}
+    event = payload.get('event') or ''
+
+    # Solo nos interesan mensajes entrantes
+    if event not in ('messages.upsert', 'MESSAGES_UPSERT'):
+        return jsonify({'ok': True, 'ignored': 'event_not_message'})
+
+    data = payload.get('data') or {}
+    # Evolution payload structure: { key: { remoteJid, fromMe, id }, message: { conversation } }
+    key  = data.get('key') or {}
+    msg  = data.get('message') or {}
+
+    remote_jid = (key.get('remoteJid') or '').strip()
+    from_me    = bool(key.get('fromMe'))
+    instance_received = (payload.get('instance') or '').strip()
+
+    # Extraer el texto del mensaje (multiples shapes posibles según tipo)
+    text = (
+        msg.get('conversation')
+        or (msg.get('extendedTextMessage') or {}).get('text')
+        or (msg.get('imageMessage') or {}).get('caption')
+        or ''
+    ).strip()
+
+    if not remote_jid or '@' not in remote_jid:
+        return jsonify({'ok': True, 'ignored': 'no_jid'})
+
+    # Filtrar grupos (no procesamos mensajes de grupos por ahora)
+    if '@g.us' in remote_jid:
+        return jsonify({'ok': True, 'ignored': 'group_chat'})
+
+    # Limpiar el JID a solo dígitos del teléfono
+    client_phone = remote_jid.split('@', 1)[0]
+
+    # Resolver user_id según instancia: para Owner, instancia legacy
+    # Para per-Sales, lookup por evolution_instance
+    conn = get_db()
+    if instance_received and instance_received != ev._default_instance():
+        row = conn.execute(
+            "SELECT id FROM users WHERE evolution_instance = ? AND status='active'",
+            (instance_received,)
+        ).fetchone()
+        if row:
+            user_id = row['id']
+        else:
+            conn.close()
+            return jsonify({'ok': True, 'ignored': 'unknown_instance'})
+    else:
+        # Default: Owner activo más antiguo
+        row = conn.execute(
+            "SELECT id FROM users WHERE role='owner' AND status='active' "
+            "ORDER BY id ASC LIMIT 1"
+        ).fetchone()
+        user_id = row['id'] if row else None
+    conn.close()
+
+    if not user_id:
+        return jsonify({'ok': True, 'ignored': 'no_owner'})
+
+    # Disparar dispatcher en background — no bloqueamos el webhook
+    def _bg():
+        try:
+            from wa_bot.dispatcher import handle_incoming_message
+            handle_incoming_message(
+                user_id=user_id,
+                client_phone=client_phone,
+                text=text,
+                client=ev,                         # módulo evolution_client cumple BotClient
+                instance=instance_received or None,
+                is_from_me=from_me,
+            )
+        except Exception as e:
+            logger.error(f'[BotWebhook] error: {e}', exc_info=True)
+    threading.Thread(target=_bg, daemon=True).start()
+    return jsonify({'ok': True, 'queued': True})
+
+
+# ═══════════════════════════════════════════════════════════════════
+# BOT — Configurar webhook en Evolution
+# ═══════════════════════════════════════════════════════════════════
+@bp.post('/me/bot/setup-webhook')
+@login_required
+def wa_me_setup_webhook():
+    """
+    Registra el webhook /api/whatsapp/webhook en la instancia Evolution
+    del usuario actual. Owner=instancia legacy.
+    """
+    import os
+    inst = _instance_for_current_user()
+    base_url = (os.getenv('APP_BASE_URL') or '').rstrip('/')
+    if not base_url:
+        return jsonify({'ok': False, 'error': 'APP_BASE_URL no configurado en Railway env'}), 400
+    webhook_url = base_url + '/api/whatsapp/webhook'
+    result = ev.set_webhook(webhook_url, instance=inst)
+    result['webhook_url'] = webhook_url
+    result['instance']    = inst
+    return jsonify(result)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# BOT — Config + reglas + conversaciones
+# ═══════════════════════════════════════════════════════════════════
+@bp.get('/bot/config')
+@login_required
+def wa_bot_get_config():
+    """Devuelve config + reglas del bot del current_user."""
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    conn = get_db()
+    cfg = conn.execute(
+        'SELECT * FROM wa_bot_config WHERE user_id = ?', (current_user.id,)
+    ).fetchone()
+    if not cfg:
+        # Crear con defaults
+        conn.execute('INSERT INTO wa_bot_config (user_id) VALUES (?)', (current_user.id,))
+        conn.commit()
+        cfg = conn.execute(
+            'SELECT * FROM wa_bot_config WHERE user_id = ?', (current_user.id,)
+        ).fetchone()
+    rules = conn.execute(
+        'SELECT * FROM wa_bot_rules WHERE user_id = ? ORDER BY priority ASC, id ASC',
+        (current_user.id,)
+    ).fetchall()
+    conn.close()
+    return jsonify({
+        'config': dict(cfg),
+        'rules':  [dict(r) for r in rules],
+    })
+
+
+@bp.post('/bot/config')
+@login_required
+def wa_bot_save_config():
+    """Guarda config del bot del current_user."""
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    data = request.get_json() or {}
+    set_pairs, params = [], []
+    for col in ('enabled', 'llm_enabled'):
+        if col in data:
+            set_pairs.append(f'{col}=?')
+            params.append(1 if data[col] else 0)
+    for col in ('greeting_template', 'opt_out_response', 'handoff_response', 'footer_optout'):
+        if col in data:
+            v = (data.get(col) or '').strip()
+            if len(v) > 1500:
+                return jsonify({'error': f'{col} muy largo'}), 400
+            set_pairs.append(f'{col}=?')
+            params.append(v)
+    if not set_pairs:
+        return jsonify({'error': 'sin cambios'}), 400
+    params.append(current_user.id)
+    conn = get_db()
+    conn.execute('INSERT OR IGNORE INTO wa_bot_config (user_id) VALUES (?)', (current_user.id,))
+    conn.execute(
+        f'UPDATE wa_bot_config SET {", ".join(set_pairs)}, '
+        f'updated_at=datetime("now","localtime") WHERE user_id=?',
+        params
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@bp.post('/bot/rules')
+@login_required
+def wa_bot_create_rule():
+    """Crea una nueva regla bot del current_user."""
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    data = request.get_json() or {}
+    label    = (data.get('label') or '').strip()
+    keywords = (data.get('keywords') or '').strip().lower()
+    response = (data.get('response_text') or '').strip()
+    send_pdf = 1 if data.get('send_pdf') else 0
+    priority = int(data.get('priority') or 100)
+    if not label or not keywords or not response:
+        return jsonify({'error': 'label, keywords y response_text son requeridos'}), 400
+    if len(label) > 100 or len(response) > 1500:
+        return jsonify({'error': 'campos muy largos'}), 400
+    conn = get_db()
+    cur = conn.execute(
+        'INSERT INTO wa_bot_rules (user_id, label, keywords, response_text, send_pdf, priority) '
+        'VALUES (?, ?, ?, ?, ?, ?)',
+        (current_user.id, label, keywords, response, send_pdf, priority)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'id': cur.lastrowid})
+
+
+@bp.put('/bot/rules/<int:rule_id>')
+@login_required
+def wa_bot_update_rule(rule_id):
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    data = request.get_json() or {}
+    set_pairs, params = [], []
+    for col, fmt in (('label', str), ('keywords', str), ('response_text', str)):
+        if col in data:
+            v = (data.get(col) or '').strip()
+            set_pairs.append(f'{col}=?')
+            params.append(v.lower() if col == 'keywords' else v)
+    for col in ('send_pdf', 'active'):
+        if col in data:
+            set_pairs.append(f'{col}=?')
+            params.append(1 if data[col] else 0)
+    if 'priority' in data:
+        try:
+            set_pairs.append('priority=?')
+            params.append(max(1, min(int(data['priority']), 999)))
+        except Exception:
+            pass
+    if not set_pairs:
+        return jsonify({'error': 'sin cambios'}), 400
+    params.extend([current_user.id, rule_id])
+    conn = get_db()
+    conn.execute(
+        f'UPDATE wa_bot_rules SET {", ".join(set_pairs)} WHERE user_id = ? AND id = ?',
+        params
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@bp.delete('/bot/rules/<int:rule_id>')
+@login_required
+def wa_bot_delete_rule(rule_id):
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    conn = get_db()
+    conn.execute(
+        'DELETE FROM wa_bot_rules WHERE user_id = ? AND id = ?',
+        (current_user.id, rule_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@bp.get('/bot/conversations')
+@login_required
+def wa_bot_list_conversations():
+    """Lista las últimas N conversaciones del bot del current_user."""
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT c.*, l.name as lead_name FROM wa_bot_conversations c '
+        'LEFT JOIN leads l ON l.id = c.lead_id '
+        'WHERE c.user_id = ? ORDER BY c.last_msg_at DESC LIMIT 100',
+        (current_user.id,)
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@bp.get('/bot/conversations/<int:conv_id>/messages')
+@login_required
+def wa_bot_get_conv_messages(conv_id):
+    """Devuelve los mensajes de una conversación del bot."""
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    conn = get_db()
+    # Verificar ownership
+    conv = conn.execute(
+        'SELECT user_id FROM wa_bot_conversations WHERE id = ?', (conv_id,)
+    ).fetchone()
+    if not conv or conv['user_id'] != current_user.id:
+        conn.close()
+        return jsonify({'error': 'no encontrado'}), 404
+    msgs = conn.execute(
+        'SELECT * FROM wa_bot_messages WHERE conv_id = ? ORDER BY id ASC',
+        (conv_id,)
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(m) for m in msgs])
+
+
+@bp.post('/bot/conversations/<int:conv_id>/state')
+@login_required
+def wa_bot_set_conv_state(conv_id):
+    """Cambia el estado de una conversación (resume bot / cerrar / etc.)."""
+    if current_user.role not in ('owner', 'tl', 'sales'):
+        return jsonify({'error': 'No autorizado'}), 403
+    data = request.get_json() or {}
+    new_state = (data.get('state') or '').strip().lower()
+    if new_state not in ('active', 'opt_out', 'hand_off', 'closed'):
+        return jsonify({'error': 'estado inválido'}), 400
+    conn = get_db()
+    conv = conn.execute(
+        'SELECT user_id FROM wa_bot_conversations WHERE id = ?', (conv_id,)
+    ).fetchone()
+    if not conv or conv['user_id'] != current_user.id:
+        conn.close()
+        return jsonify({'error': 'no encontrado'}), 404
+    conn.execute(
+        'UPDATE wa_bot_conversations SET state = ?, hand_off_reason = ? WHERE id = ?',
+        (new_state, data.get('reason', ''), conv_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
 # ── ENVÍO MANUAL ─────────────────────────────────────────────────
 
 @bp.post('/send')

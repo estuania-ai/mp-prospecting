@@ -139,6 +139,123 @@ def init_db():
     # Migraciones por si la tabla ya existía
     # Fast Registro per-user: URL del túnel + token encriptado
     _add_col(c, 'users', 'fast_local_token_enc', 'TEXT')
+
+    # ─── BOT WHATSAPP ──────────────────────────────────────────
+    # Config per-user del bot WA. Owner por default activo.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS wa_bot_config (
+            user_id            INTEGER PRIMARY KEY REFERENCES users(id),
+            enabled            INTEGER DEFAULT 0,
+            greeting_template  TEXT DEFAULT 'Hola! Soy Juan Sebastián de MercadoPago. ¿En qué te puedo ayudar?',
+            opt_out_response   TEXT DEFAULT 'Listo, no te volvemos a contactar. ¡Que tengas un gran día!',
+            handoff_response   TEXT DEFAULT 'Te paso con un asesor humano para que te ayude. Te respondemos pronto!',
+            footer_optout      TEXT DEFAULT 'ℹ️ Si no querés recibir más mensajes, respondé "BAJA".',
+            llm_enabled        INTEGER DEFAULT 0,                           -- usar RAG/LLM cuando no hay match de reglas
+            updated_at         TEXT DEFAULT (datetime('now','localtime'))
+        )
+    ''')
+
+    # Reglas keyword → respuesta (configurables por user)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS wa_bot_rules (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL REFERENCES users(id),
+            label           TEXT NOT NULL,                                  -- ej: "Pregunta precio"
+            keywords        TEXT NOT NULL,                                  -- comma-separated lowercase
+            response_text   TEXT NOT NULL,
+            send_pdf        INTEGER DEFAULT 0,                              -- adjuntar PDF beneficios
+            priority        INTEGER DEFAULT 100,                            -- menor = más prioritario
+            active          INTEGER DEFAULT 1,
+            created_at      TEXT DEFAULT (datetime('now','localtime'))
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_wa_rules_user ON wa_bot_rules(user_id, active, priority)')
+
+    # Estado de cada conversación bot ↔ cliente
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS wa_bot_conversations (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id             INTEGER NOT NULL REFERENCES users(id),     -- dueño del bot
+            client_phone        TEXT NOT NULL,
+            lead_id             INTEGER,                                    -- si matchea con leads
+            state               TEXT DEFAULT 'active',                      -- active | opt_out | hand_off | closed
+            hand_off_reason     TEXT,                                       -- por qué se hizo hand-off
+            messages_count      INTEGER DEFAULT 0,
+            last_msg_at         TEXT,
+            last_bot_reply_at   TEXT,
+            created_at          TEXT DEFAULT (datetime('now','localtime')),
+            UNIQUE(user_id, client_phone)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_wa_conv_phone ON wa_bot_conversations(client_phone)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_wa_conv_state ON wa_bot_conversations(state)')
+
+    # Log de todos los mensajes (in/out) que pasaron por el bot
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS wa_bot_messages (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            conv_id         INTEGER NOT NULL REFERENCES wa_bot_conversations(id),
+            direction       TEXT NOT NULL,                                  -- 'in' | 'out'
+            text            TEXT,
+            matched_rule_id INTEGER,                                        -- si fue rule-based
+            response_source TEXT,                                           -- 'rule' | 'llm' | 'opt_out' | 'handoff' | 'manual'
+            sent_at         TEXT DEFAULT (datetime('now','localtime'))
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_wa_botmsg_conv ON wa_bot_messages(conv_id)')
+
+    # Knowledge base: pares Q→A extraídos de conversaciones reales del usuario.
+    # Se usa en Fase 2 (RAG) — embeddings se generan al subir chat exports.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS wa_bot_kb (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER NOT NULL REFERENCES users(id),
+            source_chat     TEXT,                                           -- nombre del chat origen
+            client_msg      TEXT NOT NULL,                                  -- mensaje del cliente
+            owner_response  TEXT NOT NULL,                                  -- respuesta del owner
+            embedding       BLOB,                                           -- vector embedding (np.float32 binary)
+            created_at      TEXT DEFAULT (datetime('now','localtime'))
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_wa_kb_user ON wa_bot_kb(user_id)')
+
+    # Seed: activar bot para el Owner por default + reglas iniciales
+    if owners:
+        owner_id = owners[0][0]
+        c.execute('INSERT OR IGNORE INTO wa_bot_config (user_id) VALUES (?)', (owner_id,))
+        # Reglas seed (solo si la tabla está vacía para este user)
+        existing = c.execute(
+            'SELECT COUNT(*) FROM wa_bot_rules WHERE user_id = ?', (owner_id,)
+        ).fetchone()[0]
+        if existing == 0:
+            seed_rules = [
+                ('Pide info / precio',
+                 'info,precio,costo,cuanto,cuánto,máquina,maquina,beneficios,detalles',
+                 'Te cuento rápido: con MercadoPago Point Smart 2 cobrás con tarjeta sin arriendo mensual, '
+                 'plata al instante (incluso findes), cuotas sin interés Visa/Master, y aceptás valeras '
+                 '(Edenred, Pluxee, Junaeb). Te paso un PDF con todos los beneficios 👇',
+                 1, 10),  # send_pdf=1, priority=10
+                ('Quiere agendar reunión',
+                 'reunion,reunión,agendar,llamar,hablar persona,asesor,visita',
+                 'Listo, te paso mi link de calendario para que elijas el día y la hora que más te '
+                 'acomode: https://calendly.com/juansebastian-pinto/mercadopago',
+                 0, 20),
+                ('Saludo simple',
+                 'hola,buenos dias,buenos días,buenas,hi,hey,holi',
+                 'Hola! Soy Juan Sebastián de MercadoPago 👋 ¿En qué te puedo ayudar? '
+                 'Si querés, te paso info sobre nuestras máquinas POS y beneficios.',
+                 0, 50),
+                ('Gracias / despedida',
+                 'gracias,muchas gracias,bye,chao,adios,adiós,nos vemos',
+                 '¡Gracias a vos! Cualquier duda, me escribís. Que tengas un gran día 💛',
+                 0, 80),
+            ]
+            for label, kw, resp, send_pdf, pri in seed_rules:
+                c.execute(
+                    'INSERT INTO wa_bot_rules (user_id, label, keywords, response_text, send_pdf, priority) '
+                    'VALUES (?, ?, ?, ?, ?, ?)',
+                    (owner_id, label, kw, resp, send_pdf, pri)
+                )
     _add_col(c, 'user_scheduler_config', 'email_lote1_active',    'INTEGER DEFAULT 0')
     _add_col(c, 'user_scheduler_config', 'email_lote2_active',    'INTEGER DEFAULT 0')
     _add_col(c, 'user_scheduler_config', 'email_lote3_active',    'INTEGER DEFAULT 0')
