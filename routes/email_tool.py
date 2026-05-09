@@ -2148,6 +2148,74 @@ def get_contacts():
     return jsonify(rows)
 
 
+def _email_safe_html(html: str) -> tuple[str, list[tuple[str, str, bytes]]]:
+    """
+    Adapta el HTML para clientes de email (Gmail/Outlook):
+    1. Inline CSS con premailer (Gmail strippa <style> del head, respeta inline)
+    2. Reemplaza <img src="data:..."> por <img src="cid:imgN"> y devuelve los
+       bytes para adjuntar como inline attachments.
+
+    Retorna (html_adaptado, [(cid, mime_subtype, bytes), ...])
+    """
+    import re as _re
+    import base64 as _b64
+
+    # 1) Extraer todas las base64 images, asignar CIDs
+    inline_imgs: list[tuple[str, str, bytes]] = []
+    counter = [0]
+
+    def _replace_data_uri(match):
+        full = match.group(0)
+        mime_subtype = (match.group(1) or 'png').lower()
+        b64data = match.group(2)
+        try:
+            raw = _b64.b64decode(b64data)
+        except Exception:
+            return full  # mantener si no se puede decodificar
+        cid = f'mpemailimg{counter[0]}'
+        counter[0] += 1
+        inline_imgs.append((cid, mime_subtype, raw))
+        # Reconstruir tag con src=cid
+        return full[:match.start(0)-match.start(0)] + f'src="cid:{cid}"'
+
+    # Regex que captura src="data:image/<subtype>;base64,<data>"
+    # Reemplazo manual para mantener el resto del tag intacto
+    pattern = _re.compile(
+        r'src="data:image/([a-zA-Z]+)(?:\+[a-z]+)?;base64,([^"]+)"',
+        _re.IGNORECASE
+    )
+
+    def _sub(m):
+        mime_subtype = (m.group(1) or 'png').lower()
+        b64data = m.group(2)
+        try:
+            raw = _b64.b64decode(b64data)
+        except Exception:
+            return m.group(0)
+        cid = f'mpemailimg{counter[0]}'
+        counter[0] += 1
+        inline_imgs.append((cid, mime_subtype, raw))
+        return f'src="cid:{cid}"'
+
+    html_cid = pattern.sub(_sub, html)
+
+    # 2) Inline CSS con premailer (Gmail-friendly)
+    try:
+        from premailer import transform as _premail
+        html_inline = _premail(
+            html_cid,
+            keep_style_tags=False,        # remueve <style> del head
+            remove_classes=True,          # limpia class="..." que ya no sirven
+            strip_important=False,
+            cssutils_logging_level=50,    # silence cssutils warnings (flex/grid no soportados en CSS 2.1)
+        )
+    except Exception as e:
+        logger.warning(f'[MPGenerico] premailer falló, sigo sin inline CSS: {e}')
+        html_inline = html_cid
+
+    return html_inline, inline_imgs
+
+
 def _send_mp_html_email(to_email: str, subject: str, business_name: str,
                         wa_url: str, pdf_url: str, pdf_path: str | None = None,
                         user_creds: dict | None = None) -> dict:
@@ -2156,13 +2224,14 @@ def _send_mp_html_email(to_email: str, subject: str, business_name: str,
     static/email_assets/mp_generico.html. Adjunta el PDF de beneficios.
 
     Reemplaza {{NOMBRE}}, {{WA_URL}}, {{PDF_URL}} en el HTML antes de enviar.
-    No usa el wrapper estandar — este HTML ya trae su propio header GIF
-    (animado por CSS) y firma.
+    Inline CSS con premailer y extrae imágenes base64 a CID attachments para
+    que Gmail/Outlook las muestren correctamente.
     """
     import os, smtplib, ssl, pathlib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
     from email.mime.application import MIMEApplication
+    from email.mime.image import MIMEImage
 
     # Resolver creds: Owner usa env vars; Sales/TL pasan user_creds
     smtp_host = os.getenv('SMTP_HOST', 'smtp.gmail.com')
@@ -2194,16 +2263,26 @@ def _send_mp_html_email(to_email: str, subject: str, business_name: str,
     html = html.replace('{{WA_URL}}', wa_url or 'https://wa.me/56935103447')
     html = html.replace('{{PDF_URL}}', pdf_url or '#')
 
+    # Adaptar para clientes de email: inline CSS + base64 → CID
+    html_email, inline_imgs = _email_safe_html(html)
+
     tracking_token = _get_or_create_tracking_token(to_email)
     # Inyectar pixel de tracking (al final del body)
-    if '</body>' in html:
+    if '</body>' in html_email:
         pixel = (
             f'<img src="{os.getenv("APP_BASE_URL","")}/api/email-tool/track/open/'
             f'{tracking_token}" width="1" height="1" style="display:none">'
         )
-        html = html.replace('</body>', f'{pixel}</body>')
+        html_email = html_email.replace('</body>', f'{pixel}</body>')
 
-    # MIME multipart/mixed: alternative(text+html) + adjunto PDF
+    # MIME estructura:
+    # mixed
+    #   alternative
+    #     text/plain (fallback)
+    #     related
+    #       text/html (con CIDs)
+    #       image/* (todas las inline imgs)
+    #   application/pdf (adjunto)
     msg = MIMEMultipart('mixed')
     msg['Subject'] = subject
     msg['From']    = f'{from_name} <{from_email}>'
@@ -2211,6 +2290,7 @@ def _send_mp_html_email(to_email: str, subject: str, business_name: str,
 
     alt = MIMEMultipart('alternative')
     msg.attach(alt)
+
     plain_fallback = (
         f'Hola {safe_name}!\n\n'
         f'Te escribo desde MercadoPago. Vendé más con nuestra solución.\n\n'
@@ -2219,9 +2299,22 @@ def _send_mp_html_email(to_email: str, subject: str, business_name: str,
         f'Saludos,\n{from_name}'
     )
     alt.attach(MIMEText(plain_fallback, 'plain', 'utf-8'))
-    alt.attach(MIMEText(html, 'html', 'utf-8'))
 
-    # Adjuntar PDF si existe
+    related = MIMEMultipart('related')
+    alt.attach(related)
+    related.attach(MIMEText(html_email, 'html', 'utf-8'))
+
+    # Adjuntar imágenes inline (base64 → CID)
+    for cid, mime_subtype, raw_bytes in inline_imgs:
+        try:
+            img = MIMEImage(raw_bytes, _subtype=mime_subtype)
+            img.add_header('Content-ID', f'<{cid}>')
+            img.add_header('Content-Disposition', 'inline', filename=f'{cid}.{mime_subtype}')
+            related.attach(img)
+        except Exception as e:
+            logger.debug(f'[MPGenerico] img cid={cid} no se pudo adjuntar: {e}')
+
+    # Adjuntar PDF si existe (al nivel mixed, no related)
     if pdf_path:
         pdf_p = pathlib.Path(pdf_path)
         if pdf_p.exists():

@@ -18,3 +18,4 @@ flask-wtf==1.2.1
 flask-limiter==3.8.0
 cryptography==42.0.8
 dnspython==2.6.1
+premailer==3.10.0
