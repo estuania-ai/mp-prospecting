@@ -250,9 +250,30 @@ def wa_webhook_receiver():
     })
     logger.info(f'[BotWebhook] event={event} instance={payload.get("instance")} keys={list(payload.keys())}')
 
+    # Eventos de status / conexión: los manejamos en background y salimos
+    if event in ('messages.update', 'MESSAGES_UPDATE'):
+        try:
+            _handle_status_update(payload)
+        except Exception as e:
+            logger.warning(f'[BotWebhook] status_update fail: {e}')
+        return jsonify({'ok': True, 'handled': 'status_update'})
+
+    if event in ('connection.update', 'CONNECTION_UPDATE'):
+        try:
+            _handle_connection_update(payload)
+        except Exception as e:
+            logger.warning(f'[BotWebhook] connection_update fail: {e}')
+        return jsonify({'ok': True, 'handled': 'connection_update'})
+
     # Solo nos interesan mensajes entrantes
     if event not in ('messages.upsert', 'MESSAGES_UPSERT'):
         return jsonify({'ok': True, 'ignored': 'event_not_message', 'event': event})
+
+    # Tracking legacy de wa_messages (replied_at, etc.) — best effort en bg
+    try:
+        threading.Thread(target=_handle_incoming, args=(payload,), daemon=True).start()
+    except Exception as e:
+        logger.warning(f'[BotWebhook] legacy _handle_incoming fail: {e}')
 
     data = payload.get('data') or {}
     # Evolution payload structure: { key: { remoteJid, fromMe, id }, message: { conversation } }
@@ -1000,32 +1021,6 @@ def wa_conversations():
     """).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
-
-
-# ── WEBHOOK (Evolution API → Flask) ─────────────────────────────
-
-@bp.post('/webhook')
-def wa_webhook():
-    """
-    Recibe eventos de Evolution API:
-    - MESSAGES_UPSERT: mensaje entrante
-    - MESSAGES_UPDATE: cambio de estado (delivered, read)
-    - CONNECTION_UPDATE: cambio de estado de conexión
-    """
-    payload = request.get_json(silent=True) or {}
-    event   = payload.get("event", "")
-
-    try:
-        if event == "MESSAGES_UPSERT":
-            _handle_incoming(payload)
-        elif event == "MESSAGES_UPDATE":
-            _handle_status_update(payload)
-        elif event == "CONNECTION_UPDATE":
-            _handle_connection_update(payload)
-    except Exception as e:
-        logger.error(f"[Webhook] Error procesando evento {event}: {e}")
-
-    return jsonify({"ok": True}), 200
 
 
 # ── SINCRONIZACIÓN ET_CONTACTS → LEADS ───────────────────────────
