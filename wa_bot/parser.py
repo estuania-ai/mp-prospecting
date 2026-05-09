@@ -176,23 +176,82 @@ def parse_faq_document(text: str) -> list[dict]:
     if pairs:
         return pairs
 
-    # ── Formato C: free-form (split por doble salto) ───────────
+    # ── Formato C: free-form con chunking inteligente ──────────
+    # Para PDFs, brochures, Excel, PPT donde el texto viene corrido o por
+    # líneas sueltas. Estrategia:
+    # 1. Si hay párrafos (split por doble newline): usar c/u como chunk
+    # 2. Si el texto es 1 sola "línea" larga: chunkear por oraciones (300-500 chars c/u)
+    # 3. Si vienen muchas líneas cortas: agrupar consecutivas en chunks
     paragraphs = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
+
+    # Si sólo hay 1 "párrafo" pero es texto largo (PDF mal extraído),
+    # forzar chunking por longitud
+    if len(paragraphs) <= 2 and len(text) > 600:
+        paragraphs = _chunk_long_text(text)
+
+    # Si hay muchos párrafos cortos (cada línea suelta), agrupar en chunks de ~400 chars
+    if len(paragraphs) > 50:
+        paragraphs = _group_short_lines(paragraphs)
+
     for para in paragraphs:
-        # Tomar la primera oración como "tema" y todo como respuesta
-        first_line = para.split('\n', 1)[0].strip()
-        # Si la primera línea es muy corta, tratarla como título; sino,
-        # generar una pregunta genérica del contenido
-        if len(first_line) < 200 and len(para) > len(first_line) + 20:
+        # Limpieza básica: remover marcadores tipo "--- Página N ---" y duplicados
+        para_clean = re.sub(r'---\s*Página\s+\d+\s*---', '', para).strip()
+        if not para_clean or len(para_clean) < 30:
+            continue
+        first_line = para_clean.split('\n', 1)[0].strip()
+        if len(first_line) < 200 and len(para_clean) > len(first_line) + 15:
             q = first_line
-            a = para
+            a = para_clean
         else:
-            # Bloque sin título claro: usar primeras 80 chars como pregunta
-            q = first_line[:80] + ('...' if len(first_line) > 80 else '')
-            a = para
-        if len(q) >= 5 and len(a) >= 30:
-            pairs.append({'client_msg': q, 'owner_response': a})
+            # Sin título claro: usar primeras 100 chars como "pregunta" (referencia)
+            q = first_line[:100] + ('...' if len(first_line) > 100 else '')
+            a = para_clean
+        # Thresholds más permisivos para PDFs/Excel
+        if len(q) >= 5 and len(a) >= 25:
+            pairs.append({'client_msg': q, 'owner_response': a[:2500]})
     return pairs
+
+
+def _chunk_long_text(text: str, target_chars: int = 400) -> list[str]:
+    """Divide texto largo en chunks de ~target_chars por oración."""
+    # Splitear por oración (., !, ?, salto)
+    sentences = re.split(r'(?<=[.!?])\s+|\n\n+', text)
+    chunks = []
+    current = []
+    current_len = 0
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        if current_len + len(s) > target_chars and current:
+            chunks.append(' '.join(current))
+            current = []
+            current_len = 0
+        current.append(s)
+        current_len += len(s)
+    if current:
+        chunks.append(' '.join(current))
+    return chunks
+
+
+def _group_short_lines(lines: list[str], target_chars: int = 400) -> list[str]:
+    """Agrupa líneas consecutivas hasta llegar a ~target_chars por chunk."""
+    chunks = []
+    current = []
+    current_len = 0
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if current_len + len(line) > target_chars and current:
+            chunks.append('\n'.join(current))
+            current = []
+            current_len = 0
+        current.append(line)
+        current_len += len(line)
+    if current:
+        chunks.append('\n'.join(current))
+    return chunks
 
 
 def extract_qa_pairs(messages: list[dict], owner: str) -> list[dict]:

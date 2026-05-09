@@ -10958,7 +10958,7 @@ async function botUploadKB(){
   }
   toast(`📤 Subiendo ${files.length} chat(s)...`, 'info');
 
-  let okCount = 0, errCount = 0, totalPairs = 0;
+  let okCount = 0, errCount = 0, totalSaved = 0;
   for (const f of files) {
     try {
       const fd = new FormData();
@@ -10972,19 +10972,17 @@ async function botUploadKB(){
         toast(`⚠️ ${f.name}: ${d.error || 'error'}`, 'warning');
       } else {
         okCount++;
-        totalPairs += (d.qa_pairs || 0);
-        toast(`📚 ${f.name}: ${d.qa_pairs} pares Q→A (owner=${d.detected_owner})`, 'success');
+        totalSaved += (d.saved || 0);
+        toast(`📚 ${f.name}: ${d.saved}/${d.qa_pairs} pares (owner=${d.detected_owner})`, 'success');
       }
     } catch(e){
       errCount++;
       toast(`❌ ${f.name}: ${e.message}`, 'error');
     }
   }
-  toast(`✅ ${okCount}/${files.length} chats OK · ${totalPairs} pares en cola de indexación`, 'success');
+  toast(`✅ ${okCount}/${files.length} chats OK · ${totalSaved} pares guardados`, 'success');
   input.value = '';
-  setTimeout(botRefreshKBStats, 4000);
-  setTimeout(botRefreshKBStats, 12000);
-  setTimeout(botRefreshKBStats, 25000);
+  botRefreshKBStats();
 }
 
 async function botUploadDoc(){
@@ -11001,7 +10999,7 @@ async function botUploadDoc(){
   }
   toast(`📤 Subiendo ${files.length} archivo(s)...`, 'info');
 
-  let okCount = 0, errCount = 0, totalPairs = 0;
+  let okCount = 0, errCount = 0, totalSaved = 0;
   for (const f of files) {
     try {
       const fd = new FormData();
@@ -11015,20 +11013,17 @@ async function botUploadDoc(){
         toast(`⚠️ ${f.name}: ${d.error || 'error'}`, 'warning');
       } else {
         okCount++;
-        totalPairs += (d.pairs || 0);
-        toast(`📄 ${f.name}: ${d.pairs} entradas (${(d.format||'?').toUpperCase()})`, 'success');
+        totalSaved += (d.saved || 0);
+        toast(`📄 ${f.name}: ${d.saved} entradas indexadas (${(d.format||'?').toUpperCase()})`, 'success');
       }
     } catch(e){
       errCount++;
       toast(`❌ ${f.name}: ${e.message}`, 'error');
     }
   }
-
-  toast(`✅ ${okCount}/${files.length} documentos OK · ${totalPairs} entradas en cola de indexación`, 'success');
+  toast(`✅ ${okCount}/${files.length} documentos OK · ${totalSaved} entradas guardadas`, 'success');
   input.value = '';
-  setTimeout(botRefreshKBStats, 4000);
-  setTimeout(botRefreshKBStats, 12000);
-  setTimeout(botRefreshKBStats, 25000);
+  botRefreshKBStats();
 }
 
 async function botClearKB(){

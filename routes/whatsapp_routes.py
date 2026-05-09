@@ -696,23 +696,21 @@ def wa_bot_kb_upload():
     pairs = extract_qa_pairs(msgs, owner)
     logger.info(f'[Bot KB] {f.filename}: {len(msgs)} mensajes, owner={owner}, {len(pairs)} pares')
 
-    # Indexar (puede tardar — corre en thread y respondemos rápido)
-    import threading
-    def _index_bg():
-        try:
-            from wa_bot.rag import index_qa_pairs
-            saved = index_qa_pairs(current_user.id, source_chat, pairs)
-            logger.info(f'[Bot KB] {source_chat}: {saved} pares guardados')
-        except Exception as e:
-            logger.error(f'[Bot KB] index fail: {e}', exc_info=True)
-    threading.Thread(target=_index_bg, daemon=True).start()
+    # Indexar síncrono — más fiable
+    try:
+        from wa_bot.rag import index_qa_pairs
+        saved = index_qa_pairs(current_user.id, source_chat, pairs)
+    except Exception as e:
+        logger.error(f'[Bot KB] index fail: {e}', exc_info=True)
+        return jsonify({'error': f'Error indexando: {str(e)[:200]}'}), 500
 
     return jsonify({
         'ok': True,
         'detected_owner': owner,
         'messages_count': len(msgs),
         'qa_pairs':       len(pairs),
-        'message': f'Indexando {len(pairs)} pares en background. Aparece en KB cuando termine.',
+        'saved':          saved,
+        'message': f'{saved} pares Q→A indexados (de {len(pairs)} detectados).',
     })
 
 
@@ -763,22 +761,33 @@ def wa_bot_kb_upload_doc():
 
     source = f'doc:{f.filename[:200]}'
 
-    import threading
-    def _index_bg():
-        try:
-            from wa_bot.rag import index_qa_pairs
-            saved = index_qa_pairs(current_user.id, source, pairs)
-            logger.info(f'[Bot KB Doc] {f.filename}: {saved} pares indexados (formato {ext})')
-        except Exception as e:
-            logger.error(f'[Bot KB Doc] index fail: {e}', exc_info=True)
-    threading.Thread(target=_index_bg, daemon=True).start()
+    # Indexamos sincrónicamente para devolver el saved real al usuario.
+    # En modo BM25 (sin embeddings) es muy rápido. Si tiene Voyage/OpenAI
+    # hace 1 request por par (puede tardar pero igual es razonable).
+    try:
+        from wa_bot.rag import index_qa_pairs
+        saved = index_qa_pairs(current_user.id, source, pairs)
+    except Exception as e:
+        logger.error(f'[Bot KB Doc] index fail: {e}', exc_info=True)
+        return jsonify({'error': f'Error indexando: {str(e)[:200]}'}), 500
+
+    if saved == 0:
+        return jsonify({
+            'ok':       False,
+            'filename': f.filename,
+            'pairs':    len(pairs),
+            'saved':    0,
+            'error':    f'Detectamos {len(pairs)} entradas pero ninguna pasó el filtro mínimo '
+                        f'(probablemente texto muy corto o duplicado). Revisá el documento.',
+        }), 400
 
     return jsonify({
         'ok':       True,
         'filename': f.filename,
         'format':   ext,
         'pairs':    len(pairs),
-        'message':  f'Indexando {len(pairs)} entradas de {f.filename} ({ext.upper()}) en background.',
+        'saved':    saved,
+        'message':  f'{saved} entradas indexadas de {f.filename} ({ext.upper()}).',
     })
 
 

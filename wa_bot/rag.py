@@ -238,12 +238,14 @@ def index_qa_pairs(user_id: int, source_chat: str,
     conn = get_db()
     saved = 0
     skipped_short = 0
+    skipped_dup = 0
     for p in pairs:
         client_msg = p.get('client_msg', '').strip()
         owner_resp = p.get('owner_response', '').strip()
         if not client_msg or not owner_resp:
             continue
-        if len(client_msg) < 8 or len(owner_resp) < 15:
+        # Threshold permisivo para no descartar entradas de PDFs/Excel
+        if len(client_msg) < 5 or len(owner_resp) < 20:
             skipped_short += 1
             continue
         existing = conn.execute(
@@ -251,6 +253,7 @@ def index_qa_pairs(user_id: int, source_chat: str,
             (user_id, client_msg, owner_resp)
         ).fetchone()
         if existing:
+            skipped_dup += 1
             continue
 
         emb_blob = None
@@ -269,7 +272,8 @@ def index_qa_pairs(user_id: int, source_chat: str,
     conn.close()
     mode = 'embeddings' if has_emb_provider else 'BM25 (sin embeddings, gratis)'
     logger.info(
-        f'[RAG] indexados {saved} pares para user {user_id} desde "{source_chat}" — modo {mode}'
+        f'[RAG] "{source_chat}" — saved={saved}, dup={skipped_dup}, '
+        f'short={skipped_short} de {len(pairs)} pares — modo {mode}'
     )
     return saved
 
