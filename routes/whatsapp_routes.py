@@ -582,12 +582,12 @@ def wa_bot_kb_upload():
 @login_required
 def wa_bot_kb_upload_doc():
     """
-    Sube un documento .txt con info propia (FAQ, scripts, productos, etc.).
-    Parser detecta automáticamente:
-    - Formato P:/R: (Q&A explícito)
-    - Markdown ## headings
-    - Free-form (párrafos separados por doble salto)
-    Indexa en wa_bot_kb con prefijo 'doc:' en source_chat.
+    Sube un documento con info propia (FAQ, scripts, productos, brochures, etc.).
+    Acepta: .txt .pdf .docx .xlsx .pptx
+
+    El bot extrae texto del archivo según su formato y lo indexa como entradas
+    de Q→A. Si el documento tiene formato Q&A (P:/R:), lo respeta. Si es
+    free-form (PDF brochure, Excel de precios, slides), divide en bloques.
     """
     if current_user.role not in ('owner', 'tl', 'sales'):
         return jsonify({'error': 'No autorizado'}), 403
@@ -596,24 +596,32 @@ def wa_bot_kb_upload_doc():
     f = request.files['doc_file']
     if not f or not f.filename:
         return jsonify({'error': 'Archivo vacío'}), 400
-    if not f.filename.lower().endswith('.txt'):
-        return jsonify({'error': 'Solo .txt por ahora'}), 400
+
+    from wa_bot.doc_extract import extract_text_from_bytes, supported_extensions
+    ext = f.filename.lower().rsplit('.', 1)[-1] if '.' in f.filename else ''
+    if ext not in supported_extensions():
+        return jsonify({
+            'error': f'Formato no soportado. Aceptamos: {", ".join(supported_extensions())}'
+        }), 400
 
     raw = f.read()
-    if len(raw) > 5 * 1024 * 1024:
-        return jsonify({'error': 'Max 5MB'}), 400
-    try:
-        text = raw.decode('utf-8')
-    except UnicodeDecodeError:
-        try:
-            text = raw.decode('latin-1')
-        except Exception:
-            return jsonify({'error': 'No se pudo decodificar'}), 400
+    if len(raw) > 20 * 1024 * 1024:
+        return jsonify({'error': 'Max 20MB'}), 400
+
+    text = extract_text_from_bytes(f.filename, raw)
+    if not text or len(text.strip()) < 50:
+        return jsonify({
+            'error': f'No se pudo extraer texto suficiente del archivo (.{ext}). '
+                      'Verificá que tenga contenido legible.'
+        }), 400
 
     from wa_bot.parser import parse_faq_document
     pairs = parse_faq_document(text)
     if not pairs:
-        return jsonify({'error': 'No se detectaron preguntas/respuestas en el documento'}), 400
+        return jsonify({
+            'error': 'No se detectaron entradas de info en el documento. '
+                      'Probá con formato P:/R: o secciones con headings ##.'
+        }), 400
 
     source = f'doc:{f.filename[:200]}'
 
@@ -622,7 +630,7 @@ def wa_bot_kb_upload_doc():
         try:
             from wa_bot.rag import index_qa_pairs
             saved = index_qa_pairs(current_user.id, source, pairs)
-            logger.info(f'[Bot KB Doc] {f.filename}: {saved} pares indexados')
+            logger.info(f'[Bot KB Doc] {f.filename}: {saved} pares indexados (formato {ext})')
         except Exception as e:
             logger.error(f'[Bot KB Doc] index fail: {e}', exc_info=True)
     threading.Thread(target=_index_bg, daemon=True).start()
@@ -630,8 +638,9 @@ def wa_bot_kb_upload_doc():
     return jsonify({
         'ok':       True,
         'filename': f.filename,
+        'format':   ext,
         'pairs':    len(pairs),
-        'message':  f'Indexando {len(pairs)} entradas del documento en background.',
+        'message':  f'Indexando {len(pairs)} entradas de {f.filename} ({ext.upper()}) en background.',
     })
 
 

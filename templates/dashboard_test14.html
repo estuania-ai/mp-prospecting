@@ -2178,12 +2178,13 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
           <button class="btn btn-primary" onclick="botUploadKB()" style="width:100%;font-size:12px;padding:6px">⬆ Subir chat .txt</button>
         </div>
         <div style="margin-bottom:10px;padding:10px;background:#FEF3C7;border-radius:8px">
-          <div style="font-size:12px;font-weight:600;color:#78350F;margin-bottom:4px">📄 Documentos propios (FAQ, info productos, scripts)</div>
-          <div style="font-size:10px;color:#92400E;margin-bottom:6px">
-            Formato preferido: <code>P: pregunta</code> / <code>R: respuesta</code> (también acepta Markdown <code>##</code> o párrafos sueltos).
+          <div style="font-size:12px;font-weight:600;color:#78350F;margin-bottom:4px">📄 Documentos propios (FAQ, info, brochures, precios, scripts)</div>
+          <div style="font-size:10px;color:#92400E;margin-bottom:6px;line-height:1.5">
+            Formatos aceptados: <strong>.pdf .docx .xlsx .pptx .txt</strong> (max 20MB)<br>
+            Para .txt: formato <code>P: pregunta</code> / <code>R: respuesta</code> es ideal. Para PDFs/Word/Excel: el bot extrae texto y arma entradas auto.
           </div>
-          <input type="file" id="bot-doc-file" accept=".txt" style="font-size:11px;width:100%;margin-bottom:6px">
-          <button class="btn btn-primary" onclick="botUploadDoc()" style="width:100%;font-size:12px;padding:6px;background:#D97706">⬆ Subir documento .txt</button>
+          <input type="file" id="bot-doc-file" accept=".txt,.pdf,.docx,.xlsx,.pptx" style="font-size:11px;width:100%;margin-bottom:6px">
+          <button class="btn btn-primary" onclick="botUploadDoc()" style="width:100%;font-size:12px;padding:6px;background:#D97706">⬆ Subir documento</button>
         </div>
         <div style="display:flex;gap:6px;margin-bottom:10px">
           <button class="btn btn-ghost" onclick="botClearKB()" style="flex:1;font-size:11px;padding:6px;color:#C0392B">🗑 Limpiar TODO el KB</button>
@@ -10877,21 +10878,27 @@ async function botUploadKB(){
 
 async function botUploadDoc(){
   const input = document.getElementById('bot-doc-file');
-  if (!input.files || !input.files.length) { toast('Elegí un archivo .txt', 'error'); return; }
+  if (!input.files || !input.files.length) { toast('Elegí un archivo', 'error'); return; }
   const f = input.files[0];
-  if (!f.name.toLowerCase().endsWith('.txt')) { toast('Solo .txt', 'error'); return; }
+  const ok_exts = ['.txt', '.pdf', '.docx', '.xlsx', '.pptx'];
+  const fname_lower = f.name.toLowerCase();
+  if (!ok_exts.some(e => fname_lower.endsWith(e))) {
+    toast('Formato no soportado. Acepta: ' + ok_exts.join(' / '), 'error');
+    return;
+  }
   const fd = new FormData();
   fd.append('doc_file', f);
-  toast('📤 Subiendo documento ' + f.name + '...', 'info');
+  toast('📤 Subiendo y extrayendo texto de ' + f.name + '...', 'info');
   try {
     const r = await fetch('/api/whatsapp/bot/kb/upload-doc', {
       method:'POST', credentials:'same-origin', body: fd
     });
     const d = await r.json();
     if (!r.ok || !d.ok) { toast(d.error || 'Error', 'error'); return; }
-    toast(`📄 ${d.pairs} entradas FAQ detectadas. Indexando en background...`, 'success');
+    toast(`📄 ${d.pairs} entradas detectadas (${(d.format||'?').toUpperCase()}). Indexando...`, 'success');
     input.value = '';
     setTimeout(botRefreshKBStats, 5000);
+    setTimeout(botRefreshKBStats, 15000);
   } catch(e){ toast('Error: '+e.message, 'error'); }
 }
 
