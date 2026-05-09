@@ -264,3 +264,73 @@ def generate_rag_response(user_id: int, client_msg: str) -> str | None:
     except Exception as e:
         logger.error(f'[RAG] Claude API fail: {e}')
     return None
+
+
+def generate_rag_response_openai(user_id: int, client_msg: str) -> str | None:
+    """
+    Misma idea que generate_rag_response pero con OpenAI GPT-4o-mini.
+    Se usa como fallback cuando ANTHROPIC_API_KEY no está disponible.
+    Más barato que Claude Haiku ($0.0001 vs $0.001 por respuesta).
+    """
+    api_key = os.getenv('OPENAI_API_KEY', '').strip()
+    if not api_key:
+        return None
+
+    similar = find_similar_qa(user_id, client_msg, top_k=TOP_K)
+    if not similar:
+        return None
+    if similar[0]['score'] < 0.40:
+        logger.info(f'[RAG/OpenAI] best score {similar[0]["score"]:.3f} < 0.40, hand-off')
+        return None
+
+    ejemplos_txt = '\n\n'.join([
+        f'CLIENTE: {s["client_msg"]}\nOWNER: {s["owner_response"]}'
+        for s in similar
+    ])
+    system_prompt = _BOT_SYSTEM_PROMPT.format(
+        ejemplos=ejemplos_txt,
+        mensaje_cliente=client_msg
+    )
+
+    try:
+        import requests
+        r = requests.post(
+            'https://api.openai.com/v1/chat/completions',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type':  'application/json',
+            },
+            json={
+                'model': os.getenv('OPENAI_BOT_MODEL', 'gpt-4o-mini'),
+                'max_tokens': 400,
+                'messages': [
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user',   'content': client_msg},
+                ],
+            },
+            timeout=30,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            text = (data.get('choices') or [{}])[0].get('message', {}).get('content', '').strip()
+            return text or None
+        logger.warning(f'[RAG/OpenAI] {r.status_code}: {r.text[:200]}')
+    except Exception as e:
+        logger.error(f'[RAG/OpenAI] fail: {e}')
+    return None
+
+
+def generate_response(user_id: int, client_msg: str) -> str | None:
+    """
+    Punto de entrada unificado: prueba Anthropic primero, si no está configurado
+    cae a OpenAI. Si ninguno está configurado, retorna None (el dispatcher
+    hace hand-off al humano).
+    """
+    if os.getenv('ANTHROPIC_API_KEY', '').strip():
+        result = generate_rag_response(user_id, client_msg)
+        if result:
+            return result
+    if os.getenv('OPENAI_API_KEY', '').strip():
+        return generate_rag_response_openai(user_id, client_msg)
+    logger.warning('[RAG] Ni ANTHROPIC_API_KEY ni OPENAI_API_KEY configuradas')
+    return None

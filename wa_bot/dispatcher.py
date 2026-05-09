@@ -269,8 +269,8 @@ def handle_incoming_message(
         # ── LLM (Fase 2) ─────────────────────────────────────────
         if cfg.get('llm_enabled'):
             try:
-                from wa_bot.rag import generate_rag_response
-                response = generate_rag_response(user_id, text)
+                from wa_bot.rag import generate_response
+                response = generate_response(user_id, text)
                 if response:
                     response_with_footer = _add_footer(response, cfg.get('footer_optout'))
                     _send_response(client, instance, client_phone, response_with_footer)
