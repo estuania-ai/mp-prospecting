@@ -11,6 +11,13 @@ import asyncio
 import logging
 import os
 
+# Cargar .env del directorio del script (mismo que routes, jobs, etc.)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv no instalado: usar env vars del sistema
+
 # Forzar modo visible — MP rechaza sesiones cargadas en headless
 os.environ["FAST_HEADLESS"] = "false"
 
