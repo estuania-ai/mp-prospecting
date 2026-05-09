@@ -2216,16 +2216,100 @@ def _email_safe_html(html: str) -> tuple[str, list[tuple[str, str, bytes]]]:
     return html_inline, inline_imgs
 
 
+def _build_mp_generico_body(business_name: str, wa_url: str, pdf_url: str) -> str:
+    """
+    Cuerpo HTML del email genérico — solo la sección central con las
+    2 columnas de beneficios + CTAs. Diseñado para insertarse DENTRO del
+    wrapper estandar (header GIF + firma con cid).
+    Layout 100% table-based para Gmail/Outlook.
+    """
+    safe_name = (business_name or 'estimado/a').replace('<', '').replace('>', '')
+    return f"""
+<p style="margin:0 0 14px;font-size:15px;color:#555;">
+  Hola Equipo de <strong style="font-weight:700;color:#1A1A2E;">{safe_name}</strong>,
+</p>
+<p style="margin:0 0 22px;font-size:14px;color:#444;line-height:1.65;">
+  Soy <strong style="color:#1A1A2E;">Juan Sebastián Pinto</strong> de Mercado Pago.
+  Tenemos una solución completa de cobros — hardware y ecosistema digital en un solo
+  lugar, sin mensualidades ni letra chica.
+</p>
+
+<!-- ══ DOS COLUMNAS (table-based) ══ -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:18px;">
+  <tr>
+    <!-- COL 1 -->
+    <td width="50%" valign="top" style="padding-right:5px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F8F6F2;border:1px solid #E8E4DC;border-radius:12px;">
+        <tr><td style="padding:14px;">
+          <p style="margin:0 0 8px;padding-bottom:8px;border-bottom:2px solid #E0D9CC;font-size:13px;font-weight:700;color:#1A1A2E;line-height:1.3;">
+            📱 La Máquina<br/><span style="font-size:10px;font-weight:400;color:#888;">Point Smart 2</span>
+          </p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td style="padding:6px 0;border-bottom:1px solid #EEEAE2;font-size:11.5px;color:#1A1A2E;font-weight:600;">⚡ Plata al instante<br/><span style="font-size:10px;color:#888;font-weight:400;">Incluso fines de semana y feriados</span></td></tr>
+            <tr><td style="padding:6px 0;border-bottom:1px solid #EEEAE2;font-size:11.5px;color:#1A1A2E;font-weight:600;">💳 $0 arriendo mensual<br/><span style="font-size:10px;color:#888;font-weight:400;">El equipo es 100% tuyo</span></td></tr>
+            <tr><td style="padding:6px 0;border-bottom:1px solid #EEEAE2;font-size:11.5px;color:#1A1A2E;font-weight:600;">🟰 Cuotas sin interés<br/><span style="font-size:10px;color:#888;font-weight:400;">3–12 cuotas · cobras el 100% al tiro</span><br/><span style="font-size:10px;color:#666;">Mastercard · Visa</span></td></tr>
+            <tr><td style="padding:6px 0;border-bottom:1px solid #EEEAE2;font-size:11.5px;color:#1A1A2E;font-weight:600;">🍽 Acepta valeras<br/><span style="font-size:10px;color:#888;font-weight:400;">Sin equipos extra</span><br/><span style="font-size:10px;color:#666;">Edenred · Pluxee · Junaeb</span></td></tr>
+            <tr><td style="padding:6px 0;font-size:11.5px;color:#1A1A2E;font-weight:600;">📶 Siempre conectado<br/><span style="font-size:10px;color:#888;font-weight:400;">4G + Wi-Fi + multiadquirencia</span><br/><span style="font-size:10px;color:#666;">Entel</span></td></tr>
+          </table>
+        </td></tr>
+      </table>
+    </td>
+    <!-- COL 2 -->
+    <td width="50%" valign="top" style="padding-left:5px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F8F6F2;border:1px solid #E8E4DC;border-radius:12px;">
+        <tr><td style="padding:14px;">
+          <p style="margin:0 0 8px;padding-bottom:8px;border-bottom:2px solid #E0D9CC;font-size:13px;font-weight:700;color:#1A1A2E;line-height:1.3;">
+            🏪 Tu Negocio<br/><span style="font-size:10px;font-weight:400;color:#888;">Beneficios extra</span>
+          </p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td style="padding:6px 0;border-bottom:1px solid #EEEAE2;font-size:11.5px;color:#1A1A2E;font-weight:600;">🛠 Integración con tu sistema<br/><span style="font-size:10px;color:#888;font-weight:400;">Compatible con software comercial</span></td></tr>
+            <tr><td style="padding:6px 0;border-bottom:1px solid #EEEAE2;font-size:11.5px;color:#1A1A2E;font-weight:600;">↩ Anulaciones en segundos<br/><span style="font-size:10px;color:#888;font-weight:400;">Directo desde la pantalla</span></td></tr>
+            <tr><td style="padding:6px 0;border-bottom:1px solid #EEEAE2;font-size:11.5px;color:#1A1A2E;font-weight:600;">👁 Comisión visible<br/><span style="font-size:10px;color:#888;font-weight:400;">Sin costos ocultos</span></td></tr>
+            <tr><td style="padding:6px 0;border-bottom:1px solid #EEEAE2;font-size:11.5px;color:#1A1A2E;font-weight:600;">📊 Panel de control<br/><span style="font-size:10px;color:#888;font-weight:400;">Toda tu actividad en tiempo real</span></td></tr>
+            <tr><td style="padding:6px 0;font-size:11.5px;color:#1A1A2E;font-weight:600;">🤝 Asesor comercial<br/><span style="font-size:10px;color:#888;font-weight:400;">Soporte directo, no call center</span></td></tr>
+          </table>
+        </td></tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+<!-- ══ CTA PDF ══ -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:14px;">
+  <tr><td style="background:#1A1A2E;border-radius:12px;padding:14px 18px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td valign="middle" style="font-size:13px;font-weight:700;color:#FFE600;line-height:1.45;">
+          📄 PDF con todos los beneficios<br/>
+          <span style="font-size:10.5px;color:#9F9FBE;font-weight:400;">Información detallada para evaluar con tu equipo</span>
+        </td>
+        <td valign="middle" align="right" width="130">
+          <a href="{pdf_url or '#'}" target="_blank" style="background:#FFE600;color:#1A1A2E;font-size:12px;font-weight:700;padding:10px 16px;border-radius:100px;text-decoration:none;display:inline-block;">Ver beneficios →</a>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+</table>
+
+<!-- ══ CTA WHATSAPP ══ -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:18px;">
+  <tr><td align="center">
+    <a href="{wa_url or '#'}" target="_blank" style="background:#25D366;color:#FFFFFF;font-size:14px;font-weight:700;padding:14px 32px;border-radius:100px;text-decoration:none;display:inline-block;letter-spacing:.04em;">💬 Conversemos por WhatsApp</a>
+  </td></tr>
+  <tr><td align="center" style="padding-top:8px;font-size:11px;color:#888;">Respuesta en menos de 2 horas hábiles</td></tr>
+</table>
+"""
+
+
 def _send_mp_html_email(to_email: str, subject: str, business_name: str,
                         wa_url: str, pdf_url: str, pdf_path: str | None = None,
                         user_creds: dict | None = None) -> dict:
     """
-    Envia el email genérico de MercadoPago usando el HTML preconfigurado en
-    static/email_assets/mp_generico.html. Adjunta el PDF de beneficios.
-
-    Reemplaza {{NOMBRE}}, {{WA_URL}}, {{PDF_URL}} en el HTML antes de enviar.
-    Inline CSS con premailer y extrae imágenes base64 a CID attachments para
-    que Gmail/Outlook las muestren correctamente.
+    Envia el email genérico con:
+    - Header GIF animado (cid:email_hdr_anim) — mismo del pipeline campañas
+    - Cuerpo: 2 columnas de beneficios MercadoPago + CTAs
+    - Firma: foto + datos ejecutivo + POS GIF (cid:email_sig_photo, cid:email_pos_anim)
+    - PDF "Beneficios MercadoPago.pdf" como adjunto
     """
     import os, smtplib, ssl, pathlib
     from email.mime.text import MIMEText
@@ -2250,24 +2334,93 @@ def _send_mp_html_email(to_email: str, subject: str, business_name: str,
     if not smtp_user:
         return {'ok': False, 'error': 'SMTP no configurado'}
 
-    # Cargar HTML template
-    base = pathlib.Path(__file__).parent.parent / 'static' / 'email_assets'
-    html_path = base / 'mp_generico.html'
-    if not html_path.exists():
-        return {'ok': False, 'error': 'Template HTML no encontrado'}
-    html = html_path.read_text(encoding='utf-8')
-
-    # Reemplazos
+    # ── Construir HTML completo: wrapper estandar (header GIF + card + firma) ──
+    #     con el cuerpo de 2 columnas en el medio ─────────────────────────────
+    body_inner = _build_mp_generico_body(
+        business_name=business_name, wa_url=wa_url, pdf_url=pdf_url
+    )
     safe_name = (business_name or 'estimado/a').replace('<', '').replace('>', '')
-    html = html.replace('{{NOMBRE}}', safe_name)
-    html = html.replace('{{WA_URL}}', wa_url or 'https://wa.me/56935103447')
-    html = html.replace('{{PDF_URL}}', pdf_url or '#')
 
-    # Adaptar para clientes de email: inline CSS + base64 → CID
-    html_email, inline_imgs = _email_safe_html(html)
+    # Reusamos exactamente la estructura wrapper de _build_html_email:
+    # header GIF (cid:email_hdr_anim) + card blanca + firma con foto y POS GIF.
+    html_email = f"""<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Mercado Pago</title></head>
+<body style="margin:0;padding:24px 8px;background:#F0EDE6;font-family:Arial,Helvetica,sans-serif;">
+<table cellpadding="0" cellspacing="0" border="0" style="max-width:580px;width:100%;margin:0 auto;">
+<tr><td>
+
+<!-- ══ HEADER GIF ══ -->
+<table width="580" cellpadding="0" cellspacing="0" border="0"
+  style="max-width:580px;width:100%;border-radius:16px 16px 0 0;overflow:hidden;border-collapse:collapse;">
+<tr><td style="padding:0;line-height:0;font-size:0;">
+  <img src="cid:email_hdr_anim" alt="Mercado Pago" width="580" height="230"
+    style="display:block;width:100%;max-width:580px;height:auto;border:0;border-radius:16px 16px 0 0;">
+</td></tr>
+<tr><td bgcolor="#FFE600" height="4" style="background-color:#FFE600;height:4px;font-size:0;line-height:0;">&nbsp;</td></tr>
+</table>
+
+<!-- ══ CARD ══ -->
+<table cellpadding="0" cellspacing="0" border="0" width="100%"
+  style="background:#fff;border:1.5px solid #E0D9CC;border-top:none;border-radius:0 0 16px 16px;overflow:hidden;">
+
+  <!-- strip amarillo -->
+  <tr><td style="background:#FFE600;padding:9px 26px;">
+    <p style="margin:0;font-size:12.5px;font-weight:700;color:#1A1A2E;letter-spacing:.02em;">
+      💳 Para cualquier negocio que quiera cobrar mejor desde hoy
+    </p>
+  </td></tr>
+
+  <!-- cuerpo personalizado (2 columnas + CTAs) -->
+  <tr><td style="padding:24px 28px 18px;">
+    {body_inner}
+  </td></tr>
+
+  <!-- divider -->
+  <tr><td style="padding:0 28px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;">
+      <tr><td style="border-top:1px solid #EEE;font-size:0;line-height:0;">&nbsp;</td></tr>
+    </table>
+  </td></tr>
+
+  <!-- firma estandar (foto + POS GIF + datos ejecutivo) -->
+  <tr><td style="padding:0 28px 22px;">
+    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr>
+        <td style="width:50px;vertical-align:middle;">
+          <img src="cid:email_sig_photo" alt="" width="50" height="50"
+            style="width:50px;height:50px;border-radius:50%;display:block;border:2px solid #E8E8E8;">
+        </td>
+        <td style="padding-left:12px;vertical-align:middle;">
+          <p style="margin:0 0 2px;font-size:14px;font-weight:700;color:#1A1A2E;">{from_name}</p>
+          <p style="margin:0 0 4px;font-size:11px;color:#009EE3;font-weight:500;line-height:1.35;">
+            Longtail Acquisition - Direct &amp; New Channels Sales Executive
+          </p>
+          <p style="margin:0 0 2px;font-size:11.5px;color:#444;">Teléfono: {os.getenv('EMAIL_FROM_PHONE','+569 3198 5364')}</p>
+          <p style="margin:0;font-size:11.5px;color:#888;">Mercado Pago</p>
+        </td>
+        <td style="width:1px;background:#E0D9CC;" width="1">&nbsp;</td>
+        <td style="width:96px;padding-left:14px;vertical-align:bottom;text-align:center;">
+          <img src="cid:email_pos_anim" alt="" width="80"
+            style="width:80px;height:auto;display:block;margin:0 auto;">
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- footer -->
+  <tr><td style="background:#F8F6F2;padding:12px 28px;border-top:1px solid #EEE;">
+    <p style="margin:0;font-size:10.5px;color:#bbb;">© 2026 Mercado Pago · Santiago, Chile</p>
+  </td></tr>
+
+</table>
+
+</td></tr>
+</table>
+</body></html>"""
 
     tracking_token = _get_or_create_tracking_token(to_email)
-    # Inyectar pixel de tracking (al final del body)
     if '</body>' in html_email:
         pixel = (
             f'<img src="{os.getenv("APP_BASE_URL","")}/api/email-tool/track/open/'
@@ -2275,14 +2428,7 @@ def _send_mp_html_email(to_email: str, subject: str, business_name: str,
         )
         html_email = html_email.replace('</body>', f'{pixel}</body>')
 
-    # MIME estructura:
-    # mixed
-    #   alternative
-    #     text/plain (fallback)
-    #     related
-    #       text/html (con CIDs)
-    #       image/* (todas las inline imgs)
-    #   application/pdf (adjunto)
+    # ── MIME: mixed > alternative > related (html + header_gif + sig_photo + pos_gif) + pdf ──
     msg = MIMEMultipart('mixed')
     msg['Subject'] = subject
     msg['From']    = f'{from_name} <{from_email}>'
@@ -2304,17 +2450,46 @@ def _send_mp_html_email(to_email: str, subject: str, business_name: str,
     alt.attach(related)
     related.attach(MIMEText(html_email, 'html', 'utf-8'))
 
-    # Adjuntar imágenes inline (base64 → CID)
-    for cid, mime_subtype, raw_bytes in inline_imgs:
-        try:
-            img = MIMEImage(raw_bytes, _subtype=mime_subtype)
-            img.add_header('Content-ID', f'<{cid}>')
-            img.add_header('Content-Disposition', 'inline', filename=f'{cid}.{mime_subtype}')
-            related.attach(img)
-        except Exception as e:
-            logger.debug(f'[MPGenerico] img cid={cid} no se pudo adjuntar: {e}')
+    # ── Adjuntar header GIF + foto firma + POS GIF (mismas funciones del pipeline regular) ──
+    email_assets_dir = pathlib.Path(__file__).parent.parent / 'static' / 'email_assets'
 
-    # Adjuntar PDF si existe (al nivel mixed, no related)
+    # Header GIF — generado on the fly (mismo que _send_smtp para emails de prospección)
+    try:
+        c_content = _get_rubro_content('') or {}
+        hdr_bytes = _compose_header_gif_desktop(c_content)
+        hdr_img = MIMEImage(hdr_bytes, _subtype='gif')
+        hdr_img.add_header('Content-ID', '<email_hdr_anim>')
+        hdr_img.add_header('Content-Disposition', 'inline', filename='header.gif')
+        related.attach(hdr_img)
+    except Exception as e:
+        logger.warning(f'[MPGenerico] header gif: {e}')
+
+    # POS GIF
+    try:
+        pos_bytes = _compose_pos_gif()
+        pos_img = MIMEImage(pos_bytes, _subtype='gif')
+        pos_img.add_header('Content-ID', '<email_pos_anim>')
+        pos_img.add_header('Content-Disposition', 'inline', filename='pos.gif')
+        related.attach(pos_img)
+    except Exception as e:
+        logger.warning(f'[MPGenerico] pos gif: {e}')
+
+    # Foto de firma — usa la del Sales si vino en user_creds, si no la global
+    try:
+        sig_bytes = (user_creds or {}).get('sig_bytes') if user_creds else None
+        if sig_bytes is None:
+            sig_path = email_assets_dir / 'sig_photo.jpeg'
+            if sig_path.exists():
+                sig_bytes = sig_path.read_bytes()
+        if sig_bytes:
+            sig_img = MIMEImage(sig_bytes, _subtype='jpeg')
+            sig_img.add_header('Content-ID', '<email_sig_photo>')
+            sig_img.add_header('Content-Disposition', 'inline', filename='sig_photo.jpeg')
+            related.attach(sig_img)
+    except Exception as e:
+        logger.warning(f'[MPGenerico] sig photo: {e}')
+
+    # Adjuntar PDF al nivel mixed
     if pdf_path:
         pdf_p = pathlib.Path(pdf_path)
         if pdf_p.exists():
