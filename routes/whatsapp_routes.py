@@ -353,6 +353,53 @@ def wa_webhook_receiver():
 # ═══════════════════════════════════════════════════════════════════
 # BOT — Configurar webhook en Evolution
 # ═══════════════════════════════════════════════════════════════════
+@bp.get('/me/bot/inspect-webhook')
+@login_required
+def wa_bot_inspect_webhook():
+    """
+    Devuelve TODO lo que sepa Evolution sobre el webhook de la instancia.
+    Pega contra /instance/fetchInstances que en v2 incluye config de webhook.
+    """
+    if current_user.role != 'owner':
+        return jsonify({'error': 'Solo Owner'}), 403
+    import os, requests as _rq
+    inst = _instance_for_current_user()
+    base_url = (os.getenv('EVOLUTION_API_URL') or '').rstrip('/')
+    api_key  = os.getenv('EVOLUTION_API_KEY') or ''
+    if not base_url:
+        return jsonify({'ok': False, 'error': 'EVOLUTION_API_URL no seteado'}), 500
+    out = {'instance': inst}
+    try:
+        r = _rq.get(
+            base_url + '/instance/fetchInstances',
+            headers={'apikey': api_key},
+            params={'instanceName': inst},
+            timeout=10,
+        )
+        out['fetchInstances_status'] = r.status_code
+        try:
+            out['fetchInstances_body'] = r.json()
+        except Exception:
+            out['fetchInstances_body'] = r.text[:500]
+    except Exception as e:
+        out['fetchInstances_err'] = str(e)
+    # /webhook/find/{instance}
+    try:
+        r = _rq.get(
+            base_url + f'/webhook/find/{inst}',
+            headers={'apikey': api_key},
+            timeout=10,
+        )
+        out['webhook_find_status'] = r.status_code
+        try:
+            out['webhook_find_body'] = r.json()
+        except Exception:
+            out['webhook_find_body'] = r.text[:500]
+    except Exception as e:
+        out['webhook_find_err'] = str(e)
+    return jsonify(out)
+
+
 @bp.post('/me/bot/setup-webhook')
 @login_required
 def wa_me_setup_webhook():

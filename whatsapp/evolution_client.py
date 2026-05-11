@@ -267,24 +267,17 @@ def set_webhook(webhook_url: str, instance: Optional[str] = None) -> dict:
     los events. Devuelve el response crudo del primero que aceptó.
     """
     inst = _resolve_instance(instance)
+    # Evolution v2 acepta SCREAMING_SNAKE; algunas builds modernas requieren
+    # lowercase.dotted. Mandamos ambas variantes en el mismo array para cubrir
+    # las dos posibilidades.
     events = [
-        "MESSAGES_UPSERT",
-        "CONNECTION_UPDATE",
-        "MESSAGES_UPDATE",
+        "MESSAGES_UPSERT", "messages.upsert",
+        "CONNECTION_UPDATE", "connection.update",
+        "MESSAGES_UPDATE", "messages.update",
     ]
     url = f"{_base_url()}/webhook/set/{inst}"
 
-    # Evolution v2 (flat camelCase) — confirmado por response {"ok":true,"webhook":null}
-    # cuando se manda el body anidado: el server acepta el JSON pero no encuentra
-    # los campos en el shape esperado y guarda un webhook vacío.
-    body_v2_flat = {
-        "enabled":         True,
-        "url":             webhook_url,
-        "events":          events,
-        "webhookByEvents": False,
-        "webhookBase64":   False,
-    }
-    # Evolution v2 (anidado, algunas versiones intermedias lo aceptan)
+    # Evolution v2 nested: {webhook:{...}} flat camelCase dentro
     body_v2_nested = {
         "webhook": {
             "enabled":         True,
@@ -293,6 +286,14 @@ def set_webhook(webhook_url: str, instance: Optional[str] = None) -> dict:
             "webhookByEvents": False,
             "webhookBase64":   False,
         }
+    }
+    # Evolution v2 flat camelCase
+    body_v2_flat = {
+        "enabled":         True,
+        "url":             webhook_url,
+        "events":          events,
+        "webhookByEvents": False,
+        "webhookBase64":   False,
     }
     # v1 plano legacy
     body_v1 = {
