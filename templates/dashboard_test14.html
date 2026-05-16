@@ -696,6 +696,9 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   <div class="nav-item" data-roles="owner" onclick="showPage('email-campanas',this,'Email · Campañas')">
     <span class="nav-icon">📤</span> Campañas
   </div>
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-yamm',this,'Email · YAMM');loadYammPage()">
+    <span class="nav-icon">📨</span> YAMM (Mail Merge)
+  </div>
   <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-generico',this,'Email · Genérico')">
     <span class="nav-icon">✉️</span> Email genérico
   </div>
@@ -2600,6 +2603,73 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   </div>
   <div class="rubro-grid" id="rubro-card-grid">
     <p style="color:#9CA3AF;font-size:14px;grid-column:1/-1">Cargando rubros...</p>
+  </div>
+</div>
+
+<!-- ─── EMAIL · YAMM (Mail Merge via Google Sheets) ─── -->
+<div class="page" id="page-email-yamm">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div class="page-title">📨 YAMM · Mail Merge</div>
+      <div class="page-sub">Exportá leads a Google Sheets · enviá con YAMM desde Gmail · reimportá métricas</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm" onclick="window.open('/docs/YAMM_SETUP.md','_blank')">📖 Cómo funciona</button>
+      <button class="btn btn-primary btn-sm" onclick="loadYammPage()">↻ Actualizar</button>
+    </div>
+  </div>
+
+  <!-- ── Bloque 1: Crear nueva campaña ── -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title"><span class="card-icon">🚀</span>Nueva campaña YAMM</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:8px">
+      <div>
+        <label class="form-lbl">Nombre de la campaña</label>
+        <input class="form-input" id="yamm-name" placeholder="Ej: Pizzerías Las Condes - Mayo 2026" maxlength="120">
+      </div>
+      <div>
+        <label class="form-lbl">Asunto del email (referencia)</label>
+        <input class="form-input" id="yamm-subject" placeholder="Aún más cuotas sin interés para tu pizzería" maxlength="200">
+      </div>
+      <div>
+        <label class="form-lbl">Rubro</label>
+        <select class="form-input" id="yamm-rubro">
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-lbl">Comuna</label>
+        <select class="form-input" id="yamm-comuna">
+          <option value="">Todas</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-lbl">Estado</label>
+        <select class="form-input" id="yamm-estado">
+          <option value="no_optout">Excluir opt-outs</option>
+          <option value="pendiente">Solo pendientes</option>
+          <option value="todos">Todos</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-lbl">Máximo destinatarios</label>
+        <input type="number" class="form-input" id="yamm-limit" value="200" min="1" max="2000">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="yammPreview()">👁 Preview</button>
+      <button class="btn btn-primary" onclick="yammExport()">⬇ Generar CSV YAMM</button>
+      <span id="yamm-preview-info" style="font-size:12px;color:#6B7280"></span>
+    </div>
+    <div id="yamm-preview-table" style="margin-top:10px"></div>
+  </div>
+
+  <!-- ── Bloque 2: Historial de campañas ── -->
+  <div class="card">
+    <div class="card-title"><span class="card-icon">📋</span>Historial de campañas YAMM</div>
+    <div id="yamm-campaigns-list" style="margin-top:8px">
+      <p style="color:#9CA3AF;font-size:13px">Cargando...</p>
+    </div>
   </div>
 </div>
 
@@ -7912,6 +7982,211 @@ function fuenteBadge(fuente) {
   var p = palette[fuente] || { bg:'#F3F4F6', fg:'#374151', icon:'•' };
   return '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:'
     + p.bg + ';color:' + p.fg + ';white-space:nowrap">' + p.icon + ' ' + fuente + '</span>';
+}
+
+// ─────────────────────────────────────────────────────────────
+// ── YAMM · Mail Merge via Google Sheets ──────────────────────
+// ─────────────────────────────────────────────────────────────
+async function loadYammPage(){
+  // poblar selects rubro y comuna desde et_contacts (vía endpoint que ya existe)
+  try {
+    const r = await fetch('/api/yamm/preview', {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:'{}'
+    });
+    // si funciona, cargamos la lista de campañas
+  } catch(e){}
+  await yammLoadCampaigns();
+  await yammPopulateFilters();
+}
+
+async function yammPopulateFilters(){
+  // Reutilizamos los rubros/comunas que ya carga el dashboard en otras vistas
+  try {
+    const r = await fetch('/api/email-tool/rubros', {credentials:'same-origin'});
+    if (r.ok) {
+      const data = await r.json();
+      const sel = document.getElementById('yamm-rubro');
+      if (sel && Array.isArray(data)) {
+        sel.innerHTML = '<option value="">Todos</option>' +
+          data.map(r=>'<option>'+escapeHtml(r.rubro || r)+'</option>').join('');
+      }
+    }
+  } catch(e){}
+}
+
+async function yammPreview(){
+  const filters = _yammGetFilters();
+  const info = document.getElementById('yamm-preview-info');
+  info.textContent = 'Calculando...';
+  try {
+    const r = await fetch('/api/yamm/preview', {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(filters)
+    });
+    if (!r.ok) { info.textContent = '❌ Error en preview'; return; }
+    const d = await r.json();
+    info.innerHTML = '<strong style="color:#0EA5E9">' + d.total_match +
+      '</strong> leads matchean los filtros · mostrando primeros ' + d.preview_count;
+    // Render tabla
+    const wrap = document.getElementById('yamm-preview-table');
+    if (!d.preview || d.preview.length === 0) {
+      wrap.innerHTML = '<p style="color:#9CA3AF;font-size:13px">Sin resultados</p>';
+      return;
+    }
+    wrap.innerHTML =
+      '<div class="table-wrap" style="max-height:280px;overflow-y:auto;margin-top:8px">' +
+      '<table style="font-size:12px"><thead><tr>' +
+      '<th>Email</th><th>Comercio</th><th>Rubro</th><th>Comuna</th>' +
+      '</tr></thead><tbody>' +
+      d.preview.map(c =>
+        '<tr><td>' + escapeHtml(c.email||'') + '</td>' +
+        '<td>' + escapeHtml(c.business_name||'') + '</td>' +
+        '<td>' + escapeHtml(c.rubro||'') + '</td>' +
+        '<td>' + escapeHtml(c.comuna||c.ciudad||'') + '</td></tr>'
+      ).join('') +
+      '</tbody></table></div>';
+  } catch(e) {
+    info.textContent = '❌ ' + e.message;
+  }
+}
+
+async function yammExport(){
+  const name = (document.getElementById('yamm-name').value || '').trim();
+  if (!name) { alert('Pone un nombre a la campaña'); return; }
+  if (!confirm('¿Generar CSV YAMM con estos filtros y crear campaña?')) return;
+
+  const filters = _yammGetFilters();
+  filters.name = name;
+  filters.template_subject = (document.getElementById('yamm-subject').value || '').trim();
+
+  try {
+    const r = await fetch('/api/yamm/export', {
+      method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(filters)
+    });
+    if (!r.ok) {
+      let err = 'Error';
+      try { err = (await r.json()).error || err; } catch(_) {}
+      alert('❌ ' + err);
+      return;
+    }
+    // Es un download · forzamos download
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename=([^;]+)/);
+    a.download = m ? m[1].replace(/"/g,'') : 'yamm_campaign.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    alert('✅ CSV descargado. Ahora abrí Google Sheets, pegá el contenido y corré YAMM.');
+    await yammLoadCampaigns();
+  } catch(e) {
+    alert('❌ ' + e.message);
+  }
+}
+
+function _yammGetFilters(){
+  return {
+    rubro:  document.getElementById('yamm-rubro').value || '',
+    comuna: document.getElementById('yamm-comuna').value || '',
+    estado: document.getElementById('yamm-estado').value || '',
+    limit:  parseInt(document.getElementById('yamm-limit').value || '200', 10),
+  };
+}
+
+async function yammLoadCampaigns(){
+  const wrap = document.getElementById('yamm-campaigns-list');
+  if (!wrap) return;
+  wrap.innerHTML = '<p style="color:#9CA3AF;font-size:13px">Cargando...</p>';
+  try {
+    const r = await fetch('/api/yamm/campaigns', {credentials:'same-origin'});
+    if (!r.ok) { wrap.innerHTML = '<p style="color:#dc2626">Error cargando campañas</p>'; return; }
+    const list = await r.json();
+    if (!Array.isArray(list) || list.length === 0) {
+      wrap.innerHTML = '<p style="color:#9CA3AF;font-size:13px">Sin campañas todavía. Creá la primera arriba ↑</p>';
+      return;
+    }
+    wrap.innerHTML =
+      '<table style="font-size:12px;width:100%"><thead><tr>' +
+      '<th style="text-align:left">Nombre</th>' +
+      '<th>Estado</th><th>Contactos</th><th>Creada</th>' +
+      '<th>Subir resultados</th><th>Detalle</th>' +
+      '</tr></thead><tbody>' +
+      list.map(c => {
+        const badgeColor = c.status === 'enviada' ? '#16A34A' :
+                            c.status === 'archivada' ? '#9CA3AF' : '#0EA5E9';
+        return '<tr>' +
+          '<td>' + escapeHtml(c.name||'') + '</td>' +
+          '<td><span style="background:'+badgeColor+';color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">' +
+            escapeHtml(c.status||'') + '</span></td>' +
+          '<td>' + (c.contact_count||0) + '</td>' +
+          '<td>' + escapeHtml(c.created_at||'') + '</td>' +
+          '<td><input type="file" accept=".csv,.xlsx" onchange="yammImportResults('+c.id+',this)" style="font-size:11px;width:160px"></td>' +
+          '<td><button class="btn btn-ghost btn-sm" onclick="yammDetail('+c.id+')">Ver</button></td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  } catch(e) {
+    wrap.innerHTML = '<p style="color:#dc2626">'+escapeHtml(e.message)+'</p>';
+  }
+}
+
+async function yammImportResults(campaignId, fileInput){
+  if (!fileInput.files || fileInput.files.length === 0) return;
+  const f = fileInput.files[0];
+  if (!confirm('¿Importar resultados del archivo "' + f.name + '"?')) {
+    fileInput.value = ''; return;
+  }
+  const fd = new FormData();
+  fd.append('file', f);
+  try {
+    const r = await fetch('/api/yamm/campaigns/' + campaignId + '/import', {
+      method:'POST', credentials:'same-origin', body: fd
+    });
+    const d = await r.json();
+    if (!r.ok) { alert('❌ ' + (d.error || 'Error')); return; }
+    alert('✅ ' + d.updated + ' contactos actualizados\n\n' +
+          'Aperturas: ' + d.stats.opened + '\n' +
+          'Respuestas: ' + d.stats.replied + '\n' +
+          'Rebotes: ' + d.stats.bounced);
+    await yammLoadCampaigns();
+  } catch(e) { alert('❌ ' + e.message); }
+  finally { fileInput.value = ''; }
+}
+
+async function yammDetail(campaignId){
+  try {
+    const r = await fetch('/api/yamm/campaigns/' + campaignId, {credentials:'same-origin'});
+    if (!r.ok) { alert('No se pudo cargar detalle'); return; }
+    const d = await r.json();
+    const s = d.stats || {};
+    let msg = 'Campaña: ' + d.campaign.name + '\n\n';
+    msg += 'Total contactos: ' + d.contacts.length + '\n';
+    msg += 'Enviados:    ' + (s.sent || 0) + '\n';
+    msg += 'Aperturas:   ' + (s.opened || 0) + '\n';
+    msg += 'Clicks:      ' + (s.clicked || 0) + '\n';
+    msg += 'Respuestas:  ' + (s.replied || 0) + '\n';
+    msg += 'Rebotes:     ' + (s.bounced || 0);
+    alert(msg);
+  } catch(e) { alert('❌ ' + e.message); }
+}
+
+// helper genérico (por si no está disponible en este scope)
+if (typeof escapeHtml !== 'function') {
+  window.escapeHtml = function(s){
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, function(m){
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m];
+    });
+  };
 }
 
 // ── Email genérico ─────────────────────────────────────────

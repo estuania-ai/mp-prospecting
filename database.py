@@ -570,6 +570,51 @@ def init_db():
         )
     ''')
 
+    # ─── YAMM — campañas mail merge via Google Sheets + complemento YAMM ──
+    # Flujo: dashboard exporta CSV con leads → user pega en Sheet → YAMM envía
+    # desde Gmail → user sube CSV de resultados → dashboard actualiza métricas.
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS yamm_campaigns (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            name            TEXT NOT NULL,
+            created_at      TEXT DEFAULT (datetime('now','localtime')),
+            created_by      INTEGER REFERENCES users(id),
+            rubro_filter    TEXT,
+            comuna_filter   TEXT,
+            estado_filter   TEXT,
+            contact_count   INTEGER DEFAULT 0,
+            template_subject TEXT,
+            status          TEXT DEFAULT 'exportada',
+            -- 'exportada' = CSV generado, esperando envío
+            -- 'enviada'   = user subió resultados YAMM
+            -- 'archivada' = cerrada
+            notes           TEXT,
+            results_imported_at TEXT
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS yamm_campaign_contacts (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            campaign_id  INTEGER REFERENCES yamm_campaigns(id) ON DELETE CASCADE,
+            contact_id   INTEGER REFERENCES et_contacts(id),
+            email        TEXT NOT NULL,
+            business_name TEXT,
+            rubro        TEXT,
+            comuna       TEXT,
+            -- Resultados que YAMM exporta de vuelta:
+            merge_status TEXT,
+            sent_at      TEXT,
+            opened_at    TEXT,
+            clicked_at   TEXT,
+            replied_at   TEXT,
+            bounced      INTEGER DEFAULT 0,
+            UNIQUE(campaign_id, contact_id)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_yamm_camp_email ON yamm_campaign_contacts(email)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_yamm_camp_status ON yamm_campaigns(status)')
+
     _seed_templates(c)
 
     # ─── JOB RUNS — historial de ejecuciones de jobs programados ──

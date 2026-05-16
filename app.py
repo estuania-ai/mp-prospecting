@@ -24,6 +24,7 @@ from routes.manual_send import manual_bp
 from routes.fast_registro import fast_bp
 from routes.email_tool import email_bp
 from routes.whatsapp_routes import bp as whatsapp_bp
+from routes.yamm_routes import bp as yamm_bp
 from routes.auth_routes import auth_bp
 from auth import init_login_manager
 
@@ -66,6 +67,7 @@ app.register_blueprint(manual_bp,     url_prefix='/api/manual')
 app.register_blueprint(fast_bp,       url_prefix='/api/leads')
 app.register_blueprint(email_bp,      url_prefix='/api/email-tool')
 app.register_blueprint(whatsapp_bp)
+app.register_blueprint(yamm_bp)     # /api/yamm/* · campañas mail merge via Google Sheets + YAMM
 
 
 # ── Middleware: forzar login en todas las rutas no-publicas ──
