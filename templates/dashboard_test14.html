@@ -696,6 +696,9 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   <div class="nav-item" data-roles="owner" onclick="showPage('email-campanas',this,'Email · Campañas')">
     <span class="nav-icon">📤</span> Campañas
   </div>
+  <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-drafts',this,'Email · Borradores Gmail');loadDraftsPage()">
+    <span class="nav-icon">✍️</span> Borradores Gmail
+  </div>
   <div class="nav-item" data-roles="owner,tl" onclick="showPage('email-generico',this,'Email · Genérico')">
     <span class="nav-icon">✉️</span> Email genérico
   </div>
@@ -2600,6 +2603,100 @@ select.filter-sel:focus{border-color:var(--mp-blue)}
   </div>
   <div class="rubro-grid" id="rubro-card-grid">
     <p style="color:#9CA3AF;font-size:14px;grid-column:1/-1">Cargando rubros...</p>
+  </div>
+</div>
+
+<!-- ─── EMAIL · BORRADORES GMAIL (Apps Script) ───────────────── -->
+<div class="page" id="page-email-drafts">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div class="page-title">✍️ Borradores Gmail</div>
+      <div class="page-sub">Generá borradores personalizados en tu Gmail vía Apps Script · vos revisás y enviás manualmente</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm" onclick="draftsHealth()">🔌 Verificar Apps Script</button>
+      <button class="btn btn-primary btn-sm" onclick="loadDraftsPage()">↻ Actualizar</button>
+    </div>
+  </div>
+
+  <!-- Banda info -->
+  <div style="background:#eef7ff;border:1px solid #b6dfff;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#0b4a72">
+    ⚙️ <strong>Cómo funciona:</strong> el dashboard renderea los templates por rubro con los datos de cada contacto y llama a un Apps Script en tu cuenta Gmail que crea los borradores. <strong>Nada se envía automáticamente</strong> · vos revisás en tus Borradores de Gmail y enviás. Guía completa en <code>docs/APPS_SCRIPT_DRAFTS.md</code>.
+  </div>
+
+  <!-- ── Nueva generación ── -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title"><span class="card-icon">🚀</span>Nueva generación de borradores</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:8px">
+      <div>
+        <label class="form-lbl">Nombre del batch</label>
+        <input class="form-input" id="drafts-name" placeholder="Ej: Pizzerías Las Condes - Agosto 2026" maxlength="120">
+      </div>
+      <div>
+        <label class="form-lbl">Template a usar (por rubro)</label>
+        <select class="form-input" id="drafts-template-rubro">
+          <option value="">— seleccionar template —</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-lbl">Filtrar contactos por rubro</label>
+        <select class="form-input" id="drafts-rubro">
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-lbl">Filtrar por comuna</label>
+        <select class="form-input" id="drafts-comuna">
+          <option value="">Todas</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-lbl">Estado</label>
+        <select class="form-input" id="drafts-estado">
+          <option value="">Excluir opt-outs (default)</option>
+          <option value="pendiente">Solo pendientes</option>
+          <option value="todos">Todos</option>
+        </select>
+      </div>
+      <div>
+        <label class="form-lbl">Cantidad máxima de borradores</label>
+        <input type="number" class="form-input" id="drafts-limit" value="50" min="1" max="100">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="draftsPreview()">👁 Preview HTML</button>
+      <button class="btn btn-primary" onclick="draftsGenerate()">✉️ Generar borradores</button>
+      <span id="drafts-preview-info" style="font-size:12px;color:#6B7280"></span>
+    </div>
+
+    <!-- Preview -->
+    <div id="drafts-preview-wrap" style="margin-top:14px;display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#1A1A2E;margin-bottom:6px">
+            Contactos que van a recibir borradores
+          </div>
+          <div id="drafts-preview-contacts" class="table-wrap" style="max-height:340px;overflow-y:auto;border:1px solid #eee;border-radius:8px"></div>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#1A1A2E;margin-bottom:6px">
+            Vista previa del borrador (primer contacto)
+          </div>
+          <div style="font-size:11px;color:#6B7280;margin-bottom:4px">
+            <strong>Asunto:</strong> <span id="drafts-preview-subject">—</span>
+          </div>
+          <iframe id="drafts-preview-iframe" sandbox="allow-same-origin" style="width:100%;height:340px;border:1px solid #eee;border-radius:8px;background:#fff"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Historial -->
+  <div class="card">
+    <div class="card-title"><span class="card-icon">📋</span>Historial de batches</div>
+    <div id="drafts-batches-list" style="margin-top:8px">
+      <p style="color:#9CA3AF;font-size:13px">Cargando...</p>
+    </div>
   </div>
 </div>
 
@@ -7912,6 +8009,215 @@ function fuenteBadge(fuente) {
   var p = palette[fuente] || { bg:'#F3F4F6', fg:'#374151', icon:'•' };
   return '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:'
     + p.bg + ';color:' + p.fg + ';white-space:nowrap">' + p.icon + ' ' + fuente + '</span>';
+}
+
+// ─────────────────────────────────────────────────────────────
+// ── DRAFTS · Borradores Gmail vía Apps Script ────────────────
+// ─────────────────────────────────────────────────────────────
+async function loadDraftsPage(){
+  await Promise.all([
+    draftsLoadRubros(),
+    draftsLoadComunas(),
+    draftsLoadBatches(),
+  ]);
+}
+
+async function draftsLoadRubros(){
+  // Rubros de contactos (para filtro y para template)
+  try {
+    const r = await fetch('/api/email-tool/rubros', {credentials:'same-origin'});
+    if (!r.ok) return;
+    const data = await r.json();
+    const list = Array.isArray(data) ? data : [];
+    const opts = '<option value="">— seleccionar —</option>' +
+      list.map(x => '<option value="' + escapeAttr(x.rubro || x) + '">' + escapeHtml(x.rubro || x) + '</option>').join('');
+    const optsAll = '<option value="">Todos</option>' +
+      list.map(x => '<option value="' + escapeAttr(x.rubro || x) + '">' + escapeHtml(x.rubro || x) + '</option>').join('');
+    const selTmpl = document.getElementById('drafts-template-rubro');
+    const selFilter = document.getElementById('drafts-rubro');
+    if (selTmpl) selTmpl.innerHTML = opts;
+    if (selFilter) selFilter.innerHTML = optsAll;
+  } catch(_){}
+}
+
+async function draftsLoadComunas(){
+  try {
+    const r = await fetch('/api/email-tool/comunas', {credentials:'same-origin'});
+    if (!r.ok) return;
+    const data = await r.json();
+    const list = Array.isArray(data) ? data : [];
+    const sel = document.getElementById('drafts-comuna');
+    if (sel) sel.innerHTML = '<option value="">Todas</option>' +
+      list.map(x => '<option value="' + escapeAttr(x.comuna || x) + '">' + escapeHtml(x.comuna || x) + '</option>').join('');
+  } catch(_){}
+}
+
+function _draftsGetFilters(){
+  return {
+    template_rubro: (document.getElementById('drafts-template-rubro').value || '').trim(),
+    rubro:  (document.getElementById('drafts-rubro').value || '').trim(),
+    comuna: (document.getElementById('drafts-comuna').value || '').trim(),
+    estado: (document.getElementById('drafts-estado').value || '').trim(),
+    limit:  parseInt(document.getElementById('drafts-limit').value || '50', 10),
+  };
+}
+
+async function draftsPreview(){
+  const info = document.getElementById('drafts-preview-info');
+  const wrap = document.getElementById('drafts-preview-wrap');
+  const contactsBox = document.getElementById('drafts-preview-contacts');
+  info.textContent = 'Calculando...';
+  wrap.style.display = 'none';
+  try {
+    const r = await fetch('/api/email/drafts/preview', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(_draftsGetFilters()),
+    });
+    const d = await r.json();
+    if (!r.ok) { info.textContent = '❌ ' + (d.error || 'Error'); return; }
+    info.innerHTML = '<strong style="color:#0EA5E9">' + d.total_match +
+      '</strong> contactos coinciden · template: <strong>' + escapeHtml(d.template_rubro || '?') +
+      '</strong> · límite por batch: ' + d.max_per_batch;
+    // Tabla contactos
+    const cs = d.contacts_preview || [];
+    if (cs.length === 0) {
+      contactsBox.innerHTML = '<p style="color:#9CA3AF;font-size:12px;padding:10px">Sin resultados</p>';
+    } else {
+      contactsBox.innerHTML =
+        '<table style="font-size:11px;width:100%"><thead><tr>' +
+        '<th style="text-align:left;padding:4px 6px">Email</th>' +
+        '<th style="text-align:left;padding:4px 6px">Comercio</th>' +
+        '<th style="text-align:left;padding:4px 6px">Rubro</th>' +
+        '<th style="text-align:left;padding:4px 6px">Comuna</th>' +
+        '</tr></thead><tbody>' +
+        cs.map(c => '<tr>' +
+          '<td style="padding:3px 6px">' + escapeHtml(c.email||'') + '</td>' +
+          '<td style="padding:3px 6px">' + escapeHtml(c.business_name||'') + '</td>' +
+          '<td style="padding:3px 6px">' + escapeHtml(c.rubro||'') + '</td>' +
+          '<td style="padding:3px 6px">' + escapeHtml(c.comuna||'') + '</td>' +
+          '</tr>').join('') +
+        '</tbody></table>';
+    }
+    // Preview HTML del primer contacto
+    const pf = d.preview_first || {};
+    document.getElementById('drafts-preview-subject').textContent = pf.subject || '—';
+    const iframe = document.getElementById('drafts-preview-iframe');
+    if (iframe && pf.html) {
+      // Usamos srcdoc con sandbox para aislar el HTML previsualizado del dashboard
+      iframe.srcdoc = pf.html;
+    } else if (iframe) {
+      iframe.srcdoc = '<p style="font-family:sans-serif;color:#888">Sin contactos para renderizar preview</p>';
+    }
+    wrap.style.display = 'block';
+  } catch(e) {
+    info.textContent = '❌ ' + e.message;
+  }
+}
+
+async function draftsGenerate(){
+  const name = (document.getElementById('drafts-name').value || '').trim();
+  if (!name) { alert('Ponele un nombre al batch antes de generar'); return; }
+  const filters = _draftsGetFilters();
+  if (!filters.template_rubro) { alert('Elegí qué template usar'); return; }
+  if (!confirm('¿Generar ' + filters.limit + ' borradores en tu Gmail? · nada se envía · solo quedan como borradores para revisar')) return;
+
+  const info = document.getElementById('drafts-preview-info');
+  info.textContent = 'Generando borradores...';
+  try {
+    const body = Object.assign({name: name}, filters);
+    const r = await fetch('/api/email/drafts/generate', {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) { alert('❌ ' + (d.error || 'Error')); info.textContent = ''; return; }
+    let msg = '✅ Batch #' + d.batch_id + ' generado\n\n' +
+              'Borradores creados: ' + d.created + '\n' +
+              'Fallidos: ' + d.failed + '\n' +
+              'Saltados (email inválido/render): ' + (d.skipped || 0) + '\n\n' +
+              'Andá a Gmail > Borradores para revisar y enviar.';
+    if (confirm(msg + '\n\n¿Abrir Gmail Borradores ahora?')) {
+      window.open(d.gmail_drafts_url || 'https://mail.google.com/mail/u/0/#drafts', '_blank');
+    }
+    info.textContent = '';
+    await draftsLoadBatches();
+  } catch(e) {
+    alert('❌ ' + e.message);
+    info.textContent = '';
+  }
+}
+
+async function draftsHealth(){
+  try {
+    const r = await fetch('/api/email/drafts/health', {credentials:'same-origin'});
+    const d = await r.json();
+    let msg = '🔌 Estado del Apps Script:\n\n';
+    msg += 'URL configurada: ' + (d.url_ok ? '✅' : '❌') + '\n';
+    msg += 'Secret configurado: ' + (d.secret_ok ? '✅' : '❌') + '\n';
+    msg += 'Alcanzable: ' + (d.reachable ? '✅' : '❌') + '\n\n';
+    msg += 'Mensaje: ' + (d.message || '(sin mensaje)');
+    alert(msg);
+  } catch(e) {
+    alert('❌ ' + e.message);
+  }
+}
+
+async function draftsLoadBatches(){
+  const wrap = document.getElementById('drafts-batches-list');
+  if (!wrap) return;
+  wrap.innerHTML = '<p style="color:#9CA3AF;font-size:13px">Cargando...</p>';
+  try {
+    const r = await fetch('/api/email/drafts/batches', {credentials:'same-origin'});
+    if (!r.ok) { wrap.innerHTML = '<p style="color:#dc2626">Error cargando batches</p>'; return; }
+    const list = await r.json();
+    if (!Array.isArray(list) || list.length === 0) {
+      wrap.innerHTML = '<p style="color:#9CA3AF;font-size:13px">Sin batches todavía. Creá el primero arriba ↑</p>';
+      return;
+    }
+    wrap.innerHTML =
+      '<table style="font-size:12px;width:100%"><thead><tr>' +
+      '<th style="text-align:left">Nombre</th>' +
+      '<th>Estado</th><th>Creados</th><th>Fallidos</th><th>Rubro tmpl</th><th>Fecha</th><th></th>' +
+      '</tr></thead><tbody>' +
+      list.map(b => {
+        const color = b.status === 'created' ? '#16A34A' :
+                      b.status === 'partial' ? '#F59E0B' :
+                      b.status === 'error' ? '#DC2626' : '#9CA3AF';
+        return '<tr>' +
+          '<td>' + escapeHtml(b.name || '') + '</td>' +
+          '<td><span style="background:'+color+';color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">' +
+            escapeHtml(b.status || '') + '</span></td>' +
+          '<td>' + (b.created_count || 0) + '</td>' +
+          '<td>' + (b.failed_count || 0) + '</td>' +
+          '<td>' + escapeHtml(b.template_rubro || '') + '</td>' +
+          '<td>' + escapeHtml(b.created_at || '') + '</td>' +
+          '<td>' + (b.gmail_drafts_url ? '<a href="'+escapeAttr(b.gmail_drafts_url)+'" target="_blank" style="color:#0EA5E9">Ver en Gmail</a>' : '') + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  } catch(e) {
+    wrap.innerHTML = '<p style="color:#dc2626">' + escapeHtml(e.message) + '</p>';
+  }
+}
+
+// helpers de escape (por si no existen en scope)
+if (typeof escapeHtml !== 'function') {
+  window.escapeHtml = function(s){
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, function(m){
+      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m];
+    });
+  };
+}
+if (typeof escapeAttr !== 'function') {
+  window.escapeAttr = function(s){
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/["'&<>]/g, function(m){
+      return ({'"':'&quot;',"'":'&#39;','&':'&amp;','<':'&lt;','>':'&gt;'})[m];
+    });
+  };
 }
 
 // ── Email genérico ─────────────────────────────────────────

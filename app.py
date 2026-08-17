@@ -24,6 +24,7 @@ from routes.manual_send import manual_bp
 from routes.fast_registro import fast_bp
 from routes.email_tool import email_bp
 from routes.whatsapp_routes import bp as whatsapp_bp
+from routes.draft_routes import bp as drafts_bp
 from routes.auth_routes import auth_bp
 from auth import init_login_manager
 
@@ -66,6 +67,7 @@ app.register_blueprint(manual_bp,     url_prefix='/api/manual')
 app.register_blueprint(fast_bp,       url_prefix='/api/leads')
 app.register_blueprint(email_bp,      url_prefix='/api/email-tool')
 app.register_blueprint(whatsapp_bp)
+app.register_blueprint(drafts_bp)   # /api/email/drafts/* · borradores Gmail vía Apps Script
 
 
 # ── Middleware: forzar login en todas las rutas no-publicas ──
@@ -112,7 +114,15 @@ def security_headers(resp):
     return resp
 
 
-# â”€â”€ SCHEDULER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── SCHEDULER ─────────────────────────────────────────────────
+# Flag para deshabilitar el scheduler en desarrollo local: si arrancás
+# Flask en tu PC con credenciales productivas, NO querés que se
+# ejecuten los jobs cron reales (enviar emails/WA a clientes de verdad).
+# Setea DISABLE_SCHEDULER=1 en tu .env local para omitir el registro.
+_DISABLE_SCHEDULER = os.getenv('DISABLE_SCHEDULER', '').strip().lower() in ('1', 'true', 'yes')
+if _DISABLE_SCHEDULER:
+    logger.warning("SCHEDULER DESHABILITADO por DISABLE_SCHEDULER=1 · los jobs NO se van a ejecutar")
+
 scheduler = BackgroundScheduler(timezone='America/Santiago')
 
 
@@ -250,8 +260,12 @@ scheduler.add_job(job_wa_followup, CronTrigger(hour=10, minute=0),
 scheduler.add_job(job_wa_seguimiento, IntervalTrigger(hours=2),
                   id='wa_seguimiento', replace_existing=True, **_INTVL_OPTS)
 
-scheduler.start()
-atexit.register(lambda: scheduler.shutdown())
+if not _DISABLE_SCHEDULER:
+    scheduler.start()
+    atexit.register(lambda: scheduler.shutdown())
+    logger.info("Scheduler iniciado con %d jobs registrados", len(scheduler.get_jobs()))
+else:
+    logger.info("Scheduler NO iniciado (DISABLE_SCHEDULER=1)")
 
 
 @app.route('/api/scheduler/status')

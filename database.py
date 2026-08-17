@@ -570,6 +570,46 @@ def init_db():
         )
     ''')
 
+    # ─── APPS SCRIPT DRAFTS — borradores Gmail semi-automáticos ────────
+    # El dashboard genera batches de contactos + HTML renderizado y llama
+    # a un Apps Script Web App que crea los drafts en la cuenta Gmail del
+    # Owner. El usuario revisa y envía manualmente desde Gmail.
+    # Ver docs/APPS_SCRIPT_DRAFTS.md
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS email_draft_batches (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at        TEXT DEFAULT (datetime('now','localtime')),
+            created_by        INTEGER REFERENCES users(id),
+            name              TEXT,
+            rubro_filter      TEXT,
+            comuna_filter     TEXT,
+            estado_filter     TEXT,
+            template_rubro    TEXT,
+            subject_used      TEXT,
+            requested_count   INTEGER DEFAULT 0,
+            created_count     INTEGER DEFAULT 0,
+            failed_count      INTEGER DEFAULT 0,
+            status            TEXT DEFAULT 'pending',
+            error_message     TEXT,
+            gmail_drafts_url  TEXT
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS email_draft_batch_contacts (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id      INTEGER REFERENCES email_draft_batches(id) ON DELETE CASCADE,
+            contact_id    INTEGER REFERENCES et_contacts(id),
+            email         TEXT NOT NULL,
+            business_name TEXT,
+            draft_id      TEXT,
+            status        TEXT DEFAULT 'pending',
+            error         TEXT,
+            created_at    TEXT DEFAULT (datetime('now','localtime'))
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_draft_batch_status ON email_draft_batches(status)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_draft_batch_contacts ON email_draft_batch_contacts(batch_id)')
+
     _seed_templates(c)
 
     # ─── JOB RUNS — historial de ejecuciones de jobs programados ──
